@@ -1,16 +1,35 @@
 @font-face {
-  font-family: "Nunito";
+  font-family: "Inter Variable";
   font-style: normal;
-  font-weight: 400;
-  src: url("assets/fonts/nunito-v16-latin-regular.woff2") format("woff2");
+  font-display: swap;
+  font-weight: 100 900;
+  src:
+    url("@fontsource-variable/inter/files/inter-latin-wght-normal.woff2")
+    format("woff2-variations");
+}
+
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src:
+    url("@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2")
+    format("woff2-variations");
 }
 
 :root {
   color: #c5d1d8;
   background: #04131b;
-  font-family: "Nunito", "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  --font-ui:
+    "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-data:
+    "JetBrains Mono Variable", "SFMono-Regular", Consolas, "Liberation Mono",
+    monospace;
   --bg: #04131b;
   --panel: #061a24;
   --panel-raised: #09212c;
@@ -42,6 +61,9 @@ body {
   min-height: 720px;
   background: var(--bg);
   color: var(--text);
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 1.4;
   user-select: none;
 }
 
@@ -49,6 +71,34 @@ button,
 input {
   color: inherit;
   font: inherit;
+}
+
+.ticker strong,
+.ticker em,
+.market-row > span:not(.market-symbol-cell),
+.favorite-row > span:last-child,
+.chart-legend b,
+.book-row,
+.book-mid strong,
+.book-mid small,
+.balance-row strong,
+.ticket-field input,
+.leverage strong,
+.leverage-labels,
+.preset-grid button span,
+.estimate-fields input,
+.estimate-fields > strong,
+.ticket-summary strong,
+.submit-order span,
+.cost-row,
+.position-row > span:nth-child(n + 3),
+.status-bar b,
+.symbol-table-row > span:not(.symbol-range),
+.symbol-range-values {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+  letter-spacing: -.015em;
 }
 
 button {
@@ -132,7 +182,7 @@ input:focus-visible {
   border: 1px solid #1a3b49;
   border-radius: 4px;
   background: #081d28;
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
 .exchange-selector .chevron {
@@ -147,6 +197,7 @@ input:focus-visible {
   min-width: 86px;
   color: var(--muted);
   font-size: 12px;
+  font-weight: 500;
 }
 
 .connection.connected {
@@ -185,7 +236,7 @@ input:focus-visible {
   min-width: 142px;
   padding: 0 14px;
   border-right: 1px solid var(--border-soft);
-  font-size: 10px;
+  font-size: 10.5px;
 }
 
 .ticker > span {
@@ -195,13 +246,14 @@ input:focus-visible {
 
 .ticker strong {
   color: #c9d4da;
-  font-size: 12px;
+  font-size: 12.5px;
+  font-weight: 550;
 }
 
 .ticker em {
   align-self: center;
   font-style: normal;
-  font-size: 10px;
+  font-size: 10.5px;
 }
 
 .window-actions {
@@ -328,9 +380,10 @@ body.panel-resizing * {
 .panel-header h2 {
   margin: 0;
   color: #b9c8cf;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .02em;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: .035em;
+  white-space: nowrap;
 }
 
 .search-field {
@@ -352,7 +405,7 @@ body.panel-resizing * {
   outline: 0;
   background: transparent;
   color: #b8c4ca;
-  font-size: 10px;
+  font-size: 11.5px;
 }
 
 .market-kind,
@@ -369,7 +422,7 @@ body.panel-resizing * {
   height: 26px;
   color: #718994;
   background: #071a23;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .market-kind button.active {
@@ -387,7 +440,7 @@ body.panel-resizing * {
   height: 25px;
   color: #718994;
   background: transparent;
-  font-size: 9px;
+  font-size: 10.5px;
 }
 
 .quote-tabs button.active {
@@ -413,7 +466,7 @@ body.panel-resizing * {
   place-items: center;
   min-height: 68px;
   color: #657e89;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .market-table {
@@ -427,7 +480,7 @@ body.panel-resizing * {
 .market-table-header {
   height: 24px;
   color: #5f7783;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .market-table-header button {
@@ -455,7 +508,7 @@ body.panel-resizing * {
 
 .market-table-header i {
   color: #4f7180;
-  font-size: 7px;
+  font-size: 9px;
   font-style: normal;
 }
 
@@ -464,7 +517,7 @@ body.panel-resizing * {
   padding: 0 2px;
   color: #aebcc4;
   background: transparent;
-  font-size: 8.5px;
+  font-size: 10.5px;
 }
 
 .market-row:hover,
@@ -528,7 +581,7 @@ body.panel-resizing * {
 .favorites-empty {
   padding: 10px 0 4px;
   color: #617985;
-  font-size: 8.5px;
+  font-size: 10.5px;
 }
 
 .compact-row,
@@ -538,7 +591,7 @@ body.panel-resizing * {
   align-items: center;
   min-height: 22px;
   color: #94a7b1;
-  font-size: 9px;
+  font-size: 10.5px;
 }
 
 .favorite-row {
@@ -555,7 +608,7 @@ body.panel-resizing * {
   padding: 4px 0 0;
   color: #68828e;
   background: transparent;
-  font-size: 9px;
+  font-size: 10.5px;
 }
 
 .connections-section {
@@ -615,7 +668,7 @@ body.panel-resizing * {
   padding: 0 10px;
   color: #879ba6;
   background: transparent;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .instrument-tabs button.active {
@@ -651,7 +704,7 @@ body.panel-resizing * {
   color: #8195a0;
   background: transparent;
   border-radius: 3px;
-  font-size: 9px;
+  font-size: 10.5px;
 }
 
 .chart-toolbar button:hover,
@@ -732,7 +785,7 @@ body.panel-resizing * {
   border-radius: 4px;
   background: rgba(5, 25, 34, .9);
   color: #91a5af;
-  font-size: 10px;
+  font-size: 11.5px;
 }
 
 .chart-legend {
@@ -744,12 +797,13 @@ body.panel-resizing * {
   align-items: center;
   gap: 9px;
   pointer-events: none;
-  font-size: 9px;
+  font-size: 10.5px;
 }
 
 .chart-legend strong {
   color: #c7d3d9;
-  font-size: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
 }
 
 .chart-legend span {
@@ -771,7 +825,7 @@ body.panel-resizing * {
   border-radius: 3px;
   color: var(--green);
   background: rgba(24, 197, 143, .08);
-  font-size: 7px;
+  font-size: 9px;
   font-style: normal;
 }
 
@@ -805,7 +859,7 @@ body.panel-resizing * {
   right: 74px;
   bottom: 3px;
   color: #526b77;
-  font-size: 8px;
+  font-size: 9.5px;
   pointer-events: none;
 }
 
@@ -849,7 +903,7 @@ body.panel-resizing * {
 .book-columns {
   height: 28px;
   color: #607984;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .book-columns span:not(:first-child),
@@ -867,7 +921,7 @@ body.panel-resizing * {
   overflow: hidden;
   color: #a4b4bc;
   font-variant-numeric: tabular-nums;
-  font-size: 8.5px;
+  font-size: 10.5px;
 }
 
 .book-row i {
@@ -913,6 +967,7 @@ body.panel-resizing * {
 .book-mid strong {
   color: var(--green);
   font-size: 20px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -924,7 +979,7 @@ body.panel-resizing * {
 .book-mid small {
   justify-self: end;
   color: #667e89;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .book-ratio {
@@ -935,7 +990,7 @@ body.panel-resizing * {
   margin-top: auto;
   padding: 0 9px;
   color: #6f8792;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .book-ratio span:first-child {
@@ -981,7 +1036,7 @@ body.panel-resizing * {
   color: #768c97;
   background: transparent;
   border-bottom: 1px solid var(--border-soft);
-  font-size: 9px;
+  font-size: 10.5px;
 }
 
 .ticket-tabs button.active {
@@ -999,7 +1054,8 @@ body.panel-resizing * {
   height: 30px;
   border-radius: 3px;
   color: white;
-  font-size: 10px;
+  font-size: 11.5px;
+  font-weight: 550;
 }
 
 .buy,
@@ -1016,7 +1072,7 @@ body.panel-resizing * {
   justify-content: space-between;
   padding: 15px 11px 6px;
   color: #718791;
-  font-size: 9px;
+  font-size: 10.5px;
 }
 
 .balance-row strong {
@@ -1034,7 +1090,7 @@ body.panel-resizing * {
   display: block;
   margin-bottom: 5px;
   color: #6b828e;
-  font-size: 9px;
+  font-size: 10.5px;
 }
 
 .ticket-field div {
@@ -1054,12 +1110,12 @@ body.panel-resizing * {
   outline: 0;
   background: transparent;
   color: #b8c7ce;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .ticket-field small {
   color: #6a828e;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .leverage {
@@ -1072,7 +1128,7 @@ body.panel-resizing * {
   display: flex;
   justify-content: space-between;
   color: #6b828e;
-  font-size: 9px;
+  font-size: 10.5px;
 }
 
 .leverage strong {
@@ -1092,7 +1148,7 @@ body.panel-resizing * {
   gap: 6px;
   padding: 10px 11px;
   color: #9cabb3;
-  font-size: 9px;
+  font-size: 10.5px;
 }
 
 .check-row input {
@@ -1123,11 +1179,12 @@ body.panel-resizing * {
   border-radius: 4px;
   background: #071b25;
   color: #8798a1;
-  font-size: 8px;
+  font-size: 9.5px;
 }
 
 .preset-grid button strong {
-  font-size: 10px;
+  font-size: 10.5px;
+  font-weight: 600;
 }
 
 .preset-grid button.moderate {
@@ -1172,7 +1229,7 @@ body.panel-resizing * {
   display: grid;
   gap: 4px;
   color: #6d838e;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .estimate-fields input {
@@ -1183,12 +1240,12 @@ body.panel-resizing * {
   border-radius: 3px;
   outline: 0;
   background: #071821;
-  font-size: 10px;
+  font-size: 11.5px;
 }
 
 .estimate-fields > strong {
   text-align: right;
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.35;
 }
 
@@ -1203,7 +1260,7 @@ body.panel-resizing * {
   display: flex;
   justify-content: space-between;
   color: #6d838e;
-  font-size: 8.5px;
+  font-size: 10px;
 }
 
 .ticket-summary strong {
@@ -1219,11 +1276,12 @@ body.panel-resizing * {
   margin: 0 11px;
   border-radius: 3px;
   color: white;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .submit-order span {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .cost-row {
@@ -1246,7 +1304,7 @@ body.panel-resizing * {
   padding: 0 13px;
   color: #6f8490;
   background: transparent;
-  font-size: 8.5px;
+  font-size: 10px;
 }
 
 .positions-tabs button.active {
@@ -1278,19 +1336,20 @@ body.panel-resizing * {
 .positions-head {
   height: 34px;
   color: #607984;
-  font-size: 7.5px;
+  font-size: 10px;
 }
 
 .position-row {
   height: 50px;
   border-top: 1px solid var(--border-soft);
   color: #a3b2ba;
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .position-row strong {
   color: #c7d2d7;
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .position-row button {
@@ -1299,7 +1358,7 @@ body.panel-resizing * {
   border-radius: 3px;
   color: #97a9b2;
   background: #0b2430;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .status-bar {
@@ -1311,7 +1370,7 @@ body.panel-resizing * {
   border-top: 1px solid var(--border);
   background: #04151e;
   color: #657d89;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .status-bar > span {
@@ -1381,10 +1440,14 @@ body.panel-resizing * {
   pointer-events: none;
   contain: strict;
   background: rgb(2 13 20 / 72%);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
   transform: translateZ(0);
   backface-visibility: hidden;
+}
+
+.app-shell.symbol-search-open > .app-header,
+.app-shell.symbol-search-open > .workspace-grid,
+.app-shell.symbol-search-open > .status-bar {
+  filter: blur(4px);
 }
 
 .symbol-modal {
@@ -1416,16 +1479,16 @@ body.panel-resizing * {
 
 .symbol-modal-header > div:first-child > span {
   color: #69a8c1;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 650;
   letter-spacing: .12em;
 }
 
 .symbol-modal-header h2 {
   margin: 4px 0 0;
   color: #edf5f8;
-  font-size: 21px;
-  font-weight: 600;
+  font-size: 23px;
+  font-weight: 650;
   line-height: 1.2;
 }
 
@@ -1434,7 +1497,7 @@ body.panel-resizing * {
   align-items: center;
   gap: 14px;
   color: #819aa6;
-  font-size: 10px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 
@@ -1453,7 +1516,7 @@ body.panel-resizing * {
   border-radius: 6px;
   color: #b6d4e0;
   background: #0b3040;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   transition: background .14s ease, border-color .14s ease, color .14s ease;
 }
@@ -1527,8 +1590,8 @@ body.panel-resizing * {
   outline: 0;
   background: transparent;
   color: #e0ebef;
-  font-size: 14px;
-  line-height: 1;
+  font-size: 15.5px;
+  line-height: 1.25;
 }
 
 .symbol-search-input input::placeholder {
@@ -1544,7 +1607,7 @@ body.panel-resizing * {
   align-items: center;
   gap: 13px;
   color: #6f8995;
-  font-size: 10px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 
@@ -1561,7 +1624,7 @@ body.panel-resizing * {
   border-radius: 4px;
   color: #a5bdc7;
   background: #0c2a36;
-  font: 10px/1.2 "Nunito", "Segoe UI", sans-serif;
+  font: 500 11px/1.2 var(--font-ui);
   text-align: center;
 }
 
@@ -1578,7 +1641,8 @@ body.panel-resizing * {
   border-radius: 15px;
   color: #829ba7;
   background: #08232e;
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 500;
   transition: background .12s ease, border-color .12s ease, color .12s ease;
 }
 
@@ -1609,7 +1673,7 @@ body.panel-resizing * {
   color: #dfac56;
   background: rgba(210, 147, 43, .08);
   border-bottom: 1px solid rgba(210, 147, 43, .2);
-  font-size: 10px;
+  font-size: 11.5px;
 }
 
 .symbol-table-grid {
@@ -1628,7 +1692,7 @@ body.panel-resizing * {
   border-bottom: 1px solid var(--border);
   color: #7896a3;
   background: #08232e;
-  font-size: 10px;
+  font-size: 11.5px;
 }
 
 .symbol-table-header > span:last-child {
@@ -1641,7 +1705,7 @@ body.panel-resizing * {
   color: inherit;
   background: transparent;
   text-align: right;
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1681,7 +1745,7 @@ body.panel-resizing * {
   border-bottom: 1px solid #12333f;
   color: #b8c9d0;
   background: #061c27;
-  font-size: 11px;
+  font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
@@ -1709,8 +1773,8 @@ body.panel-resizing * {
 .symbol-table-row strong {
   overflow: hidden;
   color: #e1ebef;
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1730,7 +1794,7 @@ body.panel-resizing * {
 .symbol-table-row small {
   margin-left: 2px;
   color: #73909c;
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 400;
 }
 
@@ -1765,7 +1829,7 @@ body.panel-resizing * {
 .symbol-range-values small {
   margin: 0;
   color: #6f8c98;
-  font-size: 8px;
+  font-size: 10.5px;
   white-space: nowrap;
 }
 
@@ -1806,7 +1870,7 @@ body.panel-resizing * {
   gap: 10px;
   height: 100%;
   color: #718b97;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .symbol-modal-state i {
@@ -1828,7 +1892,7 @@ body.panel-resizing * {
   border-top: 1px solid var(--border);
   color: #688692;
   background: #08212c;
-  font-size: 9.5px;
+  font-size: 11px;
 }
 
 .symbol-modal-footer span:last-child {
@@ -1870,6 +1934,6 @@ body.panel-resizing * {
   }
 
   .symbol-search-help > span {
-    font-size: 9px;
+    font-size: 10.5px;
   }
 }

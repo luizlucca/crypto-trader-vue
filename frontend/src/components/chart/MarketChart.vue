@@ -144,8 +144,8 @@ onMounted(() => {
     layout: {
       background: { type: ColorType.Solid, color: '#061821' },
       textColor: '#8195a3',
-      fontFamily: '"IBM Plex Sans", "Segoe UI", sans-serif',
-      fontSize: 11,
+      fontFamily: '"JetBrains Mono Variable", "SFMono-Regular", Consolas, monospace',
+      fontSize: 12,
     },
     grid: {
       vertLines: { color: '#12303b' },

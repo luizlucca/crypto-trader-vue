@@ -394,7 +394,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-shell">
+  <div
+    class="app-shell"
+    :class="{ 'symbol-search-open': symbolSearchOpen }"
+  >
     <AppHeader :selection="selection" :status="status" />
     <main class="workspace-grid" :style="workspaceStyle">
       <NavigationRail />
