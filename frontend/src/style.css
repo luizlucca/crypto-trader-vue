@@ -1365,7 +1365,7 @@ body.panel-resizing * {
   pointer-events: none;
   contain: layout paint style;
   isolation: isolate;
-  background: #020d14;
+  background: transparent;
 }
 
 .symbol-modal-backdrop.open {
@@ -1373,7 +1373,23 @@ body.panel-resizing * {
   pointer-events: auto;
 }
 
+.symbol-modal-backdrop::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  contain: strict;
+  background: rgb(2 13 20 / 72%);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
 .symbol-modal {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   width: min(1160px, calc(100vw - 72px));
