@@ -48,6 +48,20 @@ func (s *Service) Symbols(
 	return provider.Symbols(ctx, market, quoteAsset)
 }
 
+func (s *Service) Catalog(
+	ctx context.Context,
+	providerName string,
+	market Market,
+	quoteAsset string,
+	forceRefresh bool,
+) (MarketCatalog, error) {
+	provider, err := s.provider(providerName)
+	if err != nil {
+		return MarketCatalog{}, err
+	}
+	return provider.Catalog(ctx, market, quoteAsset, forceRefresh)
+}
+
 func (s *Service) Candles(
 	ctx context.Context,
 	providerName string,

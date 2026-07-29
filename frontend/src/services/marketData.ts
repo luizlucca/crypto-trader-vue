@@ -1,5 +1,6 @@
 import {
   GetCandles,
+  GetMarketCatalog,
   GetSymbols,
   StartMarketStream,
   StopMarketStream,
@@ -7,6 +8,7 @@ import {
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import type {
   Candle,
+  MarketCatalog,
   MarketSelection,
   MarketSymbol,
   OrderBookSnapshot,
@@ -25,6 +27,20 @@ export async function loadSymbols(
   quoteAsset = 'USDT',
 ): Promise<MarketSymbol[]> {
   return GetSymbols(provider, market, quoteAsset) as Promise<MarketSymbol[]>
+}
+
+export async function loadMarketCatalog(
+  provider: string,
+  market: MarketSelection['market'],
+  quoteAsset = '',
+  forceRefresh = false,
+): Promise<MarketCatalog> {
+  return GetMarketCatalog(
+    provider,
+    market,
+    quoteAsset,
+    forceRefresh,
+  ) as Promise<MarketCatalog>
 }
 
 export async function loadCandles(

@@ -14,6 +14,7 @@ import {
 } from 'lightweight-charts'
 import type { Candle, MarketSelection } from '../../types/market'
 import { loadCandles, onCandle } from '../../services/marketData'
+import { publishRealtimePrice } from '../../services/realtimePrice'
 import ChartToolbar from './ChartToolbar.vue'
 import DrawingToolbar from './DrawingToolbar.vue'
 
@@ -23,11 +24,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   interval: [value: string]
-  price: [value: number]
 }>()
 
 const container = ref<HTMLElement | null>(null)
 const legend = ref<HTMLElement | null>(null)
+const legendOpen = ref<HTMLElement | null>(null)
+const legendHigh = ref<HTMLElement | null>(null)
+const legendLow = ref<HTMLElement | null>(null)
+const legendClose = ref<HTMLElement | null>(null)
 const loading = ref(true)
 const errorMessage = ref('')
 const chart = shallowRef<IChartApi | null>(null)
@@ -92,24 +96,35 @@ function displaySymbol(): string {
 }
 
 function updateLegend(candle: Candle): void {
-  emit('price', candle.close)
+  publishRealtimePrice({
+    provider: candle.provider,
+    market: candle.market,
+    symbol: candle.symbol,
+    value: candle.close,
+  })
   if (!legend.value) {
     return
   }
   const precision = Math.min(props.selection.pricePrecision, 8)
-  const values: Record<string, number> = {
-    open: candle.open,
-    high: candle.high,
-    low: candle.low,
-    close: candle.close,
-  }
-  Object.entries(values).forEach(([field, value]) => {
-    const target = legend.value?.querySelector<HTMLElement>(`[data-${field}]`)
-    if (target) {
-      target.textContent = value.toFixed(precision)
-    }
-  })
+  writeLegendValue(legendOpen.value, candle.open, precision)
+  writeLegendValue(legendHigh.value, candle.high, precision)
+  writeLegendValue(legendLow.value, candle.low, precision)
+  writeLegendValue(legendClose.value, candle.close, precision)
   legend.value.dataset.direction = candle.close >= candle.open ? 'up' : 'down'
+}
+
+function writeLegendValue(
+  target: HTMLElement | null,
+  value: number,
+  precision: number,
+): void {
+  if (!target) {
+    return
+  }
+  const text = value.toFixed(precision)
+  if (target.textContent !== text) {
+    target.textContent = text
+  }
 }
 
 function isCurrentSelection(candle: Candle): boolean {
@@ -222,10 +237,10 @@ defineExpose({ loadHistory })
       <div ref="container" class="chart-container" />
       <div ref="legend" class="chart-legend">
         <strong>{{ displaySymbol() }} · {{ selection.interval }}</strong>
-        <span>O <b data-open>—</b></span>
-        <span>H <b data-high>—</b></span>
-        <span>L <b data-low>—</b></span>
-        <span>C <b data-close>—</b></span>
+        <span>O <b ref="legendOpen">—</b></span>
+        <span>H <b ref="legendHigh">—</b></span>
+        <span>L <b ref="legendLow">—</b></span>
+        <span>C <b ref="legendClose">—</b></span>
         <i>LIVE</i>
       </div>
       <div v-if="loading" class="chart-message">Carregando candles…</div>

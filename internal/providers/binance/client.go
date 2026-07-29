@@ -19,10 +19,11 @@ import (
 const providerName = "binance"
 
 type Client struct {
-	httpClient *http.Client
-	dialer     *websocket.Dialer
-	symbolMu   sync.RWMutex
-	symbols    map[marketdata.Market]symbolCacheEntry
+	httpClient     *http.Client
+	dialer         *websocket.Dialer
+	catalogMu      sync.Mutex
+	catalogs       map[marketdata.Market]catalogCacheEntry
+	catalogFlights map[marketdata.Market]*catalogFlight
 }
 
 func New() *Client {
@@ -31,7 +32,8 @@ func New() *Client {
 		dialer: &websocket.Dialer{
 			HandshakeTimeout: 10 * time.Second,
 		},
-		symbols: make(map[marketdata.Market]symbolCacheEntry),
+		catalogs:       make(map[marketdata.Market]catalogCacheEntry),
+		catalogFlights: make(map[marketdata.Market]*catalogFlight),
 	}
 }
 

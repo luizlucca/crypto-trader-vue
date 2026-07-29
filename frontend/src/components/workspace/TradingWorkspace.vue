@@ -10,25 +10,65 @@ import {
 } from 'vue'
 import AppHeader from '../layout/AppHeader.vue'
 import NavigationRail from '../layout/NavigationRail.vue'
+import PanelResizeHandle from '../layout/PanelResizeHandle.vue'
 import MarketSidebar from '../market/MarketSidebar.vue'
+import SymbolSearchModal from '../market/SymbolSearchModal.vue'
 import MarketChart from '../chart/MarketChart.vue'
 import OrderBook from '../orderbook/OrderBook.vue'
 import TradingTicket from '../trading/TradingTicket.vue'
 import PositionsPanel from '../positions/PositionsPanel.vue'
 import {
-  loadSymbols,
+  loadMarketCatalog,
   onStreamStatus,
   startMarketStream,
   stopMarketStream,
 } from '../../services/marketData'
+import {
+  favoriteKey,
+  loadFavoriteKeys,
+  saveFavoriteKeys,
+} from '../../services/favorites'
 import type {
   Market,
+  MarketCatalog,
+  MarketPair,
   MarketSelection,
   MarketSymbol,
   StreamStatus,
 } from '../../types/market'
 
 type MarketChartExposed = { loadHistory: () => Promise<void> }
+
+const SIDEBAR_STORAGE_KEY = 'cryptopro.market-sidebar-width.v1'
+const SIDEBAR_MIN_WIDTH = 190
+const SIDEBAR_DEFAULT_WIDTH = 250
+const SIDEBAR_MAX_WIDTH = 420
+
+function availableSidebarMaxWidth(): number {
+  const reservedWorkspaceWidth = window.innerWidth <= 1360 ? 970 : 1015
+  return Math.max(
+    SIDEBAR_MIN_WIDTH,
+    Math.min(
+      SIDEBAR_MAX_WIDTH,
+      window.innerWidth - reservedWorkspaceWidth,
+    ),
+  )
+}
+
+function loadSidebarWidth(): number {
+  try {
+    const stored = Number(window.localStorage.getItem(SIDEBAR_STORAGE_KEY))
+    return Number.isFinite(stored) && stored > 0
+      ? stored
+      : SIDEBAR_DEFAULT_WIDTH
+  } catch {
+    return SIDEBAR_DEFAULT_WIDTH
+  }
+}
+
+function clampSidebarWidth(value: number, max: number): number {
+  return Math.min(max, Math.max(SIDEBAR_MIN_WIDTH, Math.round(value)))
+}
 
 const selection = reactive<MarketSelection>({
   provider: 'binance',
@@ -41,14 +81,29 @@ const selection = reactive<MarketSelection>({
   quantityPrecision: 3,
 })
 const chart = ref<MarketChartExposed | null>(null)
-const symbols = shallowRef<MarketSymbol[]>([])
+const sidebarMaxWidth = ref(availableSidebarMaxWidth())
+let preferredSidebarWidth = loadSidebarWidth()
+const sidebarWidth = ref(clampSidebarWidth(
+  preferredSidebarWidth,
+  sidebarMaxWidth.value,
+))
+const catalog = shallowRef<MarketCatalog | null>(null)
 const symbolsLoading = ref(true)
+const catalogRefreshing = ref(false)
+const catalogError = ref('')
+const symbolSearchOpen = ref(false)
+const symbolSearchQuery = ref('')
+const favoriteKeys = shallowRef(loadFavoriteKeys())
 const status = ref<StreamStatus['state']>('connecting')
 const statusMessage = ref('')
-const latency = ref(0)
-const lastPrice = ref(0)
+const latencyText = ref<HTMLElement | null>(null)
 let unsubscribeStatus: (() => void) | undefined
 let sessionGeneration = 0
+
+const symbols = computed(() => catalog.value?.items ?? [])
+const workspaceStyle = computed(() => ({
+  '--market-sidebar-width': `${sidebarWidth.value}px`,
+}))
 
 const statusLabel = computed(() => {
   switch (status.value) {
@@ -100,8 +155,7 @@ async function restartSession(patch: Partial<MarketSelection>): Promise<void> {
   const generation = ++sessionGeneration
   status.value = 'connecting'
   statusMessage.value = ''
-  lastPrice.value = 0
-  latency.value = 0
+  resetLatency()
 
   await stopMarketStream()
   if (generation !== sessionGeneration) {
@@ -120,9 +174,10 @@ async function changeMarket(market: Market): Promise<void> {
   status.value = 'connecting'
   statusMessage.value = ''
   symbolsLoading.value = true
-  symbols.value = []
-  lastPrice.value = 0
-  latency.value = 0
+  catalog.value = null
+  catalogError.value = ''
+  symbolSearchOpen.value = false
+  resetLatency()
 
   await stopMarketStream()
   if (generation !== sessionGeneration) {
@@ -131,14 +186,15 @@ async function changeMarket(market: Market): Promise<void> {
   selection.market = market
 
   try {
-    const nextSymbols = await loadSymbols(selection.provider, market)
+    const nextCatalog = await loadMarketCatalog(selection.provider, market)
     if (generation !== sessionGeneration) {
       return
     }
-    symbols.value = nextSymbols
+    catalog.value = nextCatalog
+    const nextSymbols = nextCatalog.items
     const nextSymbol = defaultSymbol(nextSymbols)
     if (!nextSymbol) {
-      throw new Error(`Nenhum símbolo USDT disponível para ${market}`)
+      throw new Error(`Nenhum par negociável disponível para ${market}`)
     }
     applySymbol(nextSymbol)
     await startSession(generation)
@@ -167,6 +223,112 @@ async function changeSymbol(symbol: MarketSymbol): Promise<void> {
   })
 }
 
+async function selectSymbol(symbol: MarketPair): Promise<void> {
+  symbolSearchOpen.value = false
+  await changeSymbol(symbol)
+}
+
+function openSymbolSearch(query = ''): void {
+  symbolSearchQuery.value = query
+  symbolSearchOpen.value = true
+}
+
+function isEditableOrInteractive(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest(
+    'input, textarea, select, button, a, [contenteditable="true"], [role="button"]',
+  ))
+}
+
+function handleGlobalEnter(event: KeyboardEvent): void {
+  if (
+    event.key !== 'Enter'
+    || event.repeat
+    || event.defaultPrevented
+    || event.altKey
+    || event.ctrlKey
+    || event.metaKey
+    || event.shiftKey
+    || symbolSearchOpen.value
+    || isEditableOrInteractive(event.target)
+  ) {
+    return
+  }
+
+  event.preventDefault()
+  openSymbolSearch()
+}
+
+function toggleFavorite(symbol: MarketSymbol): void {
+  const key = favoriteKey(symbol)
+  const next = new Set(favoriteKeys.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  favoriteKeys.value = next
+  saveFavoriteKeys(next)
+}
+
+function resetLatency(): void {
+  if (latencyText.value) {
+    latencyText.value.textContent = '—'
+  }
+}
+
+function updateLatency(value: number): void {
+  if (latencyText.value) {
+    latencyText.value.textContent = `${Math.max(0, Math.round(value))}ms`
+  }
+}
+
+function persistSidebarWidth(value: number): void {
+  preferredSidebarWidth = clampSidebarWidth(value, SIDEBAR_MAX_WIDTH)
+  try {
+    window.localStorage.setItem(
+      SIDEBAR_STORAGE_KEY,
+      String(preferredSidebarWidth),
+    )
+  } catch {
+    // The current session still keeps the chosen width if storage is denied.
+  }
+}
+
+function updateSidebarBounds(): void {
+  sidebarMaxWidth.value = availableSidebarMaxWidth()
+  sidebarWidth.value = clampSidebarWidth(
+    preferredSidebarWidth,
+    sidebarMaxWidth.value,
+  )
+}
+
+async function refreshCatalog(): Promise<void> {
+  if (catalogRefreshing.value) {
+    return
+  }
+
+  const market = selection.market
+  catalogRefreshing.value = true
+  catalogError.value = ''
+  try {
+    const nextCatalog = await loadMarketCatalog(
+      selection.provider,
+      market,
+      '',
+      true,
+    )
+    if (selection.market === market) {
+      catalog.value = nextCatalog
+    }
+  } catch (error) {
+    if (selection.market === market) {
+      catalogError.value = error instanceof Error ? error.message : String(error)
+    }
+  } finally {
+    catalogRefreshing.value = false
+  }
+}
+
 async function changeInterval(interval: string): Promise<void> {
   if (interval !== selection.interval) {
     await restartSession({ interval })
@@ -177,20 +339,20 @@ async function bootstrap(): Promise<void> {
   const generation = ++sessionGeneration
   symbolsLoading.value = true
   try {
-    const initialSymbols = await loadSymbols(
+    const initialCatalog = await loadMarketCatalog(
       selection.provider,
       selection.market,
-      selection.quoteAsset,
     )
     if (generation !== sessionGeneration) {
       return
     }
-    symbols.value = initialSymbols
+    catalog.value = initialCatalog
+    const initialSymbols = initialCatalog.items
     const initialSymbol = initialSymbols.find(
       (symbol) => symbol.symbol === selection.symbol,
     ) ?? defaultSymbol(initialSymbols)
     if (!initialSymbol) {
-      throw new Error('A Binance não retornou símbolos USDT')
+      throw new Error('A Binance não retornou pares negociáveis')
     }
     applySymbol(initialSymbol)
     await startSession(generation)
@@ -207,6 +369,8 @@ async function bootstrap(): Promise<void> {
 }
 
 onMounted(() => {
+  window.addEventListener('resize', updateSidebarBounds)
+  document.addEventListener('keydown', handleGlobalEnter)
   unsubscribeStatus = onStreamStatus((nextStatus) => {
     if (
       nextStatus.provider === selection.provider
@@ -222,6 +386,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   sessionGeneration += 1
+  window.removeEventListener('resize', updateSidebarBounds)
+  document.removeEventListener('keydown', handleGlobalEnter)
   unsubscribeStatus?.()
   void stopMarketStream()
 })
@@ -230,34 +396,60 @@ onBeforeUnmount(() => {
 <template>
   <div class="app-shell">
     <AppHeader :selection="selection" :status="status" />
-    <main class="workspace-grid">
+    <main class="workspace-grid" :style="workspaceStyle">
       <NavigationRail />
       <MarketSidebar
         :connection-state="status"
-        :last-price="lastPrice"
+        :favorite-keys="favoriteKeys"
         :loading="symbolsLoading"
         :selection="selection"
         :symbols="symbols"
         @market="changeMarket"
+        @open-search="openSymbolSearch"
         @symbol="changeSymbol"
+      />
+      <PanelResizeHandle
+        v-model="sidebarWidth"
+        :default-value="SIDEBAR_DEFAULT_WIDTH"
+        :max="sidebarMaxWidth"
+        :min="SIDEBAR_MIN_WIDTH"
+        @commit="persistSidebarWidth"
       />
       <MarketChart
         ref="chart"
         :selection="selection"
         @interval="changeInterval"
-        @price="lastPrice = $event"
       />
       <OrderBook
         :selection="selection"
-        @latency="latency = $event"
-        @price="lastPrice = $event"
+        @latency="updateLatency"
       />
       <TradingTicket :selection="selection" />
       <PositionsPanel />
     </main>
+    <SymbolSearchModal
+      :cached="catalog?.cached ?? false"
+      :expires-at="catalog?.expiresAt ?? 0"
+      :favorite-keys="favoriteKeys"
+      :initial-query="symbolSearchQuery"
+      :items="symbols"
+      :loaded-at="catalog?.loadedAt ?? 0"
+      :loading="symbolsLoading"
+      :market="selection.market"
+      :open="symbolSearchOpen"
+      :provider="selection.provider"
+      :refreshing="catalogRefreshing"
+      :selected-symbol="selection.symbol"
+      :stale="catalog?.stale ?? false"
+      :warning="catalog?.warning || catalogError"
+      @close="symbolSearchOpen = false"
+      @favorite="toggleFavorite"
+      @refresh="refreshCatalog"
+      @select="selectSymbol"
+    />
     <footer class="status-bar">
       <span :class="status"><i />{{ statusLabel }}</span>
-      <span>Latência: {{ latency }}ms</span>
+      <span>Latência: <b ref="latencyText">—</b></span>
       <span v-if="statusMessage" class="status-error">{{ statusMessage }}</span>
       <span class="status-spacer" />
       <span>

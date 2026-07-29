@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@web3icons/core": "^4.0.53",
     "lightweight-charts": "^5.2.0",
     "vue": "^3.5.0"
   },

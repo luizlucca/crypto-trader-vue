@@ -6,17 +6,24 @@ import type {
   OrderBookSnapshot,
 } from '../../types/market'
 import { onOrderBook } from '../../services/marketData'
+import { publishRealtimePrice } from '../../services/realtimePrice'
 
 const ROW_COUNT = 10
 const props = defineProps<{ selection: MarketSelection }>()
 const emit = defineEmits<{
   latency: [value: number]
-  price: [value: number]
 }>()
 const rowIndexes = Array.from({ length: ROW_COUNT }, (_, index) => index)
 
-const askRows: HTMLElement[] = []
-const bidRows: HTMLElement[] = []
+interface BookRowElements {
+  price: HTMLElement
+  quantity: HTMLElement
+  total: HTMLElement
+  fill: HTMLElement
+}
+
+const askRows: Array<BookRowElements | undefined> = []
+const bidRows: Array<BookRowElements | undefined> = []
 const midPrice = ref<HTMLElement | null>(null)
 const spread = ref<HTMLElement | null>(null)
 let latestSnapshot: OrderBookSnapshot | null = null
@@ -26,12 +33,21 @@ let lastUpdateID = 0
 let lastMetricsAt = 0
 
 function registerRow(
-  target: HTMLElement[],
+  target: Array<BookRowElements | undefined>,
   element: Element | null,
   index: number,
 ): void {
-  if (element instanceof HTMLElement) {
-    target[index] = element
+  if (!(element instanceof HTMLElement)) {
+    target[index] = undefined
+    return
+  }
+
+  const price = element.querySelector<HTMLElement>('[data-price]')
+  const quantity = element.querySelector<HTMLElement>('[data-quantity]')
+  const total = element.querySelector<HTMLElement>('[data-total]')
+  const fill = element.querySelector<HTMLElement>('[data-fill]')
+  if (price && quantity && total && fill) {
+    target[index] = { price, quantity, total, fill }
   }
 }
 
@@ -42,57 +58,71 @@ function matches(snapshot: OrderBookSnapshot): boolean {
 }
 
 function renderRows(
-  elements: HTMLElement[],
+  elements: Array<BookRowElements | undefined>,
   levels: OrderBookLevel[],
   side: 'ask' | 'bid',
+  reverse: boolean,
 ): void {
-  const maxTotal = Math.max(...levels.map((level) => level.total), 1)
+  const visibleLevelCount = Math.min(ROW_COUNT, levels.length)
+  let maxTotal = 1
+  for (let index = 0; index < visibleLevelCount; index += 1) {
+    maxTotal = Math.max(maxTotal, levels[index].total)
+  }
 
-  elements.forEach((element, index) => {
-    const level = levels[index]
-    const price = element.querySelector<HTMLElement>('[data-price]')
-    const quantity = element.querySelector<HTMLElement>('[data-quantity]')
-    const total = element.querySelector<HTMLElement>('[data-total]')
-    const fill = element.querySelector<HTMLElement>('[data-fill]')
+  elements.forEach((row, index) => {
+    if (!row) {
+      return
+    }
+    const levelIndex = reverse
+      ? visibleLevelCount - 1 - index
+      : index
+    const level = levelIndex >= 0 ? levels[levelIndex] : undefined
 
     if (!level) {
-      if (price) price.textContent = '—'
-      if (quantity) quantity.textContent = '—'
-      if (total) total.textContent = '—'
-      if (fill) fill.style.width = '0%'
+      writeText(row.price, '—')
+      writeText(row.quantity, '—')
+      writeText(row.total, '—')
+      writeWidth(row.fill, '0%')
       return
     }
 
-    if (price) price.textContent = formatPrice(level.price)
-    if (quantity) {
-      quantity.textContent = level.quantity.toFixed(
+    writeText(row.price, formatPrice(level.price))
+    writeText(
+      row.quantity,
+      level.quantity.toFixed(
         Math.min(props.selection.quantityPrecision, 8),
-      )
-    }
-    if (total) total.textContent = level.total.toFixed(3)
-    if (fill) {
-      fill.style.width = `${Math.max(2, (level.total / maxTotal) * 100)}%`
-      fill.dataset.side = side
+      ),
+    )
+    writeText(row.total, level.total.toFixed(3))
+    writeWidth(
+      row.fill,
+      `${Math.max(2, (level.total / maxTotal) * 100)}%`,
+    )
+    if (row.fill.dataset.side !== side) {
+      row.fill.dataset.side = side
     }
   })
 }
 
 function renderSnapshot(snapshot: OrderBookSnapshot): void {
-  const asks = snapshot.asks.slice(0, ROW_COUNT).reverse()
-  const bids = snapshot.bids.slice(0, ROW_COUNT)
-  renderRows(askRows, asks, 'ask')
-  renderRows(bidRows, bids, 'bid')
+  renderRows(askRows, snapshot.asks, 'ask', true)
+  renderRows(bidRows, snapshot.bids, 'bid', false)
   if (midPrice.value) {
-    midPrice.value.textContent = formatPrice(snapshot.midPrice)
+    writeText(midPrice.value, formatPrice(snapshot.midPrice))
   }
   if (spread.value) {
-    spread.value.textContent = `Spread ${formatPrice(snapshot.spread)}`
+    writeText(spread.value, `Spread ${formatPrice(snapshot.spread)}`)
   }
+  publishRealtimePrice({
+    provider: snapshot.provider,
+    market: snapshot.market,
+    symbol: snapshot.symbol,
+    value: snapshot.midPrice,
+  })
   const now = Date.now()
   if (now - lastMetricsAt >= 500) {
     lastMetricsAt = now
     emit('latency', Math.max(0, now - snapshot.eventTime))
-    emit('price', snapshot.midPrice)
   }
 }
 
@@ -121,14 +151,26 @@ function formatPrice(value: number): string {
   return value.toFixed(Math.min(props.selection.pricePrecision, 8))
 }
 
+function writeText(element: HTMLElement, value: string): void {
+  if (element.textContent !== value) {
+    element.textContent = value
+  }
+}
+
+function writeWidth(element: HTMLElement, value: string): void {
+  if (element.style.width !== value) {
+    element.style.width = value
+  }
+}
+
 function clearBook(): void {
   latestSnapshot = null
   lastUpdateID = 0
   lastMetricsAt = 0
-  renderRows(askRows, [], 'ask')
-  renderRows(bidRows, [], 'bid')
-  if (midPrice.value) midPrice.value.textContent = '—'
-  if (spread.value) spread.value.textContent = 'Spread —'
+  renderRows(askRows, [], 'ask', false)
+  renderRows(bidRows, [], 'bid', false)
+  if (midPrice.value) writeText(midPrice.value, '—')
+  if (spread.value) writeText(spread.value, 'Spread —')
 }
 
 onMounted(() => {

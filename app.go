@@ -46,6 +46,25 @@ func (a *App) GetSymbols(
 	return a.marketData.Symbols(a.ctx, provider, market, quoteAsset)
 }
 
+func (a *App) GetMarketCatalog(
+	provider string,
+	marketValue string,
+	quoteAsset string,
+	forceRefresh bool,
+) (marketdata.MarketCatalog, error) {
+	market, err := marketdata.ParseMarket(marketValue)
+	if err != nil {
+		return marketdata.MarketCatalog{}, err
+	}
+	return a.marketData.Catalog(
+		a.ctx,
+		provider,
+		market,
+		quoteAsset,
+		forceRefresh,
+	)
+}
+
 func (a *App) GetCandles(
 	provider string,
 	marketValue string,

@@ -1,11 +1,87 @@
 package binance
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"crypto-trader-vue/internal/marketdata"
 )
+
+func TestCatalogCacheTTLIsOneHour(t *testing.T) {
+	t.Parallel()
+
+	if catalogCacheTTL != time.Hour {
+		t.Fatalf("catalog cache TTL = %s, want 1h", catalogCacheTTL)
+	}
+}
+
+func TestCatalogFiltersQuoteAssetWithoutRefetching(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	client := New()
+	client.catalogs[marketdata.MarketSpot] = catalogCacheEntry{
+		loadedAt:  now,
+		expiresAt: now.Add(catalogCacheTTL),
+		items: []marketdata.MarketPair{
+			{Symbol: "BTCUSDT", QuoteAsset: "USDT"},
+			{Symbol: "BTCEUR", QuoteAsset: "EUR"},
+		},
+	}
+
+	catalog, err := client.Catalog(
+		context.Background(),
+		marketdata.MarketSpot,
+		"usdt",
+		false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !catalog.Cached || catalog.Stale {
+		t.Fatalf("unexpected cache flags: %#v", catalog)
+	}
+	if len(catalog.Items) != 1 || catalog.Items[0].Symbol != "BTCUSDT" {
+		t.Fatalf("unexpected filtered catalog: %#v", catalog.Items)
+	}
+}
+
+func TestMergeCatalogAddsTickerStatistics(t *testing.T) {
+	t.Parallel()
+
+	symbols := []marketdata.Symbol{{
+		Provider:          providerName,
+		Market:            marketdata.MarketFutures,
+		Symbol:            "BTCUSDT",
+		BaseAsset:         "BTC",
+		QuoteAsset:        "USDT",
+		Status:            "TRADING",
+		PricePrecision:    2,
+		QuantityPrecision: 3,
+	}}
+	tickers := map[string]ticker24h{
+		"BTCUSDT": {
+			LastPrice:          float64Value(67000),
+			PriceChangePercent: float64Value(2.5),
+			QuoteVolume:        float64Value(1_500_000),
+			TradeCount:         int64Value(42),
+		},
+	}
+
+	items := mergeCatalog(symbols, tickers)
+	if len(items) != 1 {
+		t.Fatalf("got %d items, want 1", len(items))
+	}
+	item := items[0]
+	if item.LastPrice != 67000 ||
+		item.PriceChangePercent != 2.5 ||
+		item.QuoteVolume != 1_500_000 ||
+		item.TradeCount != 42 {
+		t.Fatalf("unexpected merged pair: %#v", item)
+	}
+}
 
 func TestEndpointsAreSeparatedByMarket(t *testing.T) {
 	t.Parallel()

@@ -6,6 +6,10 @@ export function GetCandles(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['GetCandles'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function GetMarketCatalog(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GetMarketCatalog'](arg1, arg2, arg3, arg4);
+}
+
 export function GetSymbols(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetSymbols'](arg1, arg2, arg3);
 }

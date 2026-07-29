@@ -41,6 +41,45 @@ type Symbol struct {
 	QuantityPrecision int    `json:"quantityPrecision"`
 }
 
+// MarketPair combines the static exchange definition with a 24-hour market
+// snapshot. Providers normalize their native ticker payloads into this type so
+// the frontend can search and sort catalogs without exchange-specific logic.
+type MarketPair struct {
+	Provider             string  `json:"provider"`
+	Market               Market  `json:"market"`
+	Symbol               string  `json:"symbol"`
+	BaseAsset            string  `json:"baseAsset"`
+	QuoteAsset           string  `json:"quoteAsset"`
+	Status               string  `json:"status"`
+	PricePrecision       int     `json:"pricePrecision"`
+	QuantityPrecision    int     `json:"quantityPrecision"`
+	LastPrice            float64 `json:"lastPrice"`
+	PriceChange          float64 `json:"priceChange"`
+	PriceChangePercent   float64 `json:"priceChangePercent"`
+	WeightedAveragePrice float64 `json:"weightedAveragePrice"`
+	OpenPrice            float64 `json:"openPrice"`
+	HighPrice            float64 `json:"highPrice"`
+	LowPrice             float64 `json:"lowPrice"`
+	Volume               float64 `json:"volume"`
+	QuoteVolume          float64 `json:"quoteVolume"`
+	TradeCount           int64   `json:"tradeCount"`
+}
+
+// MarketCatalog is a cache-aware snapshot of the pairs exposed by a provider.
+// Timestamps use Unix milliseconds because this metadata is consumed by the
+// desktop UI rather than the Lightweight Charts time scale.
+type MarketCatalog struct {
+	Provider   string       `json:"provider"`
+	Market     Market       `json:"market"`
+	QuoteAsset string       `json:"quoteAsset,omitempty"`
+	Items      []MarketPair `json:"items"`
+	LoadedAt   int64        `json:"loadedAt"`
+	ExpiresAt  int64        `json:"expiresAt"`
+	Cached     bool         `json:"cached"`
+	Stale      bool         `json:"stale"`
+	Warning    string       `json:"warning,omitempty"`
+}
+
 type Candle struct {
 	Provider    string  `json:"provider"`
 	Market      Market  `json:"market"`

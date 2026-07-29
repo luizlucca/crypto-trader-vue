@@ -1,58 +1,97 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { favoriteKey } from '../../services/favorites'
+import {
+  formatMarketPercent,
+  formatMarketPrice,
+} from '../../services/numberFormat'
+import CryptoAssetIcon from './CryptoAssetIcon.vue'
+import RealtimePriceText from './RealtimePriceText.vue'
 import type {
   Market,
+  MarketPair,
   MarketSelection,
-  MarketSymbol,
   StreamStatus,
 } from '../../types/market'
 
+type SidebarSortKey = 'symbol' | 'lastPrice' | 'priceChangePercent'
+type SortDirection = 'asc' | 'desc'
+
 const props = defineProps<{
   selection: MarketSelection
-  symbols: MarketSymbol[]
+  symbols: MarketPair[]
+  favoriteKeys: Set<string>
   loading: boolean
   connectionState: StreamStatus['state']
-  lastPrice: number
 }>()
 
 const emit = defineEmits<{
   market: [market: Market]
-  symbol: [symbol: MarketSymbol]
+  symbol: [symbol: MarketPair]
+  openSearch: [query: string]
 }>()
 
 const search = ref('')
-const preferredSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
+const sortKey = ref<SidebarSortKey>('symbol')
+const sortDirection = ref<SortDirection>('asc')
 
 const visibleSymbols = computed(() => {
   const query = search.value.trim().toUpperCase().replace('/', '')
+  const direction = sortDirection.value === 'asc' ? 1 : -1
   return [...props.symbols]
     .filter((symbol) => !query || symbol.symbol.includes(query))
     .sort((left, right) => {
-      const leftPriority = preferredSymbols.indexOf(left.symbol)
-      const rightPriority = preferredSymbols.indexOf(right.symbol)
-      if (leftPriority >= 0 || rightPriority >= 0) {
-        if (leftPriority < 0) return 1
-        if (rightPriority < 0) return -1
-        return leftPriority - rightPriority
+      let result = 0
+      if (sortKey.value === 'symbol') {
+        result = left.symbol.localeCompare(right.symbol)
+      } else {
+        result = left[sortKey.value] - right[sortKey.value]
       }
-      return left.symbol.localeCompare(right.symbol)
+      return result === 0
+        ? left.symbol.localeCompare(right.symbol)
+        : result * direction
     })
-    .slice(0, 18)
+    .slice(0, 14)
 })
 
-const favorites = computed(() => preferredSymbols
-  .map((symbol) => props.symbols.find((item) => item.symbol === symbol))
-  .filter((symbol): symbol is MarketSymbol => Boolean(symbol)))
+const favorites = computed(() => props.symbols
+  .filter((symbol) => props.favoriteKeys.has(favoriteKey(symbol)))
+  .sort((left, right) => right.quoteVolume - left.quoteVolume)
+  .slice(0, 8))
 
-function displaySymbol(symbol: MarketSymbol): string {
+function displaySymbol(symbol: MarketPair): string {
   return `${symbol.baseAsset}/${symbol.quoteAsset}`
 }
 
-function displayedPrice(symbol: MarketSymbol): string {
-  if (symbol.symbol !== props.selection.symbol || props.lastPrice <= 0) {
-    return '—'
+function displayedPrice(symbol: MarketPair): string {
+  return formatMarketPrice(symbol.lastPrice, symbol.pricePrecision)
+}
+
+function displayedChange(symbol: MarketPair): string {
+  return formatMarketPercent(symbol.priceChangePercent)
+}
+
+function changeSort(nextSort: SidebarSortKey): void {
+  if (sortKey.value === nextSort) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
+    return
   }
-  return props.lastPrice.toFixed(Math.min(symbol.pricePrecision, 8))
+  sortKey.value = nextSort
+  sortDirection.value = nextSort === 'symbol' ? 'asc' : 'desc'
+}
+
+function sortIndicator(key: SidebarSortKey): string {
+  if (sortKey.value !== key) {
+    return '↕'
+  }
+  return sortDirection.value === 'asc' ? '↑' : '↓'
+}
+
+function ariaSort(key: SidebarSortKey): 'ascending' | 'descending' | 'none' {
+  if (sortKey.value !== key) {
+    return 'none'
+  }
+  return sortDirection.value === 'asc' ? 'ascending' : 'descending'
 }
 </script>
 
@@ -65,7 +104,7 @@ function displayedPrice(symbol: MarketSymbol): string {
         <input
           v-model="search"
           aria-label="Buscar símbolo"
-          placeholder="Buscar ativo (Enter)"
+          placeholder="Buscar ativo…"
         />
       </label>
       <div class="market-kind">
@@ -88,12 +127,33 @@ function displayedPrice(symbol: MarketSymbol): string {
         <button class="active" type="button">USDT</button>
         <button disabled type="button">COIN</button>
         <button disabled type="button">FIAT</button>
-        <button type="button">★</button>
+        <button type="button" @click="emit('openSearch', '')">★</button>
       </div>
       <div class="market-table market-table-header">
-        <span>Símbolo</span>
-        <span>Último</span>
-        <span>Status</span>
+        <button
+          :aria-sort="ariaSort('symbol')"
+          role="columnheader"
+          type="button"
+          @click="changeSort('symbol')"
+        >
+          Símbolo <i>{{ sortIndicator('symbol') }}</i>
+        </button>
+        <button
+          :aria-sort="ariaSort('lastPrice')"
+          role="columnheader"
+          type="button"
+          @click="changeSort('lastPrice')"
+        >
+          Último <i>{{ sortIndicator('lastPrice') }}</i>
+        </button>
+        <button
+          :aria-sort="ariaSort('priceChangePercent')"
+          role="columnheader"
+          type="button"
+          @click="changeSort('priceChangePercent')"
+        >
+          24h <i>{{ sortIndicator('priceChangePercent') }}</i>
+        </button>
       </div>
       <div class="market-list">
         <div v-if="loading" class="market-loading">Carregando símbolos…</div>
@@ -106,10 +166,24 @@ function displayedPrice(symbol: MarketSymbol): string {
             type="button"
             @click="emit('symbol', item)"
           >
-            <span>★ {{ displaySymbol(item) }}</span>
-            <span>{{ displayedPrice(item) }}</span>
-            <span :class="{ positive: item.symbol === selection.symbol && connectionState === 'connected' }">
-              {{ item.symbol === selection.symbol && connectionState === 'connected' ? 'LIVE' : 'OK' }}
+            <span class="market-symbol-cell">
+              <CryptoAssetIcon :size="17" :symbol="item.baseAsset" />
+              <span>
+                {{ favoriteKeys.has(favoriteKey(item)) ? '★' : '' }}
+                {{ displaySymbol(item) }}
+              </span>
+            </span>
+            <RealtimePriceText
+              v-if="item.symbol === selection.symbol"
+              :fallback="item.lastPrice"
+              :market="item.market"
+              :precision="item.pricePrecision"
+              :provider="item.provider"
+              :symbol="item.symbol"
+            />
+            <span v-else>{{ displayedPrice(item) }}</span>
+            <span :class="item.priceChangePercent >= 0 ? 'positive' : 'negative'">
+              {{ displayedChange(item) }}
             </span>
           </button>
         </template>
@@ -121,6 +195,9 @@ function displayedPrice(symbol: MarketSymbol): string {
 
     <section class="sidebar-section favorites-section">
       <h2>FAVORITOS</h2>
+      <div v-if="favorites.length === 0" class="favorites-empty">
+        Nenhum favorito neste mercado
+      </div>
       <button
         v-for="item in favorites"
         :key="`favorite-${item.symbol}`"
@@ -128,12 +205,24 @@ function displayedPrice(symbol: MarketSymbol): string {
         type="button"
         @click="emit('symbol', item)"
       >
-        <span>★ {{ displaySymbol(item) }}</span>
-        <span :class="{ positive: item.symbol === selection.symbol }">
-          {{ item.symbol === selection.symbol ? displayedPrice(item) : '—' }}
+        <span class="market-symbol-cell">
+          <CryptoAssetIcon :size="16" :symbol="item.baseAsset" />
+          <span>★ {{ displaySymbol(item) }}</span>
+        </span>
+        <span
+          :class="item.priceChangePercent >= 0 ? 'positive' : 'negative'"
+          :title="displayedPrice(item)"
+        >
+          {{ displayedChange(item) }}
         </span>
       </button>
-      <button class="text-action" type="button">+ Adicionar favorito</button>
+      <button
+        class="text-action"
+        type="button"
+        @click="emit('openSearch', '')"
+      >
+        + Gerenciar favoritos
+      </button>
     </section>
 
     <section class="sidebar-section connections-section">

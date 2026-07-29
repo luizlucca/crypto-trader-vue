@@ -7,6 +7,12 @@ import "context"
 // the shared domain types above.
 type Provider interface {
 	Name() string
+	Catalog(
+		ctx context.Context,
+		market Market,
+		quoteAsset string,
+		forceRefresh bool,
+	) (MarketCatalog, error)
 	Symbols(
 		ctx context.Context,
 		market Market,

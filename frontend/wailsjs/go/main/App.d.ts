@@ -4,6 +4,8 @@ import {marketdata} from '../models';
 
 export function GetCandles(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number):Promise<Array<marketdata.Candle>>;
 
+export function GetMarketCatalog(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<marketdata.MarketCatalog>;
+
 export function GetSymbols(arg1:string,arg2:string,arg3:string):Promise<Array<marketdata.Symbol>>;
 
 export function StartMarketStream(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;

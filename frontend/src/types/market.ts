@@ -22,6 +22,31 @@ export interface MarketSymbol {
   quantityPrecision: number
 }
 
+export interface MarketPair extends MarketSymbol {
+  lastPrice: number
+  priceChange: number
+  priceChangePercent: number
+  weightedAveragePrice: number
+  openPrice: number
+  highPrice: number
+  lowPrice: number
+  volume: number
+  quoteVolume: number
+  tradeCount: number
+}
+
+export interface MarketCatalog {
+  provider: string
+  market: Market
+  quoteAsset: string
+  items: MarketPair[]
+  loadedAt: number
+  expiresAt: number
+  cached: boolean
+  stale: boolean
+  warning?: string
+}
+
 export interface Candle {
   provider: string
   market: Market

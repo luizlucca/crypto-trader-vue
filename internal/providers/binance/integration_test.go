@@ -110,12 +110,25 @@ func assertLiveREST(
 ) {
 	t.Helper()
 
-	symbols, err := client.Symbols(ctx, market, "USDT")
+	catalog, err := client.Catalog(ctx, market, "USDT", true)
 	if err != nil {
-		t.Fatalf("load symbols: %v", err)
+		t.Fatalf("load market catalog: %v", err)
 	}
-	if len(symbols) == 0 {
+	if len(catalog.Items) == 0 {
 		t.Fatal("expected at least one USDT symbol")
+	}
+	var bitcoin *marketdata.MarketPair
+	for index := range catalog.Items {
+		if catalog.Items[index].Symbol == "BTCUSDT" {
+			bitcoin = &catalog.Items[index]
+			break
+		}
+	}
+	if bitcoin == nil ||
+		bitcoin.LastPrice <= 0 ||
+		bitcoin.QuoteVolume <= 0 ||
+		catalog.ExpiresAt <= catalog.LoadedAt {
+		t.Fatalf("invalid live catalog snapshot: catalog=%#v BTC=%#v", catalog, bitcoin)
 	}
 
 	candles, err := client.Candles(ctx, market, "BTCUSDT", "1m", 2)
