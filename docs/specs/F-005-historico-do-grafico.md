@@ -30,9 +30,9 @@ lacunas, saltos de viewport ou disputar interação com uma carga histórica.
 - Uma camada opaca bloqueia ponteiro, wheel, zoom, scroll e toolbar do gráfico.
   Não há blur ou backdrop custoso; em falha existe tentativa manual.
 
-Fontes de verdade: `frontend/src/components/chart/MarketChart.vue`,
-`frontend/src/services/marketData.ts`, `frontend/src/contracts/desktop.ts` e
-`frontend/electron/utility/market-data/providers/binance/provider.ts`.
+Fontes de verdade: `src/components/chart/MarketChart.vue`,
+`src/services/marketData.ts`, `src/contracts/desktop.ts` e
+`electron/utility/market-data/providers/binance/provider.ts`.
 
 ## Testes
 

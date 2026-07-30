@@ -26,8 +26,8 @@ temas próprios sem interromper gráfico, livro ou streams.
   aplica conteúdo ao soltar, após contorno leve.
 - `ThemePresetPreview.vue` usa a palette do próprio tema na miniatura.
 
-Fontes de verdade: `frontend/src/services/theme*.ts` e
-`frontend/src/components/settings/`.
+Fontes de verdade: `src/services/theme*.ts` e
+`src/components/settings/`.
 
 ## Testes
 

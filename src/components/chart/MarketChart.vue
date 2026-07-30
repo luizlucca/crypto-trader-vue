@@ -64,7 +64,7 @@ let visibleLogicalRangeHandler: LogicalRangeChangeEventHandler | undefined
 const INITIAL_HISTORY_SIZE = 500
 const HISTORY_PAGE_SIZE = 400
 const HISTORY_PREFETCH_THRESHOLD = 8
-const INITIAL_VISIBLE_BARS = 20
+const INITIAL_VISIBLE_BARS = 100
 const INITIAL_RIGHT_SPACE_BARS = 4
 
 const enabledScaleInteractions = {

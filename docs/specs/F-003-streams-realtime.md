@@ -27,10 +27,10 @@ sem que bursts do livro atrasem o canvas, troca de aba ou interface.
   Vue por tick de candle ou livro.
 - `realtimePrice.ts` atualiza textos de preço em canal imperativo.
 
-Fontes de verdade: `frontend/electron/utility/market-data/session.ts`,
-`frontend/src/components/orderbook/OrderBook.vue`,
-`frontend/src/components/chart/MarketChart.vue` e
-`frontend/src/services/realtimePrice.ts`.
+Fontes de verdade: `electron/utility/market-data/session.ts`,
+`src/components/orderbook/OrderBook.vue`,
+`src/components/chart/MarketChart.vue` e
+`src/services/realtimePrice.ts`.
 
 ## Testes
 

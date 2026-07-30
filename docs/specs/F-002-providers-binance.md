@@ -26,8 +26,8 @@ ou Futures, sem que a interface dependa de URLs ou formatos da corretora.
   milissegundos (`before * 1000 - 1`), eliminando duplicação entre páginas.
 - Normalizadores convertem payloads da Binance para tipos de domínio antes do IPC.
 
-Fontes de verdade: `frontend/electron/utility/market-data/provider.ts` e
-`frontend/electron/utility/market-data/providers/binance/`.
+Fontes de verdade: `electron/utility/market-data/provider.ts` e
+`electron/utility/market-data/providers/binance/`.
 
 ## Testes
 

@@ -19,7 +19,6 @@ Binance real para a maior parte da suíte.
 
 ## Comandos atuais
 
-    cd frontend
     npm test
     npm run typecheck
     npm run build

@@ -34,7 +34,6 @@ comportamento percebido também são registradas no [CHANGELOG.md](CHANGELOG.md)
 Recomendado: Node.js 22.
 
 ```sh
-cd frontend
 npm install
 npm run dev
 ```
@@ -45,7 +44,6 @@ do renderer Vue e dos processos desktop.
 ## Build e validação
 
 ```sh
-cd frontend
 npm test
 npm run typecheck
 npm run build
@@ -54,6 +52,7 @@ npm run build
 Para gerar AppImage e pacote Debian:
 
 ```sh
-cd frontend
 npm run package:linux
 ```
+
+Os artefatos AppImage e Debian são gravados em `release/`.

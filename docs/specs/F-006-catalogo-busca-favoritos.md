@@ -27,10 +27,10 @@ atualizar a lista quando necessário e acessar favoritos sem congestionar o grá
 - `favorites.ts` persiste chaves no `localStorage`; IPC sincroniza alterações.
 - A barra lateral limita a lista compacta a 14 linhas; a busca explora todos os pares.
 
-Fontes de verdade: `frontend/src/components/market/`,
-`frontend/src/workers/marketCatalog.worker.ts`,
-`frontend/src/services/marketCatalogSearch*.ts` e
-`frontend/src/services/favorites.ts`.
+Fontes de verdade: `src/components/market/`,
+`src/workers/marketCatalog.worker.ts`,
+`src/services/marketCatalogSearch*.ts` e
+`src/services/favorites.ts`.
 
 ## Testes
 

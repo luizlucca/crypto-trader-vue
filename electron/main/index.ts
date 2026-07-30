@@ -52,7 +52,7 @@ function createMainWindow(): BrowserWindow {
     height: 900,
     minWidth: 1180,
     minHeight: 720,
-    fullscreen: true,
+    fullscreen: false,
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#04131b',
@@ -66,7 +66,7 @@ function createMainWindow(): BrowserWindow {
   })
   configureWebContents(window)
   window.once('ready-to-show', () => {
-    window.setFullScreen(true)
+    window.setFullScreen(false)
     window.show()
   })
   window.on('closed', () => {

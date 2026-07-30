@@ -33,15 +33,15 @@ thread do gráfico e não bloqueia a ingestão dos WebSockets.
 
 ## Camada desktop Electron
 
-- `frontend/electron/main`: ciclo de vida das janelas, validação IPC,
+- `electron/main`: ciclo de vida das janelas, validação IPC,
   coordenação e reinício dos processos auxiliares.
-- `frontend/electron/preload`: API mínima exposta por `contextBridge`; o
+- `electron/preload`: API mínima exposta por `contextBridge`; o
   renderer não recebe Node.js nem acesso direto ao Electron.
-- `frontend/electron/utility/market-data`: sessão RxJS e contrato modular de
+- `electron/utility/market-data`: sessão RxJS e contrato modular de
   providers.
-- `frontend/electron/utility/market-data/providers/binance`: endpoints, REST,
+- `electron/utility/market-data/providers/binance`: endpoints, REST,
   WebSocket e normalização dos payloads.
-- `frontend/src/contracts/desktop.ts`: única fonte para comandos, eventos e
+- `src/contracts/desktop.ts`: única fonte para comandos, eventos e
   API disponibilizada ao Vue.
 
 As duas janelas usam `nodeIntegration: false`, `contextIsolation: true` e
@@ -239,7 +239,6 @@ principal nem com o processo dos WebSockets.
 Testes TypeScript comuns não acessam a rede:
 
 ```sh
-cd frontend
 npm test
 npm run typecheck
 npm run build

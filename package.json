@@ -65,7 +65,7 @@
     ],
     "linux": {
       "category": "Finance",
-      "icon": "../build/appicon.png",
+      "icon": "build/appicon.png",
       "maintainer": "luizlucca <luizusp@gmail.com>",
       "syncDesktopName": true,
       "target": [
@@ -74,7 +74,7 @@
       ]
     },
     "win": {
-      "icon": "../build/windows/icon.ico"
+      "icon": "build/windows/icon.ico"
     }
   }
 }

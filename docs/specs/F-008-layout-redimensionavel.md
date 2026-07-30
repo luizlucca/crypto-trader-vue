@@ -25,9 +25,9 @@ ativos ou gráfico, sem recriar canvas ou suspender dados realtime.
   recriação de instância nem nova consulta de histórico.
 - Limites mínimo, padrão e máximo protegem o espaço de ticket, livro e chart.
 
-Fontes de verdade: `frontend/src/components/layout/PanelResizeHandle.vue`,
-`frontend/src/components/workspace/TradingWorkspace.vue` e
-`frontend/src/style.css`.
+Fontes de verdade: `src/components/layout/PanelResizeHandle.vue`,
+`src/components/workspace/TradingWorkspace.vue` e
+`src/style.css`.
 
 ## Testes
 
