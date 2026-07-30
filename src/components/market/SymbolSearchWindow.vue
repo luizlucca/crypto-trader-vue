@@ -28,6 +28,7 @@ const fallbackSelection: MarketSelection = {
   interval: '1h',
   baseAsset: 'BTC',
   quoteAsset: 'USDT',
+  priceTickSize: 0.01,
   pricePrecision: 2,
   quantityPrecision: 3,
 }

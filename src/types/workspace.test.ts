@@ -15,6 +15,7 @@ const selection: MarketSelection = {
   interval: '1h',
   baseAsset: 'BTC',
   quoteAsset: 'USDT',
+  priceTickSize: 0.01,
   pricePrecision: 2,
   quantityPrecision: 3,
 }
@@ -28,6 +29,7 @@ describe('workspace tabs', () => {
     expect(tab.id).toBe('tab-one')
     expect(tab.candleState).toBe('connecting')
     expect(tab.orderBookState).toBe('connecting')
+    expect(tab.orderBookAggregation).toBe(0.01)
     expect(workspaceTabLabel(tab)).toBe('BTC/USDT')
     expect(marketSelectionFingerprint(tab.selection)).toBe(
       'binance:futures:BTCUSDT:5m',
@@ -61,6 +63,7 @@ describe('workspace tabs', () => {
       baseAsset: 'ETH',
       quoteAsset: 'USDT',
       status: 'TRADING',
+      priceTickSize: 0.01,
       pricePrecision: 2,
       quantityPrecision: 3,
     })

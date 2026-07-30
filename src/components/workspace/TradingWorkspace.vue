@@ -67,6 +67,7 @@ const defaultSelection: MarketSelection = {
   interval: '1h',
   baseAsset: 'BTC',
   quoteAsset: 'USDT',
+  priceTickSize: 0.01,
   pricePrecision: 2,
   quantityPrecision: 3,
 }
@@ -215,8 +216,10 @@ function applySymbol(tab: WorkspaceTab, symbol: MarketSymbol): void {
   tab.selection.symbol = symbol.symbol
   tab.selection.baseAsset = symbol.baseAsset
   tab.selection.quoteAsset = symbol.quoteAsset
+  tab.selection.priceTickSize = symbol.priceTickSize
   tab.selection.pricePrecision = symbol.pricePrecision
   tab.selection.quantityPrecision = symbol.quantityPrecision
+  tab.orderBookAggregation = symbol.priceTickSize
 }
 
 function defaultSymbol(items: MarketSymbol[]): MarketSymbol | undefined {
@@ -348,6 +351,13 @@ async function restartTab(
     return
   }
   Object.assign(tab.selection, patch)
+  if (
+    patch.symbol !== undefined
+    || patch.market !== undefined
+    || patch.priceTickSize !== undefined
+  ) {
+    tab.orderBookAggregation = tab.selection.priceTickSize
+  }
   tab.renderRevision += 1
   await startTabSession(tab, generation)
 }
@@ -407,6 +417,7 @@ async function changeSymbol(
     symbol: symbol.symbol,
     baseAsset: symbol.baseAsset,
     quoteAsset: symbol.quoteAsset,
+    priceTickSize: symbol.priceTickSize,
     pricePrecision: symbol.pricePrecision,
     quantityPrecision: symbol.quantityPrecision,
   })
@@ -752,8 +763,10 @@ onBeforeUnmount(() => {
       </section>
       <OrderBook
         :key="activeTab.id"
+        :aggregation-step="activeTab.orderBookAggregation"
         :selection="selection"
         :session-id="activeTab.id"
+        @aggregation-step="activeTab.orderBookAggregation = $event"
         @latency="updateLatency"
       />
       <TradingTicket :selection="selection" />

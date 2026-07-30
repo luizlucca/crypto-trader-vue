@@ -118,6 +118,7 @@ export class BinanceProvider implements MarketDataProvider {
       baseAsset: item.baseAsset,
       quoteAsset: item.quoteAsset,
       status: item.status,
+      priceTickSize: item.priceTickSize,
       pricePrecision: item.pricePrecision,
       quantityPrecision: item.quantityPrecision,
     }))

@@ -109,10 +109,15 @@ export function normalizeExchangeSymbols(
     }
 
     let pricePrecision = Math.max(0, item.pricePrecision ?? 0)
+    let priceTickSize = 10 ** -pricePrecision
     let quantityPrecision = Math.max(0, item.quantityPrecision ?? 0)
     for (const filter of item.filters ?? []) {
       if (filter.filterType === 'PRICE_FILTER') {
         const precision = precisionFromIncrement(filter.tickSize)
+        const tickSize = finiteNumber(filter.tickSize)
+        if (tickSize > 0) {
+          priceTickSize = tickSize
+        }
         if (precision >= 0) {
           pricePrecision = precision
         }
@@ -131,6 +136,7 @@ export function normalizeExchangeSymbols(
       baseAsset: item.baseAsset,
       quoteAsset: item.quoteAsset,
       status: item.status,
+      priceTickSize,
       pricePrecision,
       quantityPrecision,
     })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ChevronDown, Columns3, Rows3 } from '@lucide/vue'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Columns3, Rows3 } from '@lucide/vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type {
   MarketSelection,
   OrderBookLevel,
@@ -8,17 +8,28 @@ import type {
 } from '../../types/market'
 import { onOrderBook } from '../../services/marketData'
 import { publishRealtimePrice } from '../../services/realtimePrice'
+import {
+  aggregateOrderBookLevels,
+  aggregationPrecision,
+  createAggregationOptions,
+  formatAggregationStep,
+} from './orderBookAggregation'
 import { calculateOrderBookRatio } from './orderBookRatio'
 
 const ROW_COUNT = 10
 const props = defineProps<{
   sessionId: string
   selection: MarketSelection
+  aggregationStep: number
 }>()
 const emit = defineEmits<{
   latency: [value: number]
+  aggregationStep: [value: number]
 }>()
 const rowIndexes = Array.from({ length: ROW_COUNT }, (_, index) => index)
+const aggregationOptions = computed(() => (
+  createAggregationOptions(props.selection.priceTickSize)
+))
 
 interface BookRowElements {
   price: HTMLElement
@@ -95,7 +106,7 @@ function renderRows(
       return
     }
 
-    writeText(row.price, formatPrice(level.price))
+    writeText(row.price, formatAggregatedPrice(level.price))
     writeText(
       row.quantity,
       level.quantity.toFixed(
@@ -114,9 +125,21 @@ function renderRows(
 }
 
 function renderSnapshot(snapshot: OrderBookSnapshot): void {
-  renderRows(askRows, snapshot.asks, 'ask', true)
-  renderRows(bidRows, snapshot.bids, 'bid', false)
-  renderRatio(snapshot)
+  const asks = aggregateOrderBookLevels(
+    snapshot.asks,
+    'ask',
+    props.aggregationStep,
+    props.selection.pricePrecision,
+  )
+  const bids = aggregateOrderBookLevels(
+    snapshot.bids,
+    'bid',
+    props.aggregationStep,
+    props.selection.pricePrecision,
+  )
+  renderRows(askRows, asks, 'ask', true)
+  renderRows(bidRows, bids, 'bid', false)
+  renderRatio(bids, asks)
   if (midPrice.value) {
     writeText(midPrice.value, formatPrice(snapshot.midPrice))
   }
@@ -140,10 +163,13 @@ function formatRatio(value: number): string {
   return value.toFixed(1).replace('.', ',')
 }
 
-function renderRatio(snapshot: OrderBookSnapshot): void {
+function renderRatio(
+  bids: readonly OrderBookLevel[],
+  asks: readonly OrderBookLevel[],
+): void {
   const ratio = calculateOrderBookRatio(
-    snapshot.bids,
-    snapshot.asks,
+    bids,
+    asks,
     ROW_COUNT,
   )
   if (!ratio) {
@@ -180,6 +206,10 @@ function scheduleRender(snapshot: OrderBookSnapshot): void {
   }
   lastUpdateID = snapshot.lastUpdateId
   latestSnapshot = snapshot
+  scheduleFrame()
+}
+
+function scheduleFrame(): void {
   if (frameHandle !== 0) {
     return
   }
@@ -193,6 +223,17 @@ function scheduleRender(snapshot: OrderBookSnapshot): void {
 
 function formatPrice(value: number): string {
   return value.toFixed(Math.min(props.selection.pricePrecision, 8))
+}
+
+function formatAggregatedPrice(value: number): string {
+  return value.toFixed(aggregationPrecision(props.aggregationStep))
+}
+
+function changeAggregation(event: Event): void {
+  const value = Number((event.target as HTMLSelectElement).value)
+  if (Number.isFinite(value) && value > 0) {
+    emit('aggregationStep', value)
+  }
 }
 
 function writeText(element: HTMLElement, value: string): void {
@@ -260,6 +301,15 @@ watch(
   () => `${props.selection.market}:${props.selection.symbol}`,
   clearBook,
 )
+
+watch(
+  () => props.aggregationStep,
+  () => {
+    if (latestSnapshot) {
+      scheduleFrame()
+    }
+  },
+)
 </script>
 
 <template>
@@ -273,9 +323,25 @@ watch(
         <button aria-label="Livro em colunas" title="Livro em colunas" type="button">
           <Columns3 aria-hidden="true" />
         </button>
-        <button aria-label="Mais opções" title="Mais opções" type="button">
-          <ChevronDown aria-hidden="true" />
-        </button>
+        <label
+          class="book-aggregation"
+          title="Agrupar preços por intervalo"
+        >
+          <span>Agregação</span>
+          <select
+            :value="aggregationStep"
+            aria-label="Granularidade de preço do livro"
+            @change="changeAggregation"
+          >
+            <option
+              v-for="step in aggregationOptions"
+              :key="step"
+              :value="step"
+            >
+              {{ formatAggregationStep(step) }}
+            </option>
+          </select>
+        </label>
       </div>
     </header>
     <div class="book-columns">

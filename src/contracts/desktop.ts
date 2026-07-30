@@ -195,6 +195,7 @@ export function copyMarketSelection(
     interval: selection.interval,
     baseAsset: selection.baseAsset,
     quoteAsset: selection.quoteAsset,
+    priceTickSize: selection.priceTickSize,
     pricePrecision: selection.pricePrecision,
     quantityPrecision: selection.quantityPrecision,
   }
@@ -208,6 +209,7 @@ export function copyMarketPair(item: MarketPair): MarketPair {
     baseAsset: item.baseAsset,
     quoteAsset: item.quoteAsset,
     status: item.status,
+    priceTickSize: item.priceTickSize,
     pricePrecision: item.pricePrecision,
     quantityPrecision: item.quantityPrecision,
     lastPrice: item.lastPrice,
@@ -240,6 +242,9 @@ export function isMarketSelection(
     && typeof selection.interval === 'string'
     && typeof selection.baseAsset === 'string'
     && typeof selection.quoteAsset === 'string'
+    && typeof selection.priceTickSize === 'number'
+    && Number.isFinite(selection.priceTickSize)
+    && selection.priceTickSize > 0
     && Number.isFinite(selection.pricePrecision)
     && Number.isFinite(selection.quantityPrecision)
 }
@@ -255,6 +260,9 @@ function isMarketSymbol(value: unknown): value is MarketSymbol {
     && typeof symbol.baseAsset === 'string'
     && typeof symbol.quoteAsset === 'string'
     && typeof symbol.status === 'string'
+    && typeof symbol.priceTickSize === 'number'
+    && Number.isFinite(symbol.priceTickSize)
+    && symbol.priceTickSize > 0
     && Number.isFinite(symbol.pricePrecision)
     && Number.isFinite(symbol.quantityPrecision)
 }

@@ -14,6 +14,7 @@ export interface WorkspaceTab {
   orderBookState: StreamStatus['orderBookState']
   statusMessage: string
   latency: number | null
+  orderBookAggregation: number
   generation: number
   renderRevision: number
 }
@@ -35,6 +36,7 @@ export function createWorkspaceTab(
     orderBookState: 'connecting',
     statusMessage: '',
     latency: null,
+    orderBookAggregation: selection.priceTickSize,
     generation: 0,
     renderRevision: 0,
   }
@@ -65,6 +67,7 @@ export function selectionForNewTab(
     symbol: symbol.symbol,
     baseAsset: symbol.baseAsset,
     quoteAsset: symbol.quoteAsset,
+    priceTickSize: symbol.priceTickSize,
     pricePrecision: symbol.pricePrecision,
     quantityPrecision: symbol.quantityPrecision,
   }

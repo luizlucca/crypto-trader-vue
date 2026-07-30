@@ -48,6 +48,7 @@ describe('Binance normalizers', () => {
     expect(symbols).toHaveLength(1)
     expect(symbols[0]).toMatchObject({
       symbol: 'BTCUSDT',
+      priceTickSize: 0.1,
       pricePrecision: 1,
       quantityPrecision: 3,
     })

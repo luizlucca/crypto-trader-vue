@@ -7,6 +7,7 @@ export interface MarketSelection {
   interval: string
   baseAsset: string
   quoteAsset: string
+  priceTickSize: number
   pricePrecision: number
   quantityPrecision: number
 }
@@ -18,6 +19,7 @@ export interface MarketSymbol {
   baseAsset: string
   quoteAsset: string
   status: string
+  priceTickSize: number
   pricePrecision: number
   quantityPrecision: number
 }

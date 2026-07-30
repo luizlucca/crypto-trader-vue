@@ -6,7 +6,7 @@ export interface OrderBookRatio {
 }
 
 function visibleQuantity(
-  levels: OrderBookLevel[],
+  levels: readonly OrderBookLevel[],
   levelCount: number,
 ): number {
   let quantity = 0
@@ -21,8 +21,8 @@ function visibleQuantity(
 }
 
 export function calculateOrderBookRatio(
-  bids: OrderBookLevel[],
-  asks: OrderBookLevel[],
+  bids: readonly OrderBookLevel[],
+  asks: readonly OrderBookLevel[],
   levelCount: number,
 ): OrderBookRatio | null {
   const buyQuantity = visibleQuantity(bids, levelCount)

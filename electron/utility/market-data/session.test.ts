@@ -22,6 +22,7 @@ const selection: MarketSelection = {
   interval: '1m',
   baseAsset: 'BTC',
   quoteAsset: 'USDT',
+  priceTickSize: 0.01,
   pricePrecision: 2,
   quantityPrecision: 3,
 }
