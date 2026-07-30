@@ -1,5 +1,13 @@
 /// <reference types="vite/client" />
 
+import type { CryptoProDesktopAPI } from './contracts/desktop'
+
+declare global {
+    interface Window {
+        cryptoPro?: CryptoProDesktopAPI
+    }
+}
+
 declare module '*.vue' {
     import type {DefineComponent} from 'vue'
     const component: DefineComponent<{}, {}, any>

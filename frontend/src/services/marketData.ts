@@ -1,11 +1,4 @@
-import {
-  GetCandles,
-  GetMarketCatalog,
-  GetSymbols,
-  StartMarketStream,
-  StopMarketStream,
-} from '../../wailsjs/go/main/App'
-import { EventsOn } from '../../wailsjs/runtime/runtime'
+import { copyMarketSelection } from '../contracts/desktop'
 import type {
   Candle,
   MarketCatalog,
@@ -15,18 +8,22 @@ import type {
   StreamStatus,
 } from '../types/market'
 
-export const MARKET_EVENTS = {
-  candle: 'market:candle',
-  orderBook: 'market:orderbook',
-  status: 'market:status',
-} as const
+function desktopMarketData() {
+  const api = window.cryptoPro?.marketData
+  if (!api) {
+    throw new Error(
+      'API Electron indisponível. Inicie a aplicação com "npm run dev".',
+    )
+  }
+  return api
+}
 
 export async function loadSymbols(
   provider: string,
   market: MarketSelection['market'],
   quoteAsset = 'USDT',
 ): Promise<MarketSymbol[]> {
-  return GetSymbols(provider, market, quoteAsset) as Promise<MarketSymbol[]>
+  return desktopMarketData().getSymbols(provider, market, quoteAsset)
 }
 
 export async function loadMarketCatalog(
@@ -35,52 +32,46 @@ export async function loadMarketCatalog(
   quoteAsset = '',
   forceRefresh = false,
 ): Promise<MarketCatalog> {
-  return GetMarketCatalog(
+  return desktopMarketData().getCatalog(
     provider,
     market,
     quoteAsset,
     forceRefresh,
-  ) as Promise<MarketCatalog>
+  )
 }
 
 export async function loadCandles(
   selection: MarketSelection,
   limit = 500,
 ): Promise<Candle[]> {
-  return GetCandles(
-    selection.provider,
-    selection.market,
-    selection.symbol,
-    selection.interval,
+  return desktopMarketData().getCandles(
+    copyMarketSelection(selection),
     limit,
-  ) as Promise<Candle[]>
+  )
 }
 
 export function startMarketStream(selection: MarketSelection): Promise<void> {
-  return StartMarketStream(
-    selection.provider,
-    selection.market,
-    selection.symbol,
-    selection.interval,
+  return desktopMarketData().startStream(
+    copyMarketSelection(selection),
   )
 }
 
 export function stopMarketStream(): Promise<void> {
-  return StopMarketStream()
+  return window.cryptoPro?.marketData.stopStream() ?? Promise.resolve()
 }
 
 export function onCandle(callback: (candle: Candle) => void): () => void {
-  return EventsOn(MARKET_EVENTS.candle, callback)
+  return window.cryptoPro?.marketData.onCandle(callback) ?? (() => {})
 }
 
 export function onOrderBook(
   callback: (snapshot: OrderBookSnapshot) => void,
 ): () => void {
-  return EventsOn(MARKET_EVENTS.orderBook, callback)
+  return window.cryptoPro?.marketData.onOrderBook(callback) ?? (() => {})
 }
 
 export function onStreamStatus(
   callback: (status: StreamStatus) => void,
 ): () => void {
-  return EventsOn(MARKET_EVENTS.status, callback)
+  return window.cryptoPro?.marketData.onStatus(callback) ?? (() => {})
 }

@@ -1,25 +1,78 @@
 {
-  "name": "frontend",
+  "name": "cryptopro-desktop",
   "private": true,
   "version": "0.0.0",
+  "description": "Plataforma desktop de análise e execução de criptoativos",
+  "author": {
+    "name": "luizlucca",
+    "email": "luizusp@gmail.com"
+  },
+  "homepage": "https://github.com/luizlucca/crypto-trader-vue",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luizlucca/crypto-trader-vue.git"
+  },
+  "desktopName": "CryptoPro",
   "type": "module",
+  "main": "./out/main/index.cjs",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "dev": "env -u ELECTRON_RUN_AS_NODE electron-vite dev",
+    "dev:electron": "npm run dev",
+    "build": "npm run typecheck && electron-vite build",
+    "build:electron": "npm run build",
+    "typecheck": "npm run typecheck:renderer && npm run typecheck:electron",
+    "typecheck:renderer": "vue-tsc --noEmit -p tsconfig.json",
+    "typecheck:electron": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "preview": "env -u ELECTRON_RUN_AS_NODE electron-vite preview",
+    "preview:electron": "npm run preview",
+    "package:linux": "npm run build && electron-builder --linux",
+    "test": "vitest run"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@web3icons/core": "^4.0.53",
     "lightweight-charts": "^5.2.0",
-    "vue": "^3.5.0"
+    "rxjs": "^7.8.2",
+    "vue": "^3.5.0",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@babel/types": "^7.26.0",
+    "@types/node": "^26.1.2",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-vue": "^6.0.0",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
     "typescript": "^5.6.3",
     "vite": "^7.0.0",
+    "vitest": "^4.1.10",
     "vue-tsc": "^2.1.0"
+  },
+  "build": {
+    "appId": "com.cryptopro.desktop",
+    "productName": "CryptoPro",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "category": "Finance",
+      "icon": "../build/appicon.png",
+      "maintainer": "luizlucca <luizusp@gmail.com>",
+      "syncDesktopName": true,
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "win": {
+      "icon": "../build/windows/icon.ico"
+    }
   }
 }

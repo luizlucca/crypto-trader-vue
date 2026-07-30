@@ -25,12 +25,10 @@ import type { Market, MarketPair } from '../../types/market'
 import CryptoAssetIcon from './CryptoAssetIcon.vue'
 
 const ROW_HEIGHT = 52
-const MIN_VISIBLE_ROWS = 4
-const MAX_VISIBLE_ROWS = 9
 const OVERSCAN = 3
+const DEFAULT_VIEWPORT_HEIGHT = ROW_HEIGHT * 9
 
 const props = defineProps<{
-  open: boolean
   provider: string
   market: Market
   selectedSymbol: string
@@ -65,8 +63,11 @@ const activeIndex = ref(0)
 const resultIndexes = shallowRef<Uint32Array>(new Uint32Array())
 const quoteAssets = shallowRef<string[]>([])
 const initialSearchPending = ref(true)
+const viewportHeight = ref(DEFAULT_VIEWPORT_HEIGHT)
 let searchEngine: MarketCatalogSearchEngine | undefined
 let scrollFrame = 0
+let viewportResizeFrame = 0
+let viewportResizeObserver: ResizeObserver | undefined
 
 interface SymbolRowDisplay {
   lastPrice: string
@@ -112,14 +113,6 @@ const startIndex = computed(() => Math.max(
   0,
   Math.floor(scrollTop.value / ROW_HEIGHT) - OVERSCAN,
 ))
-const viewportHeight = computed(() => {
-  const resultRows = resultCount.value || MIN_VISIBLE_ROWS
-  const visibleRows = Math.min(
-    MAX_VISIBLE_ROWS,
-    Math.max(MIN_VISIBLE_ROWS, resultRows),
-  )
-  return visibleRows * ROW_HEIGHT
-})
 const endIndex = computed(() => Math.min(
   resultCount.value,
   Math.ceil((scrollTop.value + viewportHeight.value) / ROW_HEIGHT) + OVERSCAN,
@@ -195,6 +188,23 @@ function resetScroll(): void {
   }
 }
 
+function measureViewport(): void {
+  const height = viewport.value?.clientHeight
+  if (height && Math.abs(height - viewportHeight.value) >= 1) {
+    viewportHeight.value = height
+  }
+}
+
+function scheduleViewportMeasure(): void {
+  if (viewportResizeFrame) {
+    return
+  }
+  viewportResizeFrame = requestAnimationFrame(() => {
+    viewportResizeFrame = 0
+    measureViewport()
+  })
+}
+
 function keepActiveRowVisible(): void {
   const element = viewport.value
   if (!element) {
@@ -259,7 +269,7 @@ function handleQueryInput(event: Event): void {
 }
 
 function handleDocumentKey(event: KeyboardEvent): void {
-  if (props.open && event.key === 'Escape') {
+  if (event.key === 'Escape') {
     emit('close')
   }
 }
@@ -303,16 +313,17 @@ watch(
 )
 
 watch(
-  () => props.open,
-  (open) => {
-    if (!open) {
-      queryInput.value?.blur()
+  () => props.initialQuery,
+  (nextQuery) => {
+    if (nextQuery === queryValue) {
       return
     }
-    if (queryValue !== props.initialQuery) {
-      queryValue = props.initialQuery
-      runSearch()
+    queryValue = nextQuery
+    if (queryInput.value) {
+      queryInput.value.value = nextQuery
     }
+    resetScroll()
+    runSearch()
     focusQuery()
   },
   { flush: 'post' },
@@ -331,37 +342,40 @@ onMounted(() => {
   })
   searchEngine.replaceItems(props.items)
   runSearch()
-  document.addEventListener('keydown', handleDocumentKey)
-  if (props.open) {
-    focusQuery()
+  if (viewport.value) {
+    viewportResizeObserver = new ResizeObserver(scheduleViewportMeasure)
+    viewportResizeObserver.observe(viewport.value)
+    scheduleViewportMeasure()
   }
+  document.addEventListener('keydown', handleDocumentKey)
+  focusQuery()
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleDocumentKey)
+  viewportResizeObserver?.disconnect()
+  viewportResizeObserver = undefined
   searchEngine?.terminate()
   searchEngine = undefined
   if (scrollFrame) {
     cancelAnimationFrame(scrollFrame)
   }
+  if (viewportResizeFrame) {
+    cancelAnimationFrame(viewportResizeFrame)
+  }
 })
 </script>
 
 <template>
-  <div
-    :aria-hidden="!open"
-    :class="{ open }"
-    class="symbol-modal-backdrop"
-    role="presentation"
-    @mousedown.self="emit('close')"
+  <section
+    aria-labelledby="symbol-modal-title"
+    class="symbol-modal native"
+    role="dialog"
   >
-    <section
-      aria-labelledby="symbol-modal-title"
-      aria-modal="true"
-      class="symbol-modal"
-      role="dialog"
-    >
-      <header class="symbol-modal-header">
+      <header
+        class="symbol-modal-header"
+        data-floating-drag-handle
+      >
         <div>
           <span>
             {{ provider.toUpperCase() }} ·
@@ -471,7 +485,6 @@ onBeforeUnmount(() => {
         ref="viewport"
         class="symbol-virtual-viewport"
         :class="{ loading: loading || initialSearchPending }"
-        :style="{ height: `${viewportHeight}px` }"
         role="listbox"
         @scroll.passive="onScroll"
       >
@@ -559,6 +572,5 @@ onBeforeUnmount(() => {
         </span>
         <span>Dados e variações das últimas 24 horas</span>
       </footer>
-    </section>
-  </div>
+  </section>
 </template>

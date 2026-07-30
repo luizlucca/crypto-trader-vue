@@ -1,7 +1,7 @@
 # CryptoPro
 
-Plataforma desktop de negociação de criptoativos construída com Vue 3,
-TypeScript, Wails e Go.
+Plataforma desktop de negociação de criptoativos construída com Electron,
+Vue 3, TypeScript e RxJS.
 
 O primeiro recorte funcional integra a Binance Futures e exibe:
 
@@ -12,25 +12,40 @@ O primeiro recorte funcional integra a Binance Futures e exibe:
 - catálogo com estatísticas de 24h, cache de uma hora e atualização forçada;
 - busca e ordenação em Web Worker, favoritos persistentes e lista virtualizada;
 - painel de mercados redimensionável e ordenação rápida nas colunas;
+- pesquisa em uma `BrowserWindow` nativa, movível e redimensionável pelo
+  sistema operacional;
 - ícones SVG locais para 100 ativos principais, com fallback para os demais;
-- canais realtime imperativos e componentes isolados para preservar gráfico,
-  livro e responsividade do modal.
+- processos separados para catálogo e streaming, preservando a ingestão
+  realtime durante pesquisas e atualizações forçadas.
 
 Veja [docs/architecture.md](docs/architecture.md) para as decisões de
 arquitetura e performance.
 
-## Desenvolvimento no Ubuntu 24.04
+## Desenvolvimento com Electron
 
-Sempre execute o Wails com a tag do WebKit 2.41:
+Recomendado: Node.js 22.
 
 ```sh
-wails dev -tags webkit2_41
+cd frontend
+npm install
+npm run dev
 ```
 
-## Validação
+O processo de desenvolvimento abre a aplicação Electron e mantém hot reload
+do renderer Vue e dos processos desktop.
+
+## Build e validação
 
 ```sh
-go test ./...
-cd frontend && npm run build
-wails build -tags webkit2_41
+cd frontend
+npm test
+npm run typecheck
+npm run build
+```
+
+Para gerar AppImage e pacote Debian:
+
+```sh
+cd frontend
+npm run package:linux
 ```

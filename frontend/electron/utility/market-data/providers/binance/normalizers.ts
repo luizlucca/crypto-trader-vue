@@ -1,0 +1,265 @@
+import type {
+  Candle,
+  Market,
+  MarketPair,
+  MarketSymbol,
+  OrderBookLevel,
+  OrderBookSnapshot,
+} from '../../../../../src/types/market'
+
+const provider = 'binance'
+
+export interface BinanceExchangeFilter {
+  filterType?: string
+  tickSize?: string
+  stepSize?: string
+}
+
+export interface BinanceExchangeSymbol {
+  symbol?: string
+  status?: string
+  baseAsset?: string
+  quoteAsset?: string
+  contractType?: string
+  pricePrecision?: number
+  quantityPrecision?: number
+  filters?: BinanceExchangeFilter[]
+}
+
+export interface BinanceTicker24h {
+  symbol?: string
+  lastPrice?: string
+  priceChange?: string
+  priceChangePercent?: string
+  weightedAvgPrice?: string
+  openPrice?: string
+  highPrice?: string
+  lowPrice?: string
+  volume?: string
+  quoteVolume?: string
+  count?: number | string
+}
+
+interface BinanceKlineEvent {
+  E?: number
+  s?: string
+  k?: {
+    t?: number
+    T?: number
+    i?: string
+    o?: string
+    c?: string
+    h?: string
+    l?: string
+    v?: string
+    q?: string
+    x?: boolean
+  }
+}
+
+interface BinanceDepthEvent {
+  E?: number
+  s?: string
+  lastUpdateId?: number
+  u?: number
+  bids?: string[][]
+  asks?: string[][]
+  b?: string[][]
+  a?: string[][]
+}
+
+function finiteNumber(value: unknown, fallback = 0): number {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function requiredNumber(value: unknown, field: string): number {
+  const parsed = finiteNumber(value, Number.NaN)
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Campo numérico inválido da Binance: ${field}`)
+  }
+  return parsed
+}
+
+export function precisionFromIncrement(increment: string | undefined): number {
+  if (!increment) {
+    return -1
+  }
+  const normalized = increment.trim().replace(/0+$/, '')
+  const dot = normalized.indexOf('.')
+  return dot < 0 ? 0 : normalized.length - dot - 1
+}
+
+export function normalizeExchangeSymbols(
+  market: Market,
+  rawSymbols: BinanceExchangeSymbol[],
+): MarketSymbol[] {
+  const symbols: MarketSymbol[] = []
+  for (const item of rawSymbols) {
+    if (
+      item.status !== 'TRADING'
+      || !item.symbol
+      || !item.baseAsset
+      || !item.quoteAsset
+    ) {
+      continue
+    }
+    if (market === 'futures' && item.contractType !== 'PERPETUAL') {
+      continue
+    }
+
+    let pricePrecision = Math.max(0, item.pricePrecision ?? 0)
+    let quantityPrecision = Math.max(0, item.quantityPrecision ?? 0)
+    for (const filter of item.filters ?? []) {
+      if (filter.filterType === 'PRICE_FILTER') {
+        const precision = precisionFromIncrement(filter.tickSize)
+        if (precision >= 0) {
+          pricePrecision = precision
+        }
+      } else if (filter.filterType === 'LOT_SIZE') {
+        const precision = precisionFromIncrement(filter.stepSize)
+        if (precision >= 0) {
+          quantityPrecision = precision
+        }
+      }
+    }
+
+    symbols.push({
+      provider,
+      market,
+      symbol: item.symbol,
+      baseAsset: item.baseAsset,
+      quoteAsset: item.quoteAsset,
+      status: item.status,
+      pricePrecision,
+      quantityPrecision,
+    })
+  }
+  return symbols.sort((left, right) => left.symbol.localeCompare(right.symbol))
+}
+
+export function mergeCatalog(
+  symbols: MarketSymbol[],
+  rawTickers: BinanceTicker24h[],
+): MarketPair[] {
+  const tickers = new Map(
+    rawTickers
+      .filter((ticker) => typeof ticker.symbol === 'string')
+      .map((ticker) => [ticker.symbol as string, ticker]),
+  )
+
+  return symbols.map((symbol) => {
+    const ticker = tickers.get(symbol.symbol)
+    return {
+      ...symbol,
+      lastPrice: finiteNumber(ticker?.lastPrice),
+      priceChange: finiteNumber(ticker?.priceChange),
+      priceChangePercent: finiteNumber(ticker?.priceChangePercent),
+      weightedAveragePrice: finiteNumber(ticker?.weightedAvgPrice),
+      openPrice: finiteNumber(ticker?.openPrice),
+      highPrice: finiteNumber(ticker?.highPrice),
+      lowPrice: finiteNumber(ticker?.lowPrice),
+      volume: finiteNumber(ticker?.volume),
+      quoteVolume: finiteNumber(ticker?.quoteVolume),
+      tradeCount: finiteNumber(ticker?.count),
+    }
+  })
+}
+
+export function normalizeCandleRow(
+  row: unknown[],
+  market: Market,
+  symbol: string,
+  interval: string,
+  now = Date.now(),
+): Candle {
+  if (row.length < 8) {
+    throw new Error(`Candle Binance inválido: ${row.length} campos`)
+  }
+  const openTime = requiredNumber(row[0], 'openTime')
+  const closeTime = requiredNumber(row[6], 'closeTime')
+  return {
+    provider,
+    market,
+    symbol,
+    interval,
+    time: Math.trunc(openTime / 1000),
+    closeTime: Math.trunc(closeTime / 1000),
+    open: requiredNumber(row[1], 'open'),
+    high: requiredNumber(row[2], 'high'),
+    low: requiredNumber(row[3], 'low'),
+    close: requiredNumber(row[4], 'close'),
+    volume: requiredNumber(row[5], 'volume'),
+    quoteVolume: requiredNumber(row[7], 'quoteVolume'),
+    closed: closeTime < now,
+  }
+}
+
+export function normalizeKlineEvent(
+  raw: unknown,
+  market: Market,
+): Candle {
+  const event = raw as BinanceKlineEvent
+  const kline = event.k
+  if (!event.s || !kline?.i) {
+    throw new Error('Evento de candle Binance incompleto')
+  }
+  return {
+    provider,
+    market,
+    symbol: event.s,
+    interval: kline.i,
+    time: Math.trunc(requiredNumber(kline.t, 'kline.startTime') / 1000),
+    closeTime: Math.trunc(requiredNumber(kline.T, 'kline.closeTime') / 1000),
+    open: requiredNumber(kline.o, 'kline.open'),
+    high: requiredNumber(kline.h, 'kline.high'),
+    low: requiredNumber(kline.l, 'kline.low'),
+    close: requiredNumber(kline.c, 'kline.close'),
+    volume: requiredNumber(kline.v, 'kline.volume'),
+    quoteVolume: requiredNumber(kline.q, 'kline.quoteVolume'),
+    closed: Boolean(kline.x),
+  }
+}
+
+export function normalizeLevels(rawLevels: string[][]): OrderBookLevel[] {
+  const levels: OrderBookLevel[] = []
+  let cumulative = 0
+  for (const raw of rawLevels) {
+    if (raw.length < 2) {
+      continue
+    }
+    const price = requiredNumber(raw[0], 'depth.price')
+    const quantity = requiredNumber(raw[1], 'depth.quantity')
+    cumulative += quantity
+    levels.push({ price, quantity, total: cumulative })
+  }
+  return levels
+}
+
+export function normalizeDepthEvent(
+  raw: unknown,
+  market: Market,
+  fallbackSymbol: string,
+  now = Date.now(),
+): OrderBookSnapshot {
+  const event = raw as BinanceDepthEvent
+  const bids = normalizeLevels(event.bids?.length ? event.bids : event.b ?? [])
+  const asks = normalizeLevels(event.asks?.length ? event.asks : event.a ?? [])
+  const bestBid = bids[0]?.price
+  const bestAsk = asks[0]?.price
+  const hasSpread = Number.isFinite(bestBid) && Number.isFinite(bestAsk)
+
+  return {
+    provider,
+    market,
+    symbol: event.s || fallbackSymbol,
+    eventTime: finiteNumber(event.E, now),
+    lastUpdateId: finiteNumber(event.u || event.lastUpdateId),
+    bids,
+    asks,
+    midPrice: hasSpread ? ((bestBid as number) + (bestAsk as number)) / 2 : 0,
+    spread: hasSpread
+      ? Math.max(0, (bestAsk as number) - (bestBid as number))
+      : 0,
+  }
+}

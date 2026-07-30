@@ -67,6 +67,11 @@ body {
   user-select: none;
 }
 
+body.symbol-search-body {
+  min-width: 0;
+  min-height: 0;
+}
+
 button,
 input {
   color: inherit;
@@ -1413,56 +1418,30 @@ body.panel-resizing * {
   flex: 1;
 }
 
-.symbol-modal-backdrop {
-  position: fixed;
-  z-index: 100;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  visibility: hidden;
-  padding: 28px 36px;
-  pointer-events: none;
-  contain: layout paint style;
-  isolation: isolate;
-  background: transparent;
-}
-
-.symbol-modal-backdrop.open {
-  visibility: visible;
-  pointer-events: auto;
-}
-
-.symbol-modal-backdrop::before {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  content: "";
-  pointer-events: none;
-  contain: strict;
-  background: rgb(2 13 20 / 72%);
-  transform: translateZ(0);
-  backface-visibility: hidden;
-}
-
-.app-shell.symbol-search-open > .app-header,
-.app-shell.symbol-search-open > .workspace-grid,
-.app-shell.symbol-search-open > .status-bar {
-  filter: blur(4px);
-}
-
 .symbol-modal {
-  position: relative;
-  z-index: 1;
   display: flex;
   flex-direction: column;
-  width: min(1160px, calc(100vw - 72px));
-  max-height: calc(100vh - 56px);
   overflow: hidden;
-  contain: layout paint style;
+  contain: strict;
   isolation: isolate;
   border: 1px solid #24566a;
   border-radius: 10px;
   background: #061c27;
+  box-shadow: 0 8px 18px rgb(0 0 0 / 32%);
+}
+
+.symbol-search-window {
+  width: 100%;
+  height: 100%;
+  background: #061c27;
+}
+
+.symbol-modal.native {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .symbol-modal-header {
@@ -1475,6 +1454,7 @@ body.panel-resizing * {
   padding: 12px 18px 12px 22px;
   border-bottom: 1px solid var(--border);
   background: #08232f;
+  cursor: default;
 }
 
 .symbol-modal-header > div:first-child > span {
@@ -1720,9 +1700,8 @@ body.panel-resizing * {
 
 .symbol-virtual-viewport {
   position: relative;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-height: 208px;
-  max-height: 468px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;

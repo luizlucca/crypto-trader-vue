@@ -12,26 +12,23 @@ import AppHeader from '../layout/AppHeader.vue'
 import NavigationRail from '../layout/NavigationRail.vue'
 import PanelResizeHandle from '../layout/PanelResizeHandle.vue'
 import MarketSidebar from '../market/MarketSidebar.vue'
-import SymbolSearchModal from '../market/SymbolSearchModal.vue'
 import MarketChart from '../chart/MarketChart.vue'
 import OrderBook from '../orderbook/OrderBook.vue'
 import TradingTicket from '../trading/TradingTicket.vue'
 import PositionsPanel from '../positions/PositionsPanel.vue'
+import {
+  copyMarketSelection,
+} from '../../contracts/desktop'
 import {
   loadMarketCatalog,
   onStreamStatus,
   startMarketStream,
   stopMarketStream,
 } from '../../services/marketData'
-import {
-  favoriteKey,
-  loadFavoriteKeys,
-  saveFavoriteKeys,
-} from '../../services/favorites'
+import { loadFavoriteKeys, saveFavoriteKeys } from '../../services/favorites'
 import type {
   Market,
   MarketCatalog,
-  MarketPair,
   MarketSelection,
   MarketSymbol,
   StreamStatus,
@@ -89,15 +86,13 @@ const sidebarWidth = ref(clampSidebarWidth(
 ))
 const catalog = shallowRef<MarketCatalog | null>(null)
 const symbolsLoading = ref(true)
-const catalogRefreshing = ref(false)
-const catalogError = ref('')
-const symbolSearchOpen = ref(false)
-const symbolSearchQuery = ref('')
 const favoriteKeys = shallowRef(loadFavoriteKeys())
 const status = ref<StreamStatus['state']>('connecting')
 const statusMessage = ref('')
 const latencyText = ref<HTMLElement | null>(null)
 let unsubscribeStatus: (() => void) | undefined
+let unsubscribeSymbolSelected: (() => void) | undefined
+let unsubscribeFavorites: (() => void) | undefined
 let sessionGeneration = 0
 
 const symbols = computed(() => catalog.value?.items ?? [])
@@ -175,8 +170,7 @@ async function changeMarket(market: Market): Promise<void> {
   statusMessage.value = ''
   symbolsLoading.value = true
   catalog.value = null
-  catalogError.value = ''
-  symbolSearchOpen.value = false
+  void window.cryptoPro?.windows.closeSymbolSearch()
   resetLatency()
 
   await stopMarketStream()
@@ -223,19 +217,25 @@ async function changeSymbol(symbol: MarketSymbol): Promise<void> {
   })
 }
 
-async function selectSymbol(symbol: MarketPair): Promise<void> {
-  symbolSearchOpen.value = false
-  await changeSymbol(symbol)
-}
-
 function openSymbolSearch(query = ''): void {
-  symbolSearchQuery.value = query
-  symbolSearchOpen.value = true
+  const desktop = window.cryptoPro
+  if (!desktop) {
+    status.value = 'error'
+    statusMessage.value = 'API Electron indisponível. Reinicie com "npm run dev".'
+    return
+  }
+  void desktop.windows.openSymbolSearch({
+    selection: copyMarketSelection(selection),
+    initialQuery: query,
+  }).catch((error) => {
+    status.value = 'error'
+    statusMessage.value = error instanceof Error ? error.message : String(error)
+  })
 }
 
-function isEditableOrInteractive(target: EventTarget | null): boolean {
+function isTextEditingTarget(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest(
-    'input, textarea, select, button, a, [contenteditable="true"], [role="button"]',
+    'input, textarea, select, [contenteditable="true"]',
   ))
 }
 
@@ -248,26 +248,13 @@ function handleGlobalEnter(event: KeyboardEvent): void {
     || event.ctrlKey
     || event.metaKey
     || event.shiftKey
-    || symbolSearchOpen.value
-    || isEditableOrInteractive(event.target)
+    || isTextEditingTarget(event.target)
   ) {
     return
   }
 
   event.preventDefault()
   openSymbolSearch()
-}
-
-function toggleFavorite(symbol: MarketSymbol): void {
-  const key = favoriteKey(symbol)
-  const next = new Set(favoriteKeys.value)
-  if (next.has(key)) {
-    next.delete(key)
-  } else {
-    next.add(key)
-  }
-  favoriteKeys.value = next
-  saveFavoriteKeys(next)
 }
 
 function resetLatency(): void {
@@ -300,33 +287,6 @@ function updateSidebarBounds(): void {
     preferredSidebarWidth,
     sidebarMaxWidth.value,
   )
-}
-
-async function refreshCatalog(): Promise<void> {
-  if (catalogRefreshing.value) {
-    return
-  }
-
-  const market = selection.market
-  catalogRefreshing.value = true
-  catalogError.value = ''
-  try {
-    const nextCatalog = await loadMarketCatalog(
-      selection.provider,
-      market,
-      '',
-      true,
-    )
-    if (selection.market === market) {
-      catalog.value = nextCatalog
-    }
-  } catch (error) {
-    if (selection.market === market) {
-      catalogError.value = error instanceof Error ? error.message : String(error)
-    }
-  } finally {
-    catalogRefreshing.value = false
-  }
 }
 
 async function changeInterval(interval: string): Promise<void> {
@@ -381,6 +341,22 @@ onMounted(() => {
       statusMessage.value = nextStatus.message ?? ''
     }
   })
+  const desktop = window.cryptoPro
+  if (desktop) {
+    unsubscribeSymbolSelected = desktop.windows.onSymbolSelected(
+      (item) => {
+        void changeSymbol(item)
+      },
+    )
+    unsubscribeFavorites = desktop.windows.onFavoritesChanged(
+      (keys) => {
+        const next = new Set(keys)
+        favoriteKeys.value = next
+        saveFavoriteKeys(next)
+      },
+    )
+    desktop.windows.syncFavorites([...favoriteKeys.value])
+  }
   void bootstrap()
 })
 
@@ -389,15 +365,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', updateSidebarBounds)
   document.removeEventListener('keydown', handleGlobalEnter)
   unsubscribeStatus?.()
+  unsubscribeSymbolSelected?.()
+  unsubscribeFavorites?.()
   void stopMarketStream()
 })
 </script>
 
 <template>
-  <div
-    class="app-shell"
-    :class="{ 'symbol-search-open': symbolSearchOpen }"
-  >
+  <div class="app-shell">
     <AppHeader :selection="selection" :status="status" />
     <main class="workspace-grid" :style="workspaceStyle">
       <NavigationRail />
@@ -430,26 +405,6 @@ onBeforeUnmount(() => {
       <TradingTicket :selection="selection" />
       <PositionsPanel />
     </main>
-    <SymbolSearchModal
-      :cached="catalog?.cached ?? false"
-      :expires-at="catalog?.expiresAt ?? 0"
-      :favorite-keys="favoriteKeys"
-      :initial-query="symbolSearchQuery"
-      :items="symbols"
-      :loaded-at="catalog?.loadedAt ?? 0"
-      :loading="symbolsLoading"
-      :market="selection.market"
-      :open="symbolSearchOpen"
-      :provider="selection.provider"
-      :refreshing="catalogRefreshing"
-      :selected-symbol="selection.symbol"
-      :stale="catalog?.stale ?? false"
-      :warning="catalog?.warning || catalogError"
-      @close="symbolSearchOpen = false"
-      @favorite="toggleFavorite"
-      @refresh="refreshCatalog"
-      @select="selectSymbol"
-    />
     <footer class="status-bar">
       <span :class="status"><i />{{ statusLabel }}</span>
       <span>Latência: <b ref="latencyText">—</b></span>

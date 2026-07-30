@@ -1,11 +1,25 @@
 {
   "compilerOptions": {
     "composite": true,
+    "target": "ES2022",
     "module": "ESNext",
-    "moduleResolution": "Node",
-    "allowSyntheticDefaultImports": true
+    "moduleResolution": "Bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "types": [
+      "node",
+      "electron-vite/node"
+    ],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ]
   },
   "include": [
-    "vite.config.ts"
+    "electron.vite.config.ts",
+    "electron/**/*.ts",
+    "src/contracts/**/*.ts",
+    "src/types/**/*.ts"
   ]
 }
