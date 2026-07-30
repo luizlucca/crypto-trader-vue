@@ -6,7 +6,7 @@ import type {
 import { isMarketDataRequest } from '../../src/contracts/desktop'
 import { ProviderRegistry } from './market-data/provider'
 import { BinanceProvider } from './market-data/providers/binance/provider'
-import { MarketSession } from './market-data/session'
+import { MarketSessionPool } from './market-data/session'
 
 const parentPort = process.parentPort
 if (!parentPort) {
@@ -18,8 +18,8 @@ function send(message: UtilityMessage): void {
 }
 
 const registry = new ProviderRegistry([new BinanceProvider()])
-const session = new MarketSession((event) => {
-  send({ type: 'event', event })
+const sessions = new MarketSessionPool((sessionId, event) => {
+  send({ type: 'event', event: { sessionId, ...event } })
 })
 
 async function execute(request: MarketDataRequest): Promise<unknown> {
@@ -39,13 +39,26 @@ async function execute(request: MarketDataRequest): Promise<unknown> {
         .get(request.selection.provider)
         .getCandles(request.selection, request.limit)
     case 'start-stream':
-      session.start(
+      sessions.start(
+        request.sessionId,
         registry.get(request.selection.provider),
         request.selection,
+        request.visible,
+      )
+      return undefined
+    case 'update-candle-stream':
+      sessions.updateCandles(
+        request.sessionId,
+        registry.get(request.selection.provider),
+        request.selection,
+        request.visible,
       )
       return undefined
     case 'stop-stream':
-      session.stop()
+      sessions.stop(request.sessionId)
+      return undefined
+    case 'set-stream-visibility':
+      sessions.setVisible(request.sessionId, request.visible)
       return undefined
   }
 }

@@ -17,6 +17,10 @@ O primeiro recorte funcional integra a Binance Futures e exibe:
 - ícones SVG locais para 100 ativos principais, com fallback para os demais;
 - processos separados para catálogo e streaming, preservando a ingestão
   realtime durante pesquisas e atualizações forçadas.
+- múltiplas abas com ativo, mercado, período, cache de candles e conexões
+  realtime independentes.
+- criação de aba por `Ctrl+T`/`+` com seleção prévia do ativo e
+  `Ctrl+clique` nos símbolos do painel Mercado.
 
 Veja [docs/architecture.md](docs/architecture.md) para as decisões de
 arquitetura e performance.

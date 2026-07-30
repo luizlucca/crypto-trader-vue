@@ -9,7 +9,10 @@ import { onOrderBook } from '../../services/marketData'
 import { publishRealtimePrice } from '../../services/realtimePrice'
 
 const ROW_COUNT = 10
-const props = defineProps<{ selection: MarketSelection }>()
+const props = defineProps<{
+  sessionId: string
+  selection: MarketSelection
+}>()
 const emit = defineEmits<{
   latency: [value: number]
 }>()
@@ -174,7 +177,7 @@ function clearBook(): void {
 }
 
 onMounted(() => {
-  unsubscribe = onOrderBook((snapshot) => {
+  unsubscribe = onOrderBook(props.sessionId, (snapshot) => {
     if (matches(snapshot)) {
       scheduleRender(snapshot)
     }

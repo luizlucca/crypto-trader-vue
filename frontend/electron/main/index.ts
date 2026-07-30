@@ -12,6 +12,7 @@ import {
   isMarketDataRequest,
   isSymbolSearchContext,
   type MarketDataEvent,
+  type SymbolSelectionResult,
   type SymbolSearchContext,
 } from '../../src/contracts/desktop'
 import { MarketDataCoordinator } from './marketDataCoordinator'
@@ -203,7 +204,15 @@ function registerIPC(): void {
       if (!isMarketPair(item)) {
         throw new Error('Símbolo selecionado inválido')
       }
-      mainWindow?.webContents.send(DESKTOP_CHANNELS.symbolSelected, item)
+      if (!searchContext) {
+        throw new Error('A busca não possui uma aba de destino')
+      }
+      const result: SymbolSelectionResult = {
+        tabId: searchContext.tabId,
+        intent: searchContext.intent,
+        item,
+      }
+      mainWindow?.webContents.send(DESKTOP_CHANNELS.symbolSelected, result)
       searchWindow?.close()
     },
   )

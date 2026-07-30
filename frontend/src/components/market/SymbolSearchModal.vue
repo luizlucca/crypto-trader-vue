@@ -31,6 +31,7 @@ const DEFAULT_VIEWPORT_HEIGHT = ROW_HEIGHT * 9
 const props = defineProps<{
   provider: string
   market: Market
+  title?: string
   selectedSymbol: string
   items: MarketPair[]
   favoriteKeys: Set<string>
@@ -381,7 +382,9 @@ onBeforeUnmount(() => {
             {{ provider.toUpperCase() }} ·
             {{ market === 'futures' ? 'FUTUROS' : 'SPOT' }}
           </span>
-          <h2 id="symbol-modal-title">Selecionar par de moedas</h2>
+          <h2 id="symbol-modal-title">
+            {{ title || 'Selecionar par de moedas' }}
+          </h2>
         </div>
         <div class="symbol-modal-cache" :class="{ stale }">
           <span>{{ cacheLabel }}</span>

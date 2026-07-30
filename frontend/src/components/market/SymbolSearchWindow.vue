@@ -36,6 +36,7 @@ const selection = reactive<MarketSelection>({ ...fallbackSelection })
 const catalog = shallowRef<MarketCatalog | null>(null)
 const favoriteKeys = shallowRef(loadFavoriteKeys())
 const initialQuery = ref('')
+const intent = ref<SymbolSearchContext['intent']>('replace-tab')
 const loading = ref(true)
 const refreshing = ref(false)
 const errorMessage = ref('')
@@ -46,6 +47,7 @@ let unsubscribeFavorites: (() => void) | undefined
 function applyContext(context: SymbolSearchContext): void {
   Object.assign(selection, context.selection)
   initialQuery.value = context.initialQuery
+  intent.value = context.intent
   void loadCatalog(false)
 }
 
@@ -154,6 +156,9 @@ onBeforeUnmount(() => {
       :refreshing="refreshing"
       :selected-symbol="selection.symbol"
       :stale="catalog?.stale ?? false"
+      :title="intent === 'new-tab'
+        ? 'Selecionar ativo para nova aba'
+        : 'Selecionar par de moedas'"
       :warning="catalog?.warning || errorMessage"
       @close="close"
       @favorite="toggleFavorite"

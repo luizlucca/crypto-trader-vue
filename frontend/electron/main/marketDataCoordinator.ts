@@ -27,7 +27,7 @@ export class MarketDataCoordinator {
   }> = []
   private shuttingDown = false
   private restartTimer: NodeJS.Timeout | undefined
-  private activeSubscription: StartStreamRequest | undefined
+  private activeSubscriptions = new Map<string, StartStreamRequest>()
 
   constructor(
     private readonly onEvent: (event: MarketDataEvent) => void,
@@ -82,9 +82,32 @@ export class MarketDataCoordinator {
 
     const value = await result
     if (request.kind === 'start-stream') {
-      this.activeSubscription = request
+      this.activeSubscriptions.set(request.sessionId, request)
+    } else if (request.kind === 'update-candle-stream') {
+      const subscription = this.activeSubscriptions.get(request.sessionId)
+      if (subscription) {
+        this.activeSubscriptions.set(request.sessionId, {
+          ...subscription,
+          selection: request.selection,
+        })
+      } else {
+        this.activeSubscriptions.set(request.sessionId, {
+          kind: 'start-stream',
+          sessionId: request.sessionId,
+          selection: request.selection,
+          visible: request.visible,
+        })
+      }
     } else if (request.kind === 'stop-stream') {
-      this.activeSubscription = undefined
+      this.activeSubscriptions.delete(request.sessionId)
+    } else if (request.kind === 'set-stream-visibility') {
+      const subscription = this.activeSubscriptions.get(request.sessionId)
+      if (subscription) {
+        this.activeSubscriptions.set(request.sessionId, {
+          ...subscription,
+          visible: request.visible,
+        })
+      }
     }
     return value as T
   }
@@ -130,11 +153,7 @@ export class MarketDataCoordinator {
       this.ready = true
       const waiters = this.readyWaiters.splice(0)
       waiters.forEach((waiter) => waiter.resolve())
-      if (this.activeSubscription) {
-        void this.request(this.activeSubscription).catch((error) => {
-          this.emitProcessError(error)
-        })
-      }
+      this.restoreSubscriptions()
       return
     }
     if (response.type === 'event') {
@@ -175,16 +194,45 @@ export class MarketDataCoordinator {
   }
 
   private emitProcessError(error: unknown): void {
-    const subscription = this.activeSubscription?.selection
-    if (!subscription) {
-      return
-    }
+    this.activeSubscriptions.forEach((subscription, sessionId) => {
+      const selection = subscription.selection
+      this.onEvent({
+        sessionId,
+        kind: 'status',
+        payload: {
+          provider: selection.provider,
+          market: selection.market,
+          symbol: selection.symbol,
+          state: 'error',
+          candleState: 'error',
+          orderBookState: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      })
+    })
+  }
+
+  private restoreSubscriptions(): void {
+    const subscriptions = [...this.activeSubscriptions.values()]
+    subscriptions.forEach((subscription) => {
+      void this.request(subscription).catch((error) => {
+        this.emitSessionError(subscription, error)
+      })
+    })
+  }
+
+  private emitSessionError(
+    subscription: StartStreamRequest,
+    error: unknown,
+  ): void {
+    const selection = subscription.selection
     this.onEvent({
+      sessionId: subscription.sessionId,
       kind: 'status',
       payload: {
-        provider: subscription.provider,
-        market: subscription.market,
-        symbol: subscription.symbol,
+        provider: selection.provider,
+        market: selection.market,
+        symbol: selection.symbol,
         state: 'error',
         candleState: 'error',
         orderBookState: 'error',

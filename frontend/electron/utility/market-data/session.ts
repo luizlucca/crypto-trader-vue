@@ -1,9 +1,10 @@
 import { auditTime, type Subscription } from 'rxjs'
 import type {
-  MarketDataEvent,
+  MarketSessionEvent,
 } from '../../../src/contracts/desktop'
 import type {
   MarketSelection,
+  OrderBookSnapshot,
   StreamStatus,
 } from '../../../src/types/market'
 import type {
@@ -15,28 +16,34 @@ import type {
 type StreamName = 'candles' | 'orderbook'
 
 export class MarketSession {
-  private subscriptions: Subscription[] = []
+  private candleSubscription: Subscription | undefined
+  private orderBookSubscription: Subscription | undefined
   private selection: MarketSelection | undefined
   private candleState: ConnectionStateName = 'connecting'
   private orderBookState: ConnectionStateName = 'connecting'
   private lastMessage = ''
+  private visible = true
+  private latestOrderBook: OrderBookSnapshot | undefined
 
   constructor(
-    private readonly emit: (event: MarketDataEvent) => void,
+    private readonly emit: (event: MarketSessionEvent) => void,
   ) {}
 
   start(
     provider: MarketDataProvider,
     selection: MarketSelection,
+    visible = true,
   ): void {
     this.stop()
     this.selection = { ...selection }
+    this.visible = visible
+    this.latestOrderBook = undefined
     this.candleState = 'connecting'
     this.orderBookState = 'connecting'
     this.lastMessage = ''
     this.emitStatus()
 
-    const candleSubscription = provider
+    this.candleSubscription = provider
       .streamCandles(selection, (state) => {
         this.updateState('candles', state)
       })
@@ -48,25 +55,74 @@ export class MarketSession {
     // A renderer cannot display more than one state per animation frame.
     // Coalescing here prevents IPC queues from growing if a future provider
     // publishes depth updates faster than Binance's current 100 ms stream.
-    const orderBookSubscription = provider
+    this.orderBookSubscription = provider
       .streamOrderBook(selection, (state) => {
         this.updateState('orderbook', state)
       })
       .pipe(auditTime(16))
       .subscribe({
         next: (snapshot) => {
-          this.emit({ kind: 'orderbook', payload: snapshot })
+          this.latestOrderBook = snapshot
+          if (this.visible) {
+            this.emit({ kind: 'orderbook', payload: snapshot })
+          }
         },
         error: (error) => this.handleFatal('orderbook', error),
       })
+  }
 
-    this.subscriptions = [candleSubscription, orderBookSubscription]
+  updateCandles(
+    provider: MarketDataProvider,
+    selection: MarketSelection,
+  ): void {
+    const current = this.selection
+    if (!current) {
+      throw new Error('Sessão de mercado não iniciada')
+    }
+    if (
+      current.provider !== selection.provider
+      || current.market !== selection.market
+      || current.symbol !== selection.symbol
+    ) {
+      throw new Error(
+        'A atualização isolada de candles permite alterar apenas o período',
+      )
+    }
+
+    this.candleSubscription?.unsubscribe()
+    this.candleSubscription = undefined
+    this.selection = { ...selection }
+    this.candleState = 'connecting'
+    this.lastMessage = ''
+    this.emitStatus()
+
+    this.candleSubscription = provider
+      .streamCandles(selection, (state) => {
+        this.updateState('candles', state)
+      })
+      .subscribe({
+        next: (candle) => this.emit({ kind: 'candle', payload: candle }),
+        error: (error) => this.handleFatal('candles', error),
+      })
+  }
+
+  setVisible(visible: boolean): void {
+    if (this.visible === visible) {
+      return
+    }
+    this.visible = visible
+    if (visible && this.latestOrderBook) {
+      this.emit({ kind: 'orderbook', payload: this.latestOrderBook })
+    }
   }
 
   stop(): void {
-    this.subscriptions.forEach((subscription) => subscription.unsubscribe())
-    this.subscriptions = []
+    this.candleSubscription?.unsubscribe()
+    this.orderBookSubscription?.unsubscribe()
+    this.candleSubscription = undefined
+    this.orderBookSubscription = undefined
     this.selection = undefined
+    this.latestOrderBook = undefined
   }
 
   private updateState(
@@ -125,5 +181,68 @@ export class MarketSession {
         message: this.lastMessage || undefined,
       },
     })
+  }
+}
+
+export class MarketSessionPool {
+  private readonly sessions = new Map<string, MarketSession>()
+
+  constructor(
+    private readonly emit: (
+      sessionId: string,
+      event: MarketSessionEvent,
+    ) => void,
+  ) {}
+
+  start(
+    sessionId: string,
+    provider: MarketDataProvider,
+    selection: MarketSelection,
+    visible: boolean,
+  ): void {
+    let session = this.sessions.get(sessionId)
+    if (!session) {
+      session = new MarketSession((event) => this.emit(sessionId, event))
+      this.sessions.set(sessionId, session)
+    }
+    session.start(provider, selection, visible)
+  }
+
+  setVisible(sessionId: string, visible: boolean): void {
+    this.sessions.get(sessionId)?.setVisible(visible)
+  }
+
+  updateCandles(
+    sessionId: string,
+    provider: MarketDataProvider,
+    selection: MarketSelection,
+    visible: boolean,
+  ): void {
+    let session = this.sessions.get(sessionId)
+    if (!session) {
+      session = new MarketSession((event) => this.emit(sessionId, event))
+      this.sessions.set(sessionId, session)
+      session.start(provider, selection, visible)
+      return
+    }
+    session.updateCandles(provider, selection)
+  }
+
+  stop(sessionId: string): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) {
+      return
+    }
+    session.stop()
+    this.sessions.delete(sessionId)
+  }
+
+  stopAll(): void {
+    this.sessions.forEach((session) => session.stop())
+    this.sessions.clear()
+  }
+
+  get size(): number {
+    return this.sessions.size
   }
 }

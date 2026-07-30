@@ -4,6 +4,7 @@ import {
   type CryptoProDesktopAPI,
   type MarketDataEvent,
   type MarketDataRequest,
+  type SymbolSelectionResult,
   type SymbolSearchContext,
 } from '../../src/contracts/desktop'
 import type {
@@ -29,11 +30,11 @@ function marketRequest<T>(request: MarketDataRequest): Promise<T> {
 
 function onMarketEvent<T extends keyof MarketPayloadMap>(
   kind: T,
-  callback: (payload: MarketPayloadMap[T]) => void,
+  callback: (sessionId: string, payload: MarketPayloadMap[T]) => void,
 ): () => void {
   const listener = (_event: Electron.IpcRendererEvent, event: MarketDataEvent) => {
     if (event.kind === kind) {
-      callback(event.payload as MarketPayloadMap[T])
+      callback(event.sessionId, event.payload as MarketPayloadMap[T])
     }
   }
   ipcRenderer.on(DESKTOP_CHANNELS.marketEvent, listener)
@@ -86,21 +87,53 @@ const api: CryptoProDesktopAPI = {
     ): Promise<Candle[]> {
       return marketRequest({ kind: 'candles', selection, limit })
     },
-    startStream(selection: MarketSelection): Promise<void> {
-      return marketRequest({ kind: 'start-stream', selection })
+    startStream(
+      sessionId: string,
+      selection: MarketSelection,
+      visible = true,
+    ): Promise<void> {
+      return marketRequest({
+        kind: 'start-stream',
+        sessionId,
+        selection,
+        visible,
+      })
     },
-    stopStream(): Promise<void> {
-      return marketRequest({ kind: 'stop-stream' })
+    updateCandleStream(
+      sessionId: string,
+      selection: MarketSelection,
+      visible = true,
+    ): Promise<void> {
+      return marketRequest({
+        kind: 'update-candle-stream',
+        sessionId,
+        selection,
+        visible,
+      })
     },
-    onCandle(callback: (candle: Candle) => void): () => void {
+    stopStream(sessionId: string): Promise<void> {
+      return marketRequest({ kind: 'stop-stream', sessionId })
+    },
+    setStreamVisibility(sessionId: string, visible: boolean): Promise<void> {
+      return marketRequest({
+        kind: 'set-stream-visibility',
+        sessionId,
+        visible,
+      })
+    },
+    onCandle(
+      callback: (sessionId: string, candle: Candle) => void,
+    ): () => void {
       return onMarketEvent('candle', callback)
     },
     onOrderBook(
-      callback: (snapshot: OrderBookSnapshot) => void,
+      callback: (sessionId: string, snapshot: OrderBookSnapshot) => void,
     ): () => void {
       return onMarketEvent('orderbook', callback)
     },
-    onStatus(callback: (status: StreamStatus) => void): () => void {
+    onStatus(
+      callback: (sessionId: string, status: StreamStatus) => void,
+    ): () => void {
       return onMarketEvent('status', callback)
     },
   },
@@ -125,7 +158,9 @@ const api: CryptoProDesktopAPI = {
     ): () => void {
       return onWindowEvent(DESKTOP_CHANNELS.searchContext, callback)
     },
-    onSymbolSelected(callback: (item: MarketPair) => void): () => void {
+    onSymbolSelected(
+      callback: (result: SymbolSelectionResult) => void,
+    ): () => void {
       return onWindowEvent(DESKTOP_CHANNELS.symbolSelected, callback)
     },
     onFavoritesChanged(callback: (keys: string[]) => void): () => void {

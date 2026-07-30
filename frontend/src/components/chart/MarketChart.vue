@@ -6,6 +6,7 @@ import {
   CrosshairMode,
   HistogramSeries,
   createChart,
+  createTextWatermark,
   type CandlestickData,
   type HistogramData,
   type IChartApi,
@@ -19,11 +20,14 @@ import ChartToolbar from './ChartToolbar.vue'
 import DrawingToolbar from './DrawingToolbar.vue'
 
 const props = defineProps<{
+  sessionId: string
   selection: MarketSelection
+  initialHistory?: Candle[]
 }>()
 
 const emit = defineEmits<{
   interval: [value: string]
+  history: [sessionId: string, fingerprint: string, candles: Candle[]]
 }>()
 
 const container = ref<HTMLElement | null>(null)
@@ -38,7 +42,10 @@ const chart = shallowRef<IChartApi | null>(null)
 const candleSeries = shallowRef<ISeriesApi<'Candlestick'> | null>(null)
 const volumeSeries = shallowRef<ISeriesApi<'Histogram'> | null>(null)
 let unsubscribeCandle: (() => void) | undefined
+let releaseVerticalPricePan: (() => void) | undefined
 let lastTimestamp = 0
+let historyGeneration = 0
+let pendingCandle: Candle | undefined
 
 function candlePoint(candle: Candle): CandlestickData<UTCTimestamp> {
   return {
@@ -68,10 +75,21 @@ async function loadHistory(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   lastTimestamp = 0
+  pendingCandle = undefined
+  const generation = ++historyGeneration
+  const fingerprint = selectionFingerprint()
   candleSeries.value.setData([])
   volumeSeries.value.setData([])
   try {
-    const history = await loadCandles(props.selection, 500)
+    const history = props.initialHistory?.length
+      ? props.initialHistory
+      : await loadCandles(props.selection, 500)
+    if (
+      generation !== historyGeneration
+      || fingerprint !== selectionFingerprint()
+    ) {
+      return
+    }
     const candles = [...new Map(
       history.map((candle) => [candle.time, candle]),
     ).values()].sort((left, right) => left.time - right.time)
@@ -82,13 +100,38 @@ async function loadHistory(): Promise<void> {
       lastTimestamp = lastCandle.time
       updateLegend(lastCandle)
     }
+    const latestPendingCandle = currentPendingCandle()
+    if (
+      latestPendingCandle
+      && latestPendingCandle.time >= lastTimestamp
+    ) {
+      candleSeries.value.update(candlePoint(latestPendingCandle))
+      volumeSeries.value.update(volumePoint(latestPendingCandle))
+      lastTimestamp = latestPendingCandle.time
+      updateLegend(latestPendingCandle)
+    }
+    emit('history', props.sessionId, fingerprint, candles)
     chart.value?.timeScale().fitContent()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error)
-    throw error
   } finally {
-    loading.value = false
+    if (generation === historyGeneration) {
+      loading.value = false
+    }
   }
+}
+
+function selectionFingerprint(): string {
+  return [
+    props.selection.provider,
+    props.selection.market,
+    props.selection.symbol,
+    props.selection.interval,
+  ].join(':')
+}
+
+function currentPendingCandle(): Candle | undefined {
+  return pendingCandle
 }
 
 function displaySymbol(): string {
@@ -167,8 +210,18 @@ onMounted(() => {
       rightOffset: 8,
       barSpacing: 8,
     },
-    handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
-    handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true },
+    handleScale: {
+      axisPressedMouseMove: { time: true, price: true },
+      axisDoubleClickReset: { time: true, price: true },
+      mouseWheel: true,
+      pinch: true,
+    },
+    handleScroll: {
+      mouseWheel: true,
+      pressedMouseMove: true,
+      horzTouchDrag: true,
+      vertTouchDrag: true,
+    },
   })
 
   const candles = chartApi.addSeries(CandlestickSeries, {
@@ -189,12 +242,73 @@ onMounted(() => {
   }, 1)
   chartApi.panes()[1]?.setHeight(94)
 
+  const mainPane = chartApi.panes()[0]
+  if (mainPane) {
+    createTextWatermark(mainPane, {
+      visible: true,
+      horzAlign: 'center',
+      vertAlign: 'center',
+      lines: [
+        {
+          text: displaySymbol(),
+          color: 'rgba(132, 158, 171, 0.10)',
+          fontSize: 46,
+          lineHeight: 54,
+          fontFamily: '"Inter Variable", Inter, sans-serif',
+          fontStyle: '700',
+        },
+        {
+          text: props.selection.interval.toUpperCase(),
+          color: 'rgba(132, 158, 171, 0.075)',
+          fontSize: 22,
+          lineHeight: 30,
+          fontFamily: '"JetBrains Mono Variable", monospace',
+          fontStyle: '600',
+        },
+      ],
+    })
+
+    const paneElement = mainPane.getHTMLElement()
+    if (paneElement) {
+      const enablePricePan = (event: PointerEvent) => {
+        if (
+          !event.isPrimary
+          || event.button !== 0
+          || event.clientX >= (
+            paneElement.getBoundingClientRect().right
+            - candles.priceScale().width()
+          )
+        ) {
+          return
+        }
+
+        // Lightweight Charts only pans the Y axis after auto scale is off.
+        // Switching modes before its native drag handler lets one gesture move
+        // time and price without a second renderer or per-frame Vue updates.
+        candles.priceScale().setAutoScale(false)
+      }
+      paneElement.addEventListener('pointerdown', enablePricePan, {
+        capture: true,
+        passive: true,
+      })
+      releaseVerticalPricePan = () => {
+        paneElement.removeEventListener('pointerdown', enablePricePan, true)
+      }
+    }
+  }
+
   chart.value = chartApi
   candleSeries.value = candles
   volumeSeries.value = volume
 
-  unsubscribeCandle = onCandle((candle) => {
+  unsubscribeCandle = onCandle(props.sessionId, (candle) => {
     if (!isCurrentSelection(candle)) {
+      return
+    }
+    if (loading.value) {
+      if (!pendingCandle || candle.time >= pendingCandle.time) {
+        pendingCandle = candle
+      }
       return
     }
     if (candle.time < lastTimestamp) {
@@ -206,9 +320,16 @@ onMounted(() => {
     lastTimestamp = candle.time
     updateLegend(candle)
   })
+
+  // The chart owns its initial load. This avoids a parent-ref race while
+  // Vue replaces keyed chart instances during tab and interval changes.
+  void loadHistory()
 })
 
 onBeforeUnmount(() => {
+  historyGeneration += 1
+  releaseVerticalPricePan?.()
+  releaseVerticalPricePan = undefined
   unsubscribeCandle?.()
   candleSeries.value = null
   volumeSeries.value = null
@@ -216,18 +337,10 @@ onBeforeUnmount(() => {
   chart.value = null
 })
 
-defineExpose({ loadHistory })
 </script>
 
 <template>
-  <section class="chart-panel panel">
-    <div class="instrument-tabs">
-      <button class="active" type="button">
-        {{ displaySymbol() }} <small>{{ selection.interval }}</small>
-        <span>×</span>
-      </button>
-      <button class="new-tab" type="button">＋</button>
-    </div>
+  <section class="chart-panel">
     <ChartToolbar
       :interval="selection.interval"
       @interval="emit('interval', $event)"
@@ -245,10 +358,6 @@ defineExpose({ loadHistory })
       </div>
       <div v-if="loading" class="chart-message">Carregando candles…</div>
       <div v-else-if="errorMessage" class="chart-message error">{{ errorMessage }}</div>
-      <div class="chart-watermark">
-        <strong>{{ displaySymbol() }}</strong>
-        <span>{{ selection.interval.toUpperCase() }}</span>
-      </div>
       <span class="tradingview-attribution">Charts by TradingView</span>
     </div>
   </section>

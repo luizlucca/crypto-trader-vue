@@ -28,6 +28,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   market: [market: Market]
   symbol: [symbol: MarketPair]
+  newTab: [symbol: MarketPair]
   openSearch: [query: string]
 }>()
 
@@ -92,6 +93,14 @@ function ariaSort(key: SidebarSortKey): 'ascending' | 'descending' | 'none' {
     return 'none'
   }
   return sortDirection.value === 'asc' ? 'ascending' : 'descending'
+}
+
+function selectSymbol(event: MouseEvent, symbol: MarketPair): void {
+  if (event.ctrlKey || event.metaKey) {
+    emit('newTab', symbol)
+    return
+  }
+  emit('symbol', symbol)
 }
 </script>
 
@@ -163,8 +172,9 @@ function ariaSort(key: SidebarSortKey): 'ascending' | 'descending' | 'none' {
             :key="item.symbol"
             class="market-table market-row"
             :class="{ selected: item.symbol === selection.symbol }"
+            title="Clique para abrir · Ctrl+clique para abrir em nova aba"
             type="button"
-            @click="emit('symbol', item)"
+            @click="selectSymbol($event, item)"
           >
             <span class="market-symbol-cell">
               <CryptoAssetIcon :size="17" :symbol="item.baseAsset" />
@@ -202,8 +212,9 @@ function ariaSort(key: SidebarSortKey): 'ascending' | 'descending' | 'none' {
         v-for="item in favorites"
         :key="`favorite-${item.symbol}`"
         class="compact-row favorite-row"
+        title="Clique para abrir · Ctrl+clique para abrir em nova aba"
         type="button"
-        @click="emit('symbol', item)"
+        @click="selectSymbol($event, item)"
       >
         <span class="market-symbol-cell">
           <CryptoAssetIcon :size="16" :symbol="item.baseAsset" />

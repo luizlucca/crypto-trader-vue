@@ -43,11 +43,27 @@ export interface CandlesRequest {
 
 export interface StartStreamRequest {
   kind: 'start-stream'
+  sessionId: string
   selection: MarketSelection
+  visible: boolean
 }
 
 export interface StopStreamRequest {
   kind: 'stop-stream'
+  sessionId: string
+}
+
+export interface UpdateCandleStreamRequest {
+  kind: 'update-candle-stream'
+  sessionId: string
+  selection: MarketSelection
+  visible: boolean
+}
+
+export interface SetStreamVisibilityRequest {
+  kind: 'set-stream-visibility'
+  sessionId: string
+  visible: boolean
 }
 
 export type MarketDataRequest =
@@ -55,7 +71,9 @@ export type MarketDataRequest =
   | SymbolsRequest
   | CandlesRequest
   | StartStreamRequest
+  | UpdateCandleStreamRequest
   | StopStreamRequest
+  | SetStreamVisibilityRequest
 
 export interface UtilityRequest {
   type: 'request'
@@ -64,6 +82,11 @@ export interface UtilityRequest {
 }
 
 export type MarketDataEvent =
+  | { sessionId: string; kind: 'candle'; payload: Candle }
+  | { sessionId: string; kind: 'orderbook'; payload: OrderBookSnapshot }
+  | { sessionId: string; kind: 'status'; payload: StreamStatus }
+
+export type MarketSessionEvent =
   | { kind: 'candle'; payload: Candle }
   | { kind: 'orderbook'; payload: OrderBookSnapshot }
   | { kind: 'status'; payload: StreamStatus }
@@ -88,8 +111,16 @@ export type UtilityMessage =
     }
 
 export interface SymbolSearchContext {
+  tabId: string
+  intent: 'replace-tab' | 'new-tab'
   selection: MarketSelection
   initialQuery: string
+}
+
+export interface SymbolSelectionResult {
+  tabId: string
+  intent: SymbolSearchContext['intent']
+  item: MarketPair
 }
 
 export interface DesktopMarketDataAPI {
@@ -105,13 +136,27 @@ export interface DesktopMarketDataAPI {
     quoteAsset?: string,
   ): Promise<MarketSymbol[]>
   getCandles(selection: MarketSelection, limit?: number): Promise<Candle[]>
-  startStream(selection: MarketSelection): Promise<void>
-  stopStream(): Promise<void>
-  onCandle(callback: (candle: Candle) => void): () => void
-  onOrderBook(
-    callback: (snapshot: OrderBookSnapshot) => void,
+  startStream(
+    sessionId: string,
+    selection: MarketSelection,
+    visible?: boolean,
+  ): Promise<void>
+  updateCandleStream(
+    sessionId: string,
+    selection: MarketSelection,
+    visible?: boolean,
+  ): Promise<void>
+  stopStream(sessionId: string): Promise<void>
+  setStreamVisibility(sessionId: string, visible: boolean): Promise<void>
+  onCandle(
+    callback: (sessionId: string, candle: Candle) => void,
   ): () => void
-  onStatus(callback: (status: StreamStatus) => void): () => void
+  onOrderBook(
+    callback: (sessionId: string, snapshot: OrderBookSnapshot) => void,
+  ): () => void
+  onStatus(
+    callback: (sessionId: string, status: StreamStatus) => void,
+  ): () => void
 }
 
 export interface DesktopWindowsAPI {
@@ -123,7 +168,9 @@ export interface DesktopWindowsAPI {
   onSearchContext(
     callback: (context: SymbolSearchContext) => void,
   ): () => void
-  onSymbolSelected(callback: (item: MarketPair) => void): () => void
+  onSymbolSelected(
+    callback: (result: SymbolSelectionResult) => void,
+  ): () => void
   onFavoritesChanged(callback: (keys: string[]) => void): () => void
 }
 
@@ -232,8 +279,17 @@ export function isSymbolSearchContext(
     return false
   }
   const context = value as Partial<SymbolSearchContext>
-  return isMarketSelection(context.selection)
+  return isSessionId(context.tabId)
+    && (context.intent === 'replace-tab' || context.intent === 'new-tab')
+    && isMarketSelection(context.selection)
     && typeof context.initialQuery === 'string'
+}
+
+function isSessionId(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length >= 1
+    && value.length <= 128
+    && /^[a-zA-Z0-9_-]+$/.test(value)
 }
 
 export function isMarketDataRequest(value: unknown): value is MarketDataRequest {
@@ -257,9 +313,18 @@ export function isMarketDataRequest(value: unknown): value is MarketDataRequest 
         && (request.limit ?? 0) >= 1
         && (request.limit ?? 0) <= 1_000
     case 'start-stream':
-      return isMarketSelection(request.selection)
+      return isSessionId(request.sessionId)
+        && isMarketSelection(request.selection)
+        && typeof request.visible === 'boolean'
+    case 'update-candle-stream':
+      return isSessionId(request.sessionId)
+        && isMarketSelection(request.selection)
+        && typeof request.visible === 'boolean'
     case 'stop-stream':
-      return true
+      return isSessionId(request.sessionId)
+    case 'set-stream-visibility':
+      return isSessionId(request.sessionId)
+        && typeof request.visible === 'boolean'
     default:
       return false
   }
