@@ -219,7 +219,7 @@ function applyChartTheme(palette: ThemePalette): void {
     downColor: palette.candleDown,
     wickUpColor: palette.candleUp,
     wickDownColor: palette.candleDown,
-    priceLineColor: palette.candleUp,
+    priceLineColor: palette.positive,
   })
   watermark?.applyOptions({ lines: watermarkLines(palette) })
 
@@ -337,7 +337,7 @@ onMounted(() => {
     wickUpColor: palette.candleUp,
     wickDownColor: palette.candleDown,
     wickVisible: true,
-    priceLineColor: palette.candleUp,
+    priceLineColor: palette.positive,
     lastValueVisible: true,
     radius: (barSpacing: number) => barSpacing < 4
       ? 0

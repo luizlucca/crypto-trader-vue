@@ -485,12 +485,34 @@ const DEFINITIONS = [
 export type ThemePresetId = typeof DEFINITIONS[number]['id']
 export type ThemeMode = 'dark' | 'light'
 
-export interface ThemePreset {
-  id: ThemePresetId
+export interface ThemePreset<TId extends string = string> {
+  id: TId
   name: string
   description: string
   dark: ThemePalette
   light: ThemePalette
+}
+
+export interface ThemeVariantCustomization {
+  accent: string
+  candleUp: string
+  candleDown: string
+  chartBackground: string
+  candleOpacity: number
+  backgroundOpacity: number
+}
+
+export type CustomThemeId = `custom:${string}`
+export type ThemeSelectionId = ThemePresetId | CustomThemeId
+
+export interface CustomThemeDefinition {
+  version: 1
+  id: CustomThemeId
+  name: string
+  basePresetId: ThemePresetId
+  createdAt: number
+  dark: ThemeVariantCustomization
+  light: ThemeVariantCustomization
 }
 
 function hexChannels(hex: string): [number, number, number] {
@@ -627,7 +649,7 @@ function lightPalette(definition: ThemeDefinition): ThemePalette {
   }
 }
 
-export const themePresets: readonly ThemePreset[] = DEFINITIONS.map(
+export const themePresets: readonly ThemePreset<ThemePresetId>[] = DEFINITIONS.map(
   (definition) => ({
     id: definition.id,
     name: definition.name,
@@ -656,4 +678,132 @@ export function getThemePalette(
   mode: ThemeMode,
 ): ThemePalette {
   return getThemePreset(id)[mode]
+}
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+
+function clampedOpacity(value: number): number {
+  return Math.max(0.1, Math.min(1, value))
+}
+
+function isHexColor(value: unknown): value is string {
+  return typeof value === 'string' && HEX_COLOR.test(value)
+}
+
+export function isCustomThemeId(value: unknown): value is CustomThemeId {
+  return typeof value === 'string'
+    && /^custom:[a-z0-9-]{6,80}$/i.test(value)
+}
+
+export function isThemeVariantCustomization(
+  value: unknown,
+): value is ThemeVariantCustomization {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const variant = value as Partial<ThemeVariantCustomization>
+  return isHexColor(variant.accent)
+    && isHexColor(variant.candleUp)
+    && isHexColor(variant.candleDown)
+    && isHexColor(variant.chartBackground)
+    && typeof variant.candleOpacity === 'number'
+    && Number.isFinite(variant.candleOpacity)
+    && variant.candleOpacity >= 0.1
+    && variant.candleOpacity <= 1
+    && typeof variant.backgroundOpacity === 'number'
+    && Number.isFinite(variant.backgroundOpacity)
+    && variant.backgroundOpacity >= 0.1
+    && variant.backgroundOpacity <= 1
+}
+
+export function isCustomThemeDefinition(
+  value: unknown,
+): value is CustomThemeDefinition {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const definition = value as Partial<CustomThemeDefinition>
+  return definition.version === 1
+    && isCustomThemeId(definition.id)
+    && typeof definition.name === 'string'
+    && definition.name.trim().length >= 2
+    && definition.name.trim().length <= 32
+    && isThemePresetId(definition.basePresetId)
+    && typeof definition.createdAt === 'number'
+    && Number.isFinite(definition.createdAt)
+    && isThemeVariantCustomization(definition.dark)
+    && isThemeVariantCustomization(definition.light)
+}
+
+export function defaultThemeCustomization(
+  basePresetId: ThemePresetId,
+  mode: ThemeMode,
+): ThemeVariantCustomization {
+  const palette = getThemePalette(basePresetId, mode)
+  return {
+    accent: palette.accent,
+    candleUp: palette.positive,
+    candleDown: palette.negative,
+    chartBackground: palette.chartBackground,
+    candleOpacity: 1,
+    backgroundOpacity: 1,
+  }
+}
+
+export function customizeThemePalette(
+  base: ThemePalette,
+  customization: ThemeVariantCustomization,
+  mode: ThemeMode,
+): ThemePalette {
+  const accent = customization.accent
+  const candleOpacity = clampedOpacity(customization.candleOpacity)
+  const backgroundOpacity = clampedOpacity(customization.backgroundOpacity)
+  const accentHover = mix(
+    accent,
+    mode === 'dark' ? '#ffffff' : '#000000',
+    mode === 'dark' ? 0.18 : 0.12,
+  )
+  return {
+    ...base,
+    hover: mix(base.hover, accent, 0.15),
+    selected: mix(base.selected, accent, 0.20),
+    border: mix(base.border, accent, 0.08),
+    borderSoft: mix(base.borderSoft, accent, 0.06),
+    accent,
+    accentHover,
+    accentSoft: rgba(accent, mode === 'dark' ? 0.13 : 0.10),
+    accentContrast: accentContrast(accent),
+    positive: customization.candleUp,
+    negative: customization.candleDown,
+    chartBackground: rgba(
+      customization.chartBackground,
+      backgroundOpacity,
+    ),
+    chartBorder: mix(base.chartBorder, accent, 0.08),
+    chartCrosshair: mix(base.chartCrosshair, accent, 0.08),
+    chartCrosshairLabel: mix(base.chartCrosshairLabel, accent, 0.12),
+    candleUp: rgba(customization.candleUp, candleOpacity),
+    candleDown: rgba(customization.candleDown, candleOpacity),
+    volumeUp: rgba(
+      customization.candleUp,
+      (mode === 'dark' ? 0.42 : 0.36) * candleOpacity,
+    ),
+    volumeDown: rgba(
+      customization.candleDown,
+      (mode === 'dark' ? 0.40 : 0.34) * candleOpacity,
+    ),
+  }
+}
+
+export function createCustomThemePreset(
+  definition: CustomThemeDefinition,
+): ThemePreset<CustomThemeId> {
+  const base = getThemePreset(definition.basePresetId)
+  return {
+    id: definition.id,
+    name: definition.name,
+    description: 'Tema personalizado',
+    dark: customizeThemePalette(base.dark, definition.dark, 'dark'),
+    light: customizeThemePalette(base.light, definition.light, 'light'),
+  }
 }

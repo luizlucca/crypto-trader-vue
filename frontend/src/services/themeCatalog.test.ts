@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  createCustomThemePreset,
+  customizeThemePalette,
+  defaultThemeCustomization,
   getThemePalette,
+  isCustomThemeDefinition,
   isThemePresetId,
   themePresets,
 } from './themeCatalog'
@@ -48,5 +52,41 @@ describe('theme catalog', () => {
     expect(getThemePalette(preset.id, 'dark')).toBe(preset.dark)
     expect(getThemePalette(preset.id, 'light')).toBe(preset.light)
     expect(isThemePresetId('not-a-theme')).toBe(false)
+  })
+
+  it('creates transparent custom candle and chart colors', () => {
+    const customization = defaultThemeCustomization('cryptopro', 'dark')
+    customization.candleUp = '#10b981'
+    customization.candleDown = '#f43f5e'
+    customization.chartBackground = '#102030'
+    customization.candleOpacity = 0.65
+    customization.backgroundOpacity = 0.35
+    const palette = customizeThemePalette(
+      getThemePalette('cryptopro', 'dark'),
+      customization,
+      'dark',
+    )
+
+    expect(palette.candleUp).toBe('rgba(16, 185, 129, 0.65)')
+    expect(palette.candleDown).toBe('rgba(244, 63, 94, 0.65)')
+    expect(palette.chartBackground).toBe('rgba(16, 32, 48, 0.35)')
+    expect(palette.positive).toBe('#10b981')
+  })
+
+  it('validates and materializes a persisted custom preset', () => {
+    const definition = {
+      version: 1 as const,
+      id: 'custom:theme-test-123' as const,
+      name: 'Tema de teste',
+      basePresetId: 'ocean' as const,
+      createdAt: 123,
+      dark: defaultThemeCustomization('ocean', 'dark'),
+      light: defaultThemeCustomization('ocean', 'light'),
+    }
+
+    expect(isCustomThemeDefinition(definition)).toBe(true)
+    const preset = createCustomThemePreset(definition)
+    expect(preset.id).toBe(definition.id)
+    expect(preset.dark.accent).toBe(definition.dark.accent)
   })
 })
