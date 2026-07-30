@@ -19,6 +19,19 @@ function closeOnMiddleClick(event: MouseEvent, tabId: string): void {
     emit('close', tabId)
   }
 }
+
+function streamStatusLabel(tab: WorkspaceTab): string {
+  const labels = {
+    connecting: 'conectando',
+    connected: 'conectado',
+    reconnecting: 'reconectando',
+    error: 'com erro',
+  } as const
+  return [
+    `Livro ${labels[tab.orderBookState]}`,
+    `candles ${labels[tab.candleState]}`,
+  ].join(' · ')
+}
 </script>
 
 <template>
@@ -40,8 +53,9 @@ function closeOnMiddleClick(event: MouseEvent, tabId: string): void {
         >
           <i
             class="instrument-tab-status"
-            :class="tab.status"
-            aria-hidden="true"
+            :class="tab.orderBookState"
+            :title="streamStatusLabel(tab)"
+            :aria-label="streamStatusLabel(tab)"
           />
           <span>
             <strong>{{ workspaceTabLabel(tab) }}</strong>

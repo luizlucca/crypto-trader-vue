@@ -1337,7 +1337,7 @@ body.panel-resizing * {
 
 .book-ratio b {
   display: block;
-  width: 54%;
+  width: 50%;
   height: 100%;
   background: var(--green);
 }

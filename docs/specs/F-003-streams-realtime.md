@@ -14,6 +14,7 @@ sem que bursts do livro atrasem o canvas, troca de aba ou interface.
 - O candle visível atualiza incrementalmente; o livro não acumula fila de renders.
 - Livros de abas ocultas não atravessam o IPC até voltarem ao primeiro plano.
 - Status de conexão e latência são expostos por aba.
+- A proporção de compra/venda acompanha a liquidez dos níveis visíveis.
 
 ## Implementação e decisões de arquitetura
 
@@ -26,6 +27,10 @@ sem que bursts do livro atrasem o canvas, troca de aba ou interface.
 - `MarketChart.vue` usa `series.update()` para candle realtime; não há render
   Vue por tick de candle ou livro.
 - `realtimePrice.ts` atualiza textos de preço em canal imperativo.
+- O ponto da aba representa o estado do livro; candles e estado agregado
+  permanecem disponíveis separadamente.
+- A proporção soma quantidades dos 10 níveis visíveis e atualiza textos/barra no
+  mesmo frame imperativo das linhas.
 
 Fontes de verdade: `electron/utility/market-data/session.ts`,
 `src/components/orderbook/OrderBook.vue`,
@@ -45,6 +50,7 @@ Fontes de verdade: `electron/utility/market-data/session.ts`,
 - [ ] Aba inativa deixa de entregar bursts de livro ao renderer.
 - [ ] Latência é limitada, não atualizada por snapshot.
 - [ ] Falha do processo sinaliza a aba e restaura assinaturas após reinício.
+- [ ] A barra de compra/venda acompanha os snapshots sem render Vue adicional.
 
 ## Evolução
 

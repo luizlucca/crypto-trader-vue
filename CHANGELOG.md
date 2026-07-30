@@ -20,6 +20,13 @@ observável; detalhes de implementação permanecem nas specs e ADRs.
 - Gráfico abre nas últimas 20 barras com espaço à direita e carrega páginas
   anteriores de 400 candles ao navegar para o limite esquerdo.
 
+### Fixed
+
+- Indicador da aba agora representa o estado do livro e recupera ao receber
+  snapshots válidos, sem esconder falhas exclusivas de candles.
+- Percentuais e barra de compra/venda agora acompanham a liquidez dos 10 níveis
+  visíveis do livro de ordens.
+
 ## Convenção de atualização
 
 - Use **Added**, **Changed**, **Fixed**, **Deprecated**, **Removed** ou

@@ -10,6 +10,8 @@ export interface WorkspaceTab {
   id: string
   selection: MarketSelection
   status: StreamStatus['state']
+  candleState: StreamStatus['candleState']
+  orderBookState: StreamStatus['orderBookState']
   statusMessage: string
   latency: number | null
   generation: number
@@ -29,6 +31,8 @@ export function createWorkspaceTab(
     id,
     selection: { ...selection },
     status: 'connecting',
+    candleState: 'connecting',
+    orderBookState: 'connecting',
     statusMessage: '',
     latency: null,
     generation: 0,
@@ -38,6 +42,16 @@ export function createWorkspaceTab(
 
 export function workspaceTabLabel(tab: WorkspaceTab): string {
   return `${tab.selection.baseAsset}/${tab.selection.quoteAsset}`
+}
+
+export function applyWorkspaceStreamStatus(
+  tab: WorkspaceTab,
+  status: StreamStatus,
+): void {
+  tab.status = status.state
+  tab.candleState = status.candleState
+  tab.orderBookState = status.orderBookState
+  tab.statusMessage = status.message ?? ''
 }
 
 export function selectionForNewTab(

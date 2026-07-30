@@ -81,12 +81,14 @@ export interface OrderBookSnapshot {
   spread: number
 }
 
+export type StreamState = 'connecting' | 'connected' | 'reconnecting' | 'error'
+
 export interface StreamStatus {
   provider: string
   market: Market
   symbol: string
-  state: 'connecting' | 'connected' | 'reconnecting' | 'error'
-  candleState: string
-  orderBookState: string
+  state: StreamState
+  candleState: StreamState
+  orderBookState: StreamState
   message?: string
 }

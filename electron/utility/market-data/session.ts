@@ -48,7 +48,10 @@ export class MarketSession {
         this.updateState('candles', state)
       })
       .subscribe({
-        next: (candle) => this.emit({ kind: 'candle', payload: candle }),
+        next: (candle) => {
+          this.confirmStreamData('candles')
+          this.emit({ kind: 'candle', payload: candle })
+        },
         error: (error) => this.handleFatal('candles', error),
       })
 
@@ -62,6 +65,7 @@ export class MarketSession {
       .pipe(auditTime(16))
       .subscribe({
         next: (snapshot) => {
+          this.confirmStreamData('orderbook')
           this.latestOrderBook = snapshot
           if (this.visible) {
             this.emit({ kind: 'orderbook', payload: snapshot })
@@ -143,6 +147,15 @@ export class MarketSession {
       state: 'error',
       message: error instanceof Error ? error.message : String(error),
     })
+  }
+
+  private confirmStreamData(stream: StreamName): void {
+    const currentState = stream === 'candles'
+      ? this.candleState
+      : this.orderBookState
+    if (currentState !== 'connected') {
+      this.updateState(stream, { state: 'connected' })
+    }
   }
 
   private emitStatus(): void {

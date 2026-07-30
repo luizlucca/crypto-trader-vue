@@ -8,6 +8,7 @@ import type {
 } from '../../types/market'
 import { onOrderBook } from '../../services/marketData'
 import { publishRealtimePrice } from '../../services/realtimePrice'
+import { calculateOrderBookRatio } from './orderBookRatio'
 
 const ROW_COUNT = 10
 const props = defineProps<{
@@ -30,6 +31,10 @@ const askRows: Array<BookRowElements | undefined> = []
 const bidRows: Array<BookRowElements | undefined> = []
 const midPrice = ref<HTMLElement | null>(null)
 const spread = ref<HTMLElement | null>(null)
+const buyRatioText = ref<HTMLElement | null>(null)
+const sellRatioText = ref<HTMLElement | null>(null)
+const ratioTrack = ref<HTMLElement | null>(null)
+const ratioFill = ref<HTMLElement | null>(null)
 let latestSnapshot: OrderBookSnapshot | null = null
 let frameHandle = 0
 let unsubscribe: (() => void) | undefined
@@ -111,6 +116,7 @@ function renderRows(
 function renderSnapshot(snapshot: OrderBookSnapshot): void {
   renderRows(askRows, snapshot.asks, 'ask', true)
   renderRows(bidRows, snapshot.bids, 'bid', false)
+  renderRatio(snapshot)
   if (midPrice.value) {
     writeText(midPrice.value, formatPrice(snapshot.midPrice))
   }
@@ -127,6 +133,40 @@ function renderSnapshot(snapshot: OrderBookSnapshot): void {
   if (now - lastMetricsAt >= 500) {
     lastMetricsAt = now
     emit('latency', Math.max(0, now - snapshot.eventTime))
+  }
+}
+
+function formatRatio(value: number): string {
+  return value.toFixed(1).replace('.', ',')
+}
+
+function renderRatio(snapshot: OrderBookSnapshot): void {
+  const ratio = calculateOrderBookRatio(
+    snapshot.bids,
+    snapshot.asks,
+    ROW_COUNT,
+  )
+  if (!ratio) {
+    clearRatio()
+    return
+  }
+  const buyText = formatRatio(ratio.buyPercent)
+  const sellText = formatRatio(ratio.sellPercent)
+  if (buyRatioText.value) {
+    writeText(buyRatioText.value, `Compra ${buyText}%`)
+  }
+  if (sellRatioText.value) {
+    writeText(sellRatioText.value, `${sellText}% Venda`)
+  }
+  if (ratioFill.value) {
+    writeWidth(ratioFill.value, `${ratio.buyPercent.toFixed(2)}%`)
+  }
+  if (ratioTrack.value) {
+    writeAttribute(
+      ratioTrack.value,
+      'aria-label',
+      `Liquidez visível: compra ${buyText}%, venda ${sellText}%`,
+    )
   }
 }
 
@@ -167,6 +207,29 @@ function writeWidth(element: HTMLElement, value: string): void {
   }
 }
 
+function writeAttribute(
+  element: HTMLElement,
+  name: string,
+  value: string,
+): void {
+  if (element.getAttribute(name) !== value) {
+    element.setAttribute(name, value)
+  }
+}
+
+function clearRatio(): void {
+  if (buyRatioText.value) writeText(buyRatioText.value, 'Compra —')
+  if (sellRatioText.value) writeText(sellRatioText.value, '— Venda')
+  if (ratioFill.value) writeWidth(ratioFill.value, '50%')
+  if (ratioTrack.value) {
+    writeAttribute(
+      ratioTrack.value,
+      'aria-label',
+      'Liquidez de compra e venda indisponível',
+    )
+  }
+}
+
 function clearBook(): void {
   latestSnapshot = null
   lastUpdateID = 0
@@ -175,6 +238,7 @@ function clearBook(): void {
   renderRows(bidRows, [], 'bid', false)
   if (midPrice.value) writeText(midPrice.value, '—')
   if (spread.value) writeText(spread.value, 'Spread —')
+  clearRatio()
 }
 
 onMounted(() => {
@@ -255,9 +319,15 @@ watch(
     </div>
 
     <footer class="book-ratio">
-      <span>Compra 54,2%</span>
-      <i><b /></i>
-      <span>45,8% Venda</span>
+      <span ref="buyRatioText">Compra —</span>
+      <i
+        ref="ratioTrack"
+        aria-label="Liquidez de compra e venda indisponível"
+        role="img"
+      >
+        <b ref="ratioFill" />
+      </i>
+      <span ref="sellRatioText">— Venda</span>
     </footer>
   </section>
 </template>

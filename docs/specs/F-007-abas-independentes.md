@@ -16,6 +16,8 @@ perder contexto, sem compartilhar livro de ordens e com consumo previsível.
 - Alterar período muda somente stream de candle daquela aba.
 - Fechamento por ícone ou clique do meio preserva sempre uma aba.
 - Máximo atual: oito abas simultâneas.
+- O ponto de cada aba informa o estado do livro, sem ser contaminado por uma
+  falha exclusiva do stream de candles.
 
 ## Implementação e decisões de arquitetura
 
@@ -46,6 +48,7 @@ Fontes de verdade: `src/components/workspace/TradingWorkspace.vue`,
 - [ ] Trocar período não reinicia livro da mesma aba.
 - [ ] Aba inativa não entrega bursts de livro ao renderer.
 - [ ] Fechar aba encerra streams e remove cache.
+- [ ] Livro conectado mantém ponto verde mesmo com erro exclusivo de candles.
 
 ## Evolução
 

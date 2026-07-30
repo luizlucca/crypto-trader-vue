@@ -4,6 +4,13 @@ Bugs devem ser registrados como issue usando este modelo. Um bug corrigido só �
 encerrado com reprodução documentada, teste de regressão quando viável e spec
 atualizada se o comportamento esperado mudou.
 
+## Bugs registrados
+
+| ID | Descrição | Status |
+| --- | --- | --- |
+| [BUG-001](./BUG-001-indicador-do-livro-na-aba.md) | Indicador do livro permanece vermelho | Corrigido |
+| [BUG-002](./BUG-002-proporcao-do-livro-estatica.md) | Proporção do livro era estática | Corrigido |
+
 ## Modelo
 
     Título: [área] descrição objetiva

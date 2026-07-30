@@ -40,6 +40,7 @@ import type {
   StreamStatus,
 } from '../../types/market'
 import {
+  applyWorkspaceStreamStatus,
   createWorkspaceTab,
   marketSelectionFingerprint,
   MAX_WORKSPACE_TABS,
@@ -323,6 +324,8 @@ async function startTabSession(
   } catch (error) {
     if (isCurrentGeneration(tab, generation)) {
       tab.status = 'error'
+      tab.candleState = 'error'
+      tab.orderBookState = 'error'
       tab.statusMessage = error instanceof Error ? error.message : String(error)
     }
   }
@@ -334,6 +337,8 @@ async function restartTab(
 ): Promise<void> {
   const generation = ++tab.generation
   tab.status = 'connecting'
+  tab.candleState = 'connecting'
+  tab.orderBookState = 'connecting'
   tab.statusMessage = ''
   tab.latency = null
   histories.delete(tab.id)
@@ -355,6 +360,8 @@ async function changeMarket(market: Market): Promise<void> {
 
   const generation = ++tab.generation
   tab.status = 'connecting'
+  tab.candleState = 'connecting'
+  tab.orderBookState = 'connecting'
   tab.statusMessage = ''
   tab.latency = null
   histories.delete(tab.id)
@@ -380,8 +387,7 @@ async function changeMarket(market: Market): Promise<void> {
     await startTabSession(tab, generation)
   } catch (error) {
     if (isCurrentGeneration(tab, generation)) {
-      tab.status = 'error'
-      tab.statusMessage = error instanceof Error ? error.message : String(error)
+      reportTabError(tab, error)
     }
   }
 }
@@ -516,6 +522,7 @@ async function changeInterval(interval: string): Promise<void> {
 
   const generation = ++tab.generation
   tab.status = 'connecting'
+  tab.candleState = 'connecting'
   tab.statusMessage = ''
   histories.delete(tab.id)
   tab.selection.interval = interval
@@ -525,13 +532,21 @@ async function changeInterval(interval: string): Promise<void> {
     await updateMarketCandleStream(tab.id, tab.selection)
   } catch (error) {
     if (isCurrentGeneration(tab, generation)) {
-      reportTabError(tab, error)
+      reportTabError(tab, error, 'candles')
     }
   }
 }
 
-function reportTabError(tab: WorkspaceTab, error: unknown): void {
+function reportTabError(
+  tab: WorkspaceTab,
+  error: unknown,
+  stream: 'all' | 'candles' = 'all',
+): void {
   tab.status = 'error'
+  tab.candleState = 'error'
+  if (stream === 'all') {
+    tab.orderBookState = 'error'
+  }
   tab.statusMessage = error instanceof Error ? error.message : String(error)
 }
 
@@ -648,8 +663,7 @@ onMounted(() => {
     if (!tab) {
       return
     }
-    tab.status = nextStatus.state
-    tab.statusMessage = nextStatus.message ?? ''
+    applyWorkspaceStreamStatus(tab, nextStatus)
   })
   const desktop = window.cryptoPro
   if (desktop) {

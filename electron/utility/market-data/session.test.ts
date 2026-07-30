@@ -64,6 +64,8 @@ class FakeProvider implements MarketDataProvider {
   readonly books = new Subject<OrderBookSnapshot>()
   candleStreamCalls = 0
   orderBookStreamCalls = 0
+  candleStateHandler: ConnectionStateHandler | undefined
+  orderBookStateHandler: ConnectionStateHandler | undefined
 
   async getCatalog(_options: CatalogOptions): Promise<MarketCatalog> {
     throw new Error('not used')
@@ -82,6 +84,7 @@ class FakeProvider implements MarketDataProvider {
     onState: ConnectionStateHandler,
   ): Subject<Candle> {
     this.candleStreamCalls += 1
+    this.candleStateHandler = onState
     onState({ state: 'connected' })
     return this.candles
   }
@@ -91,6 +94,7 @@ class FakeProvider implements MarketDataProvider {
     onState: ConnectionStateHandler,
   ): Subject<OrderBookSnapshot> {
     this.orderBookStreamCalls += 1
+    this.orderBookStateHandler = onState
     onState({ state: 'connected' })
     return this.books
   }
@@ -203,6 +207,40 @@ describe('MarketSession', () => {
     expect(events).toContainEqual(expect.objectContaining({
       kind: 'orderbook',
       payload: expect.objectContaining({ lastUpdateId: 42 }),
+    }))
+
+    session.stop()
+    vi.useRealTimers()
+  })
+
+  it('recovers the order-book status when valid snapshots are flowing', () => {
+    vi.useFakeTimers()
+    const provider = new FakeProvider()
+    const events: MarketSessionEvent[] = []
+    const session = new MarketSession((event) => events.push(event))
+    session.start(provider, selection)
+    events.length = 0
+
+    provider.orderBookStateHandler?.({
+      state: 'error',
+      message: 'Falha transitória',
+    })
+    expect(events.at(-1)).toEqual(expect.objectContaining({
+      kind: 'status',
+      payload: expect.objectContaining({
+        state: 'error',
+        orderBookState: 'error',
+      }),
+    }))
+
+    provider.books.next(orderBook(10))
+    vi.advanceTimersByTime(16)
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: 'status',
+      payload: expect.objectContaining({
+        state: 'connected',
+        orderBookState: 'connected',
+      }),
     }))
 
     session.stop()
