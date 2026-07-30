@@ -17,6 +17,11 @@ import type { MarketSelection } from '../../types/market'
 defineProps<{
   status: StreamStatus['state']
   selection: MarketSelection
+  settingsOpen: boolean
+}>()
+
+const emit = defineEmits<{
+  settings: []
 }>()
 </script>
 
@@ -77,7 +82,15 @@ defineProps<{
         <Sun v-if="appTheme === 'dark'" aria-hidden="true" />
         <Moon v-else aria-hidden="true" />
       </button>
-      <button aria-label="Configurações" title="Configurações" type="button">
+      <button
+        :aria-expanded="settingsOpen"
+        aria-controls="general-settings-panel"
+        aria-label="Configurações"
+        :class="{ active: settingsOpen }"
+        title="Configurações"
+        type="button"
+        @click="emit('settings')"
+      >
         <Settings aria-hidden="true" />
       </button>
       <button aria-label="Notificações" title="Notificações" type="button">

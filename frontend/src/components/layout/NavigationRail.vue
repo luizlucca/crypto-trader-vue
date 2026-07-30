@@ -7,6 +7,10 @@ import {
   WalletCards,
   Workflow,
 } from '@lucide/vue'
+
+const emit = defineEmits<{
+  settings: []
+}>()
 </script>
 
 <template>
@@ -24,7 +28,12 @@ import {
       <Workflow aria-hidden="true" />
     </button>
     <span class="rail-spacer" />
-    <button aria-label="Configurações" title="Configurações" type="button">
+    <button
+      aria-label="Configurações"
+      title="Configurações"
+      type="button"
+      @click="emit('settings')"
+    >
       <Settings aria-hidden="true" />
     </button>
     <button aria-label="Sair" title="Sair" type="button">

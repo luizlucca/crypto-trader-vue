@@ -21,7 +21,8 @@ import type { RoundedCandleData } from '../../plugins/roundedCandles/data'
 import type { Candle, MarketSelection } from '../../types/market'
 import { loadCandles, onCandle } from '../../services/marketData'
 import { publishRealtimePrice } from '../../services/realtimePrice'
-import { appTheme, type AppTheme } from '../../services/theme'
+import { appThemePalette } from '../../services/theme'
+import type { ThemePalette } from '../../services/themeCatalog'
 import ChartToolbar from './ChartToolbar.vue'
 import DrawingToolbar from './DrawingToolbar.vue'
 
@@ -30,9 +31,6 @@ const props = defineProps<{
   selection: MarketSelection
   initialHistory?: Candle[]
 }>()
-
-const CANDLE_UP_COLOR = '#24c7ad'
-const CANDLE_DOWN_COLOR = '#ef6671'
 
 const emit = defineEmits<{
   interval: [value: string]
@@ -56,40 +54,7 @@ let releaseVerticalPricePan: (() => void) | undefined
 let lastTimestamp = 0
 let historyGeneration = 0
 let pendingCandle: Candle | undefined
-
-interface ChartThemePalette {
-  background: string
-  text: string
-  grid: string
-  border: string
-  crosshair: string
-  crosshairLabel: string
-  watermarkPrimary: string
-  watermarkSecondary: string
-}
-
-const CHART_THEME: Record<AppTheme, ChartThemePalette> = {
-  dark: {
-    background: '#061821',
-    text: '#8195a3',
-    grid: '#12303b',
-    border: '#173744',
-    crosshair: '#5b7280',
-    crosshairLabel: '#24414e',
-    watermarkPrimary: 'rgba(132, 158, 171, 0.10)',
-    watermarkSecondary: 'rgba(132, 158, 171, 0.075)',
-  },
-  light: {
-    background: '#f8fbfc',
-    text: '#526975',
-    grid: '#dce7eb',
-    border: '#bfd0d7',
-    crosshair: '#718995',
-    crosshairLabel: '#526975',
-    watermarkPrimary: 'rgba(45, 76, 91, 0.085)',
-    watermarkSecondary: 'rgba(45, 76, 91, 0.065)',
-  },
-}
+let displayedCandles: Candle[] = []
 
 function candlePoint(candle: Candle): RoundedCandleData<UTCTimestamp> {
   return {
@@ -98,19 +63,32 @@ function candlePoint(candle: Candle): RoundedCandleData<UTCTimestamp> {
     high: candle.high,
     low: candle.low,
     close: candle.close,
-    color: candle.close >= candle.open
-      ? CANDLE_UP_COLOR
-      : CANDLE_DOWN_COLOR,
   }
 }
 
-function volumePoint(candle: Candle): HistogramData<UTCTimestamp> {
+function volumePoint(
+  candle: Candle,
+  palette = appThemePalette.value,
+): HistogramData<UTCTimestamp> {
   return {
     time: candle.time as UTCTimestamp,
     value: candle.volume,
     color: candle.close >= candle.open
-      ? 'rgba(21, 191, 141, 0.44)'
-      : 'rgba(241, 75, 88, 0.42)',
+      ? palette.volumeUp
+      : palette.volumeDown,
+  }
+}
+
+function rememberDisplayedCandle(candle: Candle): void {
+  const lastIndex = displayedCandles.length - 1
+  const last = displayedCandles[lastIndex]
+  if (last?.time === candle.time) {
+    displayedCandles[lastIndex] = candle
+  } else if (!last || candle.time > last.time) {
+    displayedCandles.push(candle)
+    if (displayedCandles.length > 500) {
+      displayedCandles.shift()
+    }
   }
 }
 
@@ -123,6 +101,7 @@ async function loadHistory(): Promise<void> {
   errorMessage.value = ''
   lastTimestamp = 0
   pendingCandle = undefined
+  displayedCandles = []
   const generation = ++historyGeneration
   const fingerprint = selectionFingerprint()
   candleSeries.value.setData([])
@@ -140,8 +119,9 @@ async function loadHistory(): Promise<void> {
     const candles = [...new Map(
       history.map((candle) => [candle.time, candle]),
     ).values()].sort((left, right) => left.time - right.time)
+    displayedCandles = candles
     candleSeries.value.setData(candles.map(candlePoint))
-    volumeSeries.value.setData(candles.map(volumePoint))
+    volumeSeries.value.setData(candles.map((candle) => volumePoint(candle)))
     const lastCandle = candles.at(-1)
     if (lastCandle) {
       lastTimestamp = lastCandle.time
@@ -155,6 +135,7 @@ async function loadHistory(): Promise<void> {
       candleSeries.value.update(candlePoint(latestPendingCandle))
       volumeSeries.value.update(volumePoint(latestPendingCandle))
       lastTimestamp = latestPendingCandle.time
+      rememberDisplayedCandle(latestPendingCandle)
       updateLegend(latestPendingCandle)
     }
     emit('history', props.sessionId, fingerprint, candles)
@@ -185,7 +166,7 @@ function displaySymbol(): string {
   return `${props.selection.baseAsset}/${props.selection.quoteAsset}`
 }
 
-function watermarkLines(palette: ChartThemePalette) {
+function watermarkLines(palette: ThemePalette) {
   return [
     {
       text: displaySymbol(),
@@ -206,31 +187,51 @@ function watermarkLines(palette: ChartThemePalette) {
   ]
 }
 
-function applyChartTheme(theme: AppTheme): void {
-  const palette = CHART_THEME[theme]
+function applyChartTheme(palette: ThemePalette): void {
   chart.value?.applyOptions({
     layout: {
-      background: { type: ColorType.Solid, color: palette.background },
-      textColor: palette.text,
+      background: {
+        type: ColorType.Solid,
+        color: palette.chartBackground,
+      },
+      textColor: palette.chartText,
     },
     grid: {
-      vertLines: { color: palette.grid },
-      horzLines: { color: palette.grid },
+      vertLines: { color: palette.chartGrid },
+      horzLines: { color: palette.chartGrid },
     },
     crosshair: {
       vertLine: {
-        color: palette.crosshair,
-        labelBackgroundColor: palette.crosshairLabel,
+        color: palette.chartCrosshair,
+        labelBackgroundColor: palette.chartCrosshairLabel,
       },
       horzLine: {
-        color: palette.crosshair,
-        labelBackgroundColor: palette.crosshairLabel,
+        color: palette.chartCrosshair,
+        labelBackgroundColor: palette.chartCrosshairLabel,
       },
     },
-    rightPriceScale: { borderColor: palette.border },
-    timeScale: { borderColor: palette.border },
+    rightPriceScale: { borderColor: palette.chartBorder },
+    timeScale: { borderColor: palette.chartBorder },
+  })
+  candleSeries.value?.applyOptions({
+    color: palette.candleUp,
+    upColor: palette.candleUp,
+    downColor: palette.candleDown,
+    wickUpColor: palette.candleUp,
+    wickDownColor: palette.candleDown,
+    priceLineColor: palette.candleUp,
   })
   watermark?.applyOptions({ lines: watermarkLines(palette) })
+
+  if (volumeSeries.value && displayedCandles.length > 0) {
+    const visibleRange = chart.value?.timeScale().getVisibleLogicalRange()
+    volumeSeries.value.setData(
+      displayedCandles.map((candle) => volumePoint(candle, palette)),
+    )
+    if (visibleRange) {
+      chart.value?.timeScale().setVisibleLogicalRange(visibleRange)
+    }
+  }
 }
 
 function updateLegend(candle: Candle): void {
@@ -277,36 +278,39 @@ onMounted(() => {
     return
   }
 
-  const palette = CHART_THEME[appTheme.value]
+  const palette = appThemePalette.value
   const chartApi = createChart(container.value, {
     autoSize: true,
     layout: {
-      background: { type: ColorType.Solid, color: palette.background },
-      textColor: palette.text,
+      background: {
+        type: ColorType.Solid,
+        color: palette.chartBackground,
+      },
+      textColor: palette.chartText,
       fontFamily: '"JetBrains Mono Variable", "SFMono-Regular", Consolas, monospace',
       fontSize: 12,
     },
     grid: {
-      vertLines: { color: palette.grid },
-      horzLines: { color: palette.grid },
+      vertLines: { color: palette.chartGrid },
+      horzLines: { color: palette.chartGrid },
     },
     crosshair: {
       mode: CrosshairMode.Normal,
       vertLine: {
-        color: palette.crosshair,
-        labelBackgroundColor: palette.crosshairLabel,
+        color: palette.chartCrosshair,
+        labelBackgroundColor: palette.chartCrosshairLabel,
       },
       horzLine: {
-        color: palette.crosshair,
-        labelBackgroundColor: palette.crosshairLabel,
+        color: palette.chartCrosshair,
+        labelBackgroundColor: palette.chartCrosshairLabel,
       },
     },
     rightPriceScale: {
-      borderColor: palette.border,
+      borderColor: palette.chartBorder,
       scaleMargins: { top: 0.08, bottom: 0.05 },
     },
     timeScale: {
-      borderColor: palette.border,
+      borderColor: palette.chartBorder,
       timeVisible: true,
       secondsVisible: false,
       rightOffset: 8,
@@ -327,13 +331,13 @@ onMounted(() => {
   })
 
   const candles = chartApi.addCustomSeries(new RoundedCandleSeries(), {
-    color: CANDLE_UP_COLOR,
-    upColor: CANDLE_UP_COLOR,
-    downColor: CANDLE_DOWN_COLOR,
-    wickUpColor: CANDLE_UP_COLOR,
-    wickDownColor: CANDLE_DOWN_COLOR,
+    color: palette.candleUp,
+    upColor: palette.candleUp,
+    downColor: palette.candleDown,
+    wickUpColor: palette.candleUp,
+    wickDownColor: palette.candleDown,
     wickVisible: true,
-    priceLineColor: '#21bfa0',
+    priceLineColor: palette.candleUp,
     lastValueVisible: true,
     radius: (barSpacing: number) => barSpacing < 4
       ? 0
@@ -407,6 +411,7 @@ onMounted(() => {
     candles.update(candlePoint(candle))
     volume.update(volumePoint(candle))
     lastTimestamp = candle.time
+    rememberDisplayedCandle(candle)
     updateLegend(candle)
   })
 
@@ -422,12 +427,13 @@ onBeforeUnmount(() => {
   unsubscribeCandle?.()
   candleSeries.value = null
   volumeSeries.value = null
+  displayedCandles = []
   watermark = undefined
   chart.value?.remove()
   chart.value = null
 })
 
-watch(appTheme, applyChartTheme, { flush: 'sync' })
+watch(appThemePalette, applyChartTheme, { flush: 'sync' })
 
 </script>
 

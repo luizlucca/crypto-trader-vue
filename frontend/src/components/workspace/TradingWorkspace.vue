@@ -8,6 +8,7 @@ import {
   shallowRef,
 } from 'vue'
 import AppHeader from '../layout/AppHeader.vue'
+import GeneralSettingsPanel from '../settings/GeneralSettingsPanel.vue'
 import NavigationRail from '../layout/NavigationRail.vue'
 import PanelResizeHandle from '../layout/PanelResizeHandle.vue'
 import MarketSidebar from '../market/MarketSidebar.vue'
@@ -99,6 +100,7 @@ const initialTab = createWorkspaceTab(defaultSelection)
 const tabs = reactive<WorkspaceTab[]>([initialTab])
 const activeTabId = ref(initialTab.id)
 const sidebarMaxWidth = ref(availableSidebarMaxWidth())
+const settingsOpen = ref(false)
 let preferredSidebarWidth = loadSidebarWidth()
 const sidebarWidth = ref(clampSidebarWidth(
   preferredSidebarWidth,
@@ -454,6 +456,10 @@ function isTextEditingTarget(target: EventTarget | null): boolean {
 }
 
 function handleGlobalKey(event: KeyboardEvent): void {
+  if (settingsOpen.value) {
+    return
+  }
+
   if (
     event.key.toLowerCase() === 't'
     && (event.ctrlKey || event.metaKey)
@@ -688,10 +694,12 @@ onBeforeUnmount(() => {
   <div class="app-shell">
     <AppHeader
       :selection="selection"
+      :settings-open="settingsOpen"
       :status="activeTab.status"
+      @settings="settingsOpen = !settingsOpen"
     />
     <main class="workspace-grid" :style="workspaceStyle">
-      <NavigationRail />
+      <NavigationRail @settings="settingsOpen = true" />
       <MarketSidebar
         :connection-state="activeTab.status"
         :favorite-keys="favoriteKeys"
@@ -756,5 +764,9 @@ onBeforeUnmount(() => {
         {{ selection.symbol }} · {{ selection.interval }}
       </span>
     </footer>
+    <GeneralSettingsPanel
+      :open="settingsOpen"
+      @close="settingsOpen = false"
+    />
   </div>
 </template>
