@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RefreshCw, Search, Star, X } from '@lucide/vue'
 import {
   computed,
   nextTick,
@@ -394,7 +395,7 @@ onBeforeUnmount(() => {
             type="button"
             @click="emit('refresh')"
           >
-            <span aria-hidden="true">↻</span>
+            <RefreshCw aria-hidden="true" :class="{ spinning: refreshing }" />
             {{ refreshing ? 'Atualizando…' : 'Recarregar' }}
           </button>
         </div>
@@ -404,14 +405,14 @@ onBeforeUnmount(() => {
           type="button"
           @click="emit('close')"
         >
-          ×
+          <X aria-hidden="true" />
         </button>
       </header>
 
       <div class="symbol-modal-filters">
         <div class="symbol-search-row">
           <label class="symbol-search-input">
-            <span aria-hidden="true">⌕</span>
+            <Search aria-hidden="true" />
             <input
               ref="queryInput"
               aria-autocomplete="list"
@@ -456,7 +457,7 @@ onBeforeUnmount(() => {
             type="button"
             @click="favoritesOnly = !favoritesOnly"
           >
-            ★ Favoritos
+            <Star aria-hidden="true" /> Favoritos
           </button>
         </div>
       </div>
@@ -522,10 +523,10 @@ onBeforeUnmount(() => {
               type="button"
               @click.stop="emit('favorite', row.item)"
             >
-              ★
+              <Star aria-hidden="true" />
             </button>
             <strong class="symbol-pair-cell">
-              <CryptoAssetIcon :size="23" :symbol="row.item.baseAsset" />
+              <CryptoAssetIcon :size="27" :symbol="row.item.baseAsset" />
               <span>
                 {{ row.item.baseAsset }}<small>/{{ row.item.quoteAsset }}</small>
               </span>

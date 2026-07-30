@@ -1,4 +1,16 @@
 <script setup lang="ts">
+import {
+  Bell,
+  ChevronDown,
+  Gem,
+  Minus,
+  Moon,
+  Settings,
+  Square,
+  Sun,
+  X,
+} from '@lucide/vue'
+import { appTheme, toggleTheme } from '../../services/theme'
 import type { StreamStatus } from '../../types/market'
 import type { MarketSelection } from '../../types/market'
 
@@ -11,14 +23,14 @@ defineProps<{
 <template>
   <header class="app-header">
     <div class="brand">
-      <span class="brand-mark">◆</span>
+      <span class="brand-mark"><Gem aria-hidden="true" /></span>
       <span>CryptoPro</span>
     </div>
 
     <button class="exchange-selector" type="button">
-      <span>◆</span>
+      <Gem aria-hidden="true" />
       Binance · {{ selection.market === 'futures' ? 'Futuros' : 'Spot' }}
-      <span class="chevron">⌄</span>
+      <ChevronDown aria-hidden="true" class="chevron" />
     </button>
 
     <div class="connection" :class="status">
@@ -53,12 +65,33 @@ defineProps<{
     </div>
 
     <div class="window-actions">
-      <button title="Tema" type="button">☼</button>
-      <button title="Configurações" type="button">⚙</button>
-      <button title="Notificações" type="button">♧</button>
-      <button title="Minimizar" type="button">—</button>
-      <button title="Maximizar" type="button">□</button>
-      <button title="Fechar" type="button">×</button>
+      <button
+        :aria-label="appTheme === 'dark'
+          ? 'Ativar tema claro'
+          : 'Ativar tema escuro'"
+        class="theme-toggle"
+        :title="appTheme === 'dark' ? 'Tema claro' : 'Tema escuro'"
+        type="button"
+        @click="toggleTheme"
+      >
+        <Sun v-if="appTheme === 'dark'" aria-hidden="true" />
+        <Moon v-else aria-hidden="true" />
+      </button>
+      <button aria-label="Configurações" title="Configurações" type="button">
+        <Settings aria-hidden="true" />
+      </button>
+      <button aria-label="Notificações" title="Notificações" type="button">
+        <Bell aria-hidden="true" />
+      </button>
+      <button aria-label="Minimizar" title="Minimizar" type="button">
+        <Minus aria-hidden="true" />
+      </button>
+      <button aria-label="Maximizar" title="Maximizar" type="button">
+        <Square aria-hidden="true" />
+      </button>
+      <button aria-label="Fechar" title="Fechar" type="button">
+        <X aria-hidden="true" />
+      </button>
     </div>
   </header>
 </template>

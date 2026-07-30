@@ -1,11 +1,34 @@
+<script setup lang="ts">
+import {
+  CandlestickChart,
+  ListOrdered,
+  LogOut,
+  Settings,
+  WalletCards,
+  Workflow,
+} from '@lucide/vue'
+</script>
+
 <template>
   <nav class="navigation-rail" aria-label="Navegação principal">
-    <button class="active" title="Mercado" type="button">⌁</button>
-    <button title="Carteira" type="button">▣</button>
-    <button title="Ordens" type="button">▤</button>
-    <button title="Estratégias" type="button">⌘</button>
+    <button aria-label="Mercado" class="active" title="Mercado" type="button">
+      <CandlestickChart aria-hidden="true" />
+    </button>
+    <button aria-label="Carteira" title="Carteira" type="button">
+      <WalletCards aria-hidden="true" />
+    </button>
+    <button aria-label="Ordens" title="Ordens" type="button">
+      <ListOrdered aria-hidden="true" />
+    </button>
+    <button aria-label="Estratégias" title="Estratégias" type="button">
+      <Workflow aria-hidden="true" />
+    </button>
     <span class="rail-spacer" />
-    <button title="Configurações" type="button">⚙</button>
-    <button title="Sair" type="button">↪</button>
+    <button aria-label="Configurações" title="Configurações" type="button">
+      <Settings aria-hidden="true" />
+    </button>
+    <button aria-label="Sair" title="Sair" type="button">
+      <LogOut aria-hidden="true" />
+    </button>
   </nav>
 </template>

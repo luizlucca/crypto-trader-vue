@@ -19,6 +19,7 @@
 }
 
 :root {
+  color-scheme: dark;
   color: #c5d1d8;
   background: #04131b;
   font-family: var(--font-ui);
@@ -41,6 +42,23 @@
   --green: #18c58f;
   --red: #f04f5e;
   --purple: #a86cf3;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  color: #263d48;
+  background: #e7eef1;
+  --bg: #e7eef1;
+  --panel: #f8fbfc;
+  --panel-raised: #edf4f6;
+  --border: #bfd0d7;
+  --border-soft: #d8e3e7;
+  --text: #263d48;
+  --muted: #657984;
+  --blue: #087fd3;
+  --green: #078c68;
+  --red: #d63f50;
+  --purple: #8151ba;
 }
 
 * {
@@ -177,6 +195,12 @@ input:focus-visible {
   font-size: 11px;
 }
 
+.brand-mark svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.2;
+}
+
 .exchange-selector {
   display: flex;
   align-items: center;
@@ -190,7 +214,15 @@ input:focus-visible {
   font-size: 12.5px;
 }
 
+.exchange-selector > svg {
+  width: 15px;
+  height: 15px;
+  color: #74bfff;
+}
+
 .exchange-selector .chevron {
+  width: 14px;
+  height: 14px;
   margin-left: auto;
   color: var(--muted);
 }
@@ -268,11 +300,24 @@ input:focus-visible {
 }
 
 .window-actions button {
+  display: grid;
+  place-items: center;
   width: 30px;
   height: 30px;
   color: #8fa1ab;
   background: transparent;
   border-radius: 4px;
+}
+
+.window-actions svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.8;
+}
+
+.window-actions .theme-toggle {
+  color: #64b8ff;
+  background: rgba(47, 156, 255, .08);
 }
 
 .window-actions button:hover {
@@ -305,12 +350,19 @@ input:focus-visible {
 }
 
 .navigation-rail button {
+  display: grid;
+  place-items: center;
   width: 32px;
   height: 32px;
   border-radius: 4px;
   color: #77909d;
   background: transparent;
-  font-size: 17px;
+}
+
+.navigation-rail button svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.8;
 }
 
 .navigation-rail button:hover,
@@ -404,6 +456,13 @@ body.panel-resizing * {
   color: #6f8591;
 }
 
+.search-field > svg {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  stroke-width: 2;
+}
+
 .search-field input {
   width: 100%;
   border: 0;
@@ -441,11 +500,19 @@ body.panel-resizing * {
 }
 
 .quote-tabs button {
+  display: grid;
+  place-items: center;
   flex: 1;
   height: 25px;
   color: #718994;
   background: transparent;
   font-size: 10.5px;
+}
+
+.quote-tabs button svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.9;
 }
 
 .quote-tabs button.active {
@@ -789,8 +856,8 @@ body.panel-resizing * {
 }
 
 .instrument-tab-close svg {
-  width: 10px;
-  height: 10px;
+  width: 13px;
+  height: 13px;
 }
 
 .instrument-tab-close path,
@@ -822,8 +889,8 @@ body.panel-resizing * {
 }
 
 .instrument-tabs .new-tab svg {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
 }
 
 .instrument-tabs .new-tab:disabled {
@@ -841,6 +908,10 @@ body.panel-resizing * {
 }
 
 .chart-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   height: 28px;
   min-width: 30px;
   padding: 0 7px;
@@ -848,6 +919,12 @@ body.panel-resizing * {
   background: transparent;
   border-radius: 3px;
   font-size: 10.5px;
+}
+
+.chart-toolbar button svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.9;
 }
 
 .chart-toolbar button:hover,
@@ -858,7 +935,11 @@ body.panel-resizing * {
 
 .chart-toolbar .add-button {
   color: var(--blue);
-  font-size: 17px;
+}
+
+.chart-toolbar .add-button svg {
+  width: 18px;
+  height: 18px;
 }
 
 .toolbar-divider {
@@ -900,12 +981,19 @@ body.panel-resizing * {
 }
 
 .drawing-toolbar button {
+  display: grid;
+  place-items: center;
   width: 30px;
   height: 28px;
   border-radius: 3px;
   color: #728c98;
   background: transparent;
-  font-size: 15px;
+}
+
+.drawing-toolbar button svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.75;
 }
 
 .drawing-toolbar button:hover,
@@ -997,10 +1085,18 @@ body.panel-resizing * {
 }
 
 .panel-header button {
+  display: inline-grid;
+  place-items: center;
   min-width: 24px;
   height: 24px;
   color: #6e8793;
   background: transparent;
+}
+
+.panel-header button svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.8;
 }
 
 .panel-header button.active {
@@ -1620,6 +1716,16 @@ body.panel-resizing * {
   transition: background .14s ease, border-color .14s ease, color .14s ease;
 }
 
+.symbol-modal-cache button svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 2;
+}
+
+.symbol-modal-cache button svg.spinning {
+  animation: catalog-spin .8s linear infinite;
+}
+
 .symbol-modal-cache button:hover {
   color: white;
   border-color: #3a8aad;
@@ -1632,15 +1738,20 @@ body.panel-resizing * {
 }
 
 .symbol-modal-close {
+  display: grid;
+  place-items: center;
   width: 38px;
   height: 38px;
   border: 1px solid transparent;
   border-radius: 50%;
   color: #94aab4;
   background: transparent;
-  font-size: 27px;
-  font-weight: 300;
-  line-height: 1;
+}
+
+.symbol-modal-close svg {
+  width: 21px;
+  height: 21px;
+  stroke-width: 1.8;
 }
 
 .symbol-modal-close:hover {
@@ -1675,6 +1786,13 @@ body.panel-resizing * {
   border-radius: 7px;
   background: #041822;
   color: #6f9bad;
+}
+
+.symbol-search-input > svg {
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+  stroke-width: 2;
 }
 
 .symbol-search-input:focus-within {
@@ -1733,6 +1851,10 @@ body.panel-resizing * {
 }
 
 .symbol-quote-filters button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-width: 54px;
   height: 30px;
   padding: 0 12px;
@@ -1743,6 +1865,12 @@ body.panel-resizing * {
   font-size: 12px;
   font-weight: 500;
   transition: background .12s ease, border-color .12s ease, color .12s ease;
+}
+
+.symbol-quote-filters button svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.9;
 }
 
 .symbol-quote-filters button:hover {
@@ -1897,19 +2025,31 @@ body.panel-resizing * {
 }
 
 .symbol-favorite {
+  display: grid;
+  place-items: center;
   width: 30px;
   height: 30px;
   padding: 0;
   border-radius: 5px;
   color: #496670;
   background: transparent;
-  font-size: 15px;
+}
+
+.symbol-favorite svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.8;
 }
 
 .symbol-favorite:hover,
 .symbol-favorite.active {
   color: #f0bc36;
   background: rgba(240, 188, 54, .08);
+}
+
+.symbol-favorite.active svg,
+.favorites-filter.active svg {
+  fill: currentColor;
 }
 
 .symbol-range {
@@ -1995,6 +2135,197 @@ body.panel-resizing * {
 
 .symbol-modal-footer span:last-child {
   margin-left: auto;
+}
+
+html[data-theme="light"] .app-header,
+html[data-theme="light"] .instrument-tabs {
+  background: #f5f9fa;
+}
+
+html[data-theme="light"] .workspace-grid {
+  background: #d9e4e8;
+}
+
+html[data-theme="light"] .navigation-rail,
+html[data-theme="light"] .market-sidebar,
+html[data-theme="light"] .panel-resize-handle,
+html[data-theme="light"] .chart-toolbar,
+html[data-theme="light"] .drawing-toolbar {
+  background: #edf4f6;
+}
+
+html[data-theme="light"] .chart-stage {
+  background: #f8fbfc;
+}
+
+html[data-theme="light"] .brand,
+html[data-theme="light"] .sidebar-section h2,
+html[data-theme="light"] .panel-header h2,
+html[data-theme="light"] .instrument-tab.active,
+html[data-theme="light"] .chart-legend strong,
+html[data-theme="light"] .ticket-tabs button.active,
+html[data-theme="light"] .positions-tabs button.active,
+html[data-theme="light"] .position-row strong,
+html[data-theme="light"] .symbol-modal-header h2,
+html[data-theme="light"] .symbol-table-row strong {
+  color: #203844;
+}
+
+html[data-theme="light"] .ticker > span,
+html[data-theme="light"] .ticker strong,
+html[data-theme="light"] .market-row,
+html[data-theme="light"] .compact-row,
+html[data-theme="light"] .connection-row,
+html[data-theme="light"] .instrument-tab,
+html[data-theme="light"] .book-row,
+html[data-theme="light"] .balance-row strong,
+html[data-theme="light"] .ticket-field input,
+html[data-theme="light"] .check-row,
+html[data-theme="light"] .ticket-summary strong,
+html[data-theme="light"] .position-row,
+html[data-theme="light"] .symbol-table-row {
+  color: #465d68;
+}
+
+html[data-theme="light"] .exchange-selector,
+html[data-theme="light"] .search-field,
+html[data-theme="light"] .ticket-field div,
+html[data-theme="light"] .estimate-fields input,
+html[data-theme="light"] .symbol-search-input {
+  border-color: #b8cbd3;
+  background: #fff;
+}
+
+html[data-theme="light"] .search-field input,
+html[data-theme="light"] .symbol-search-input input {
+  color: #263d48;
+}
+
+html[data-theme="light"] .window-actions button:hover,
+html[data-theme="light"] .navigation-rail button:hover,
+html[data-theme="light"] .navigation-rail button.active,
+html[data-theme="light"] .market-row:hover,
+html[data-theme="light"] .market-row.selected,
+html[data-theme="light"] .instrument-tab:hover,
+html[data-theme="light"] .instrument-tab-close:hover,
+html[data-theme="light"] .chart-toolbar button:hover,
+html[data-theme="light"] .chart-toolbar button.active,
+html[data-theme="light"] .drawing-toolbar button:hover,
+html[data-theme="light"] .drawing-toolbar button.active,
+html[data-theme="light"] .positions-tabs button.active {
+  background: #dfecef;
+}
+
+html[data-theme="light"] .market-kind button,
+html[data-theme="light"] .instrument-tab.active,
+html[data-theme="light"] .position-row button,
+html[data-theme="light"] .preset-grid button {
+  background: #edf4f6;
+}
+
+html[data-theme="light"] .market-kind button.active,
+html[data-theme="light"] .quote-tabs button.active,
+html[data-theme="light"] .preset-grid button.active {
+  color: #263d48;
+  background: #dcebef;
+}
+
+html[data-theme="light"] .instrument-tabs .new-tab {
+  background: #e7f1f4;
+}
+
+html[data-theme="light"] .instrument-tabs .new-tab:hover:not(:disabled) {
+  color: #066fb9;
+  background: #d9eaf0;
+}
+
+html[data-theme="light"] .chart-message {
+  border-color: #a9c3ce;
+  background: rgba(255, 255, 255, .94);
+  color: #526975;
+}
+
+html[data-theme="light"] .chart-legend span,
+html[data-theme="light"] .tradingview-attribution,
+html[data-theme="light"] .book-columns,
+html[data-theme="light"] .book-mid small,
+html[data-theme="light"] .book-ratio,
+html[data-theme="light"] .balance-row,
+html[data-theme="light"] .ticket-field > span,
+html[data-theme="light"] .field-caption,
+html[data-theme="light"] .leverage > div:first-child,
+html[data-theme="light"] .leverage-labels,
+html[data-theme="light"] .estimate-fields label,
+html[data-theme="light"] .ticket-summary div,
+html[data-theme="light"] .cost-row,
+html[data-theme="light"] .positions-head,
+html[data-theme="light"] .status-bar {
+  color: #657984;
+}
+
+html[data-theme="light"] .status-bar {
+  background: #edf4f6;
+}
+
+html[data-theme="light"] .symbol-modal,
+html[data-theme="light"] .symbol-search-window,
+html[data-theme="light"] .symbol-virtual-viewport,
+html[data-theme="light"] .symbol-table-row {
+  background: #f8fbfc;
+}
+
+html[data-theme="light"] .symbol-modal {
+  border-color: #adc6d0;
+  box-shadow: 0 8px 22px rgb(32 58 70 / 18%);
+}
+
+html[data-theme="light"] .symbol-modal-header,
+html[data-theme="light"] .symbol-table-header {
+  background: #e7f1f4;
+}
+
+html[data-theme="light"] .symbol-modal-filters,
+html[data-theme="light"] .symbol-modal-footer {
+  background: #edf5f7;
+}
+
+html[data-theme="light"] .symbol-modal-cache button,
+html[data-theme="light"] .symbol-quote-filters button,
+html[data-theme="light"] .symbol-search-help kbd {
+  border-color: #b5cbd4;
+  color: #526975;
+  background: #f8fbfc;
+}
+
+html[data-theme="light"] .symbol-modal-cache button:hover,
+html[data-theme="light"] .symbol-quote-filters button:hover,
+html[data-theme="light"] .symbol-table-row:hover,
+html[data-theme="light"] .symbol-table-row.active {
+  color: #263d48;
+  border-color: #82aec0;
+  background: #deedf1;
+}
+
+html[data-theme="light"] .symbol-quote-filters button.active,
+html[data-theme="light"] .symbol-table-row.selected {
+  color: #174b64;
+  background: #d6eaf2;
+}
+
+html[data-theme="light"] .symbol-table-row {
+  border-bottom-color: #d8e3e7;
+}
+
+html[data-theme="light"] .symbol-modal-close:hover {
+  color: #203844;
+  border-color: #b5cbd4;
+  background: #dcebef;
+}
+
+html[data-theme="light"] .crypto-asset-icon.fallback {
+  color: #355664;
+  background: linear-gradient(135deg, #d8eaf0, #bdd8e1);
+  box-shadow: inset 0 0 0 1px #9cbecb;
 }
 
 @keyframes catalog-spin {

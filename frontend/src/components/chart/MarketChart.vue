@@ -1,21 +1,27 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import {
-  CandlestickSeries,
   ColorType,
   CrosshairMode,
   HistogramSeries,
   createChart,
   createTextWatermark,
-  type CandlestickData,
   type HistogramData,
   type IChartApi,
   type ISeriesApi,
+  type ITextWatermarkPluginApi,
+  type Time,
   type UTCTimestamp,
 } from 'lightweight-charts'
+import {
+  RoundedCandleSeries,
+  type RoundedCandleSeriesApi,
+} from '../../plugins/roundedCandles/RoundedCandleSeries'
+import type { RoundedCandleData } from '../../plugins/roundedCandles/data'
 import type { Candle, MarketSelection } from '../../types/market'
 import { loadCandles, onCandle } from '../../services/marketData'
 import { publishRealtimePrice } from '../../services/realtimePrice'
+import { appTheme, type AppTheme } from '../../services/theme'
 import ChartToolbar from './ChartToolbar.vue'
 import DrawingToolbar from './DrawingToolbar.vue'
 
@@ -24,6 +30,9 @@ const props = defineProps<{
   selection: MarketSelection
   initialHistory?: Candle[]
 }>()
+
+const CANDLE_UP_COLOR = '#24c7ad'
+const CANDLE_DOWN_COLOR = '#ef6671'
 
 const emit = defineEmits<{
   interval: [value: string]
@@ -39,21 +48,59 @@ const legendClose = ref<HTMLElement | null>(null)
 const loading = ref(true)
 const errorMessage = ref('')
 const chart = shallowRef<IChartApi | null>(null)
-const candleSeries = shallowRef<ISeriesApi<'Candlestick'> | null>(null)
+const candleSeries = shallowRef<RoundedCandleSeriesApi | null>(null)
 const volumeSeries = shallowRef<ISeriesApi<'Histogram'> | null>(null)
+let watermark: ITextWatermarkPluginApi<Time> | undefined
 let unsubscribeCandle: (() => void) | undefined
 let releaseVerticalPricePan: (() => void) | undefined
 let lastTimestamp = 0
 let historyGeneration = 0
 let pendingCandle: Candle | undefined
 
-function candlePoint(candle: Candle): CandlestickData<UTCTimestamp> {
+interface ChartThemePalette {
+  background: string
+  text: string
+  grid: string
+  border: string
+  crosshair: string
+  crosshairLabel: string
+  watermarkPrimary: string
+  watermarkSecondary: string
+}
+
+const CHART_THEME: Record<AppTheme, ChartThemePalette> = {
+  dark: {
+    background: '#061821',
+    text: '#8195a3',
+    grid: '#12303b',
+    border: '#173744',
+    crosshair: '#5b7280',
+    crosshairLabel: '#24414e',
+    watermarkPrimary: 'rgba(132, 158, 171, 0.10)',
+    watermarkSecondary: 'rgba(132, 158, 171, 0.075)',
+  },
+  light: {
+    background: '#f8fbfc',
+    text: '#526975',
+    grid: '#dce7eb',
+    border: '#bfd0d7',
+    crosshair: '#718995',
+    crosshairLabel: '#526975',
+    watermarkPrimary: 'rgba(45, 76, 91, 0.085)',
+    watermarkSecondary: 'rgba(45, 76, 91, 0.065)',
+  },
+}
+
+function candlePoint(candle: Candle): RoundedCandleData<UTCTimestamp> {
   return {
     time: candle.time as UTCTimestamp,
     open: candle.open,
     high: candle.high,
     low: candle.low,
     close: candle.close,
+    color: candle.close >= candle.open
+      ? CANDLE_UP_COLOR
+      : CANDLE_DOWN_COLOR,
   }
 }
 
@@ -138,6 +185,54 @@ function displaySymbol(): string {
   return `${props.selection.baseAsset}/${props.selection.quoteAsset}`
 }
 
+function watermarkLines(palette: ChartThemePalette) {
+  return [
+    {
+      text: displaySymbol(),
+      color: palette.watermarkPrimary,
+      fontSize: 46,
+      lineHeight: 54,
+      fontFamily: '"Inter Variable", Inter, sans-serif',
+      fontStyle: '700',
+    },
+    {
+      text: props.selection.interval.toUpperCase(),
+      color: palette.watermarkSecondary,
+      fontSize: 22,
+      lineHeight: 30,
+      fontFamily: '"JetBrains Mono Variable", monospace',
+      fontStyle: '600',
+    },
+  ]
+}
+
+function applyChartTheme(theme: AppTheme): void {
+  const palette = CHART_THEME[theme]
+  chart.value?.applyOptions({
+    layout: {
+      background: { type: ColorType.Solid, color: palette.background },
+      textColor: palette.text,
+    },
+    grid: {
+      vertLines: { color: palette.grid },
+      horzLines: { color: palette.grid },
+    },
+    crosshair: {
+      vertLine: {
+        color: palette.crosshair,
+        labelBackgroundColor: palette.crosshairLabel,
+      },
+      horzLine: {
+        color: palette.crosshair,
+        labelBackgroundColor: palette.crosshairLabel,
+      },
+    },
+    rightPriceScale: { borderColor: palette.border },
+    timeScale: { borderColor: palette.border },
+  })
+  watermark?.applyOptions({ lines: watermarkLines(palette) })
+}
+
 function updateLegend(candle: Candle): void {
   publishRealtimePrice({
     provider: candle.provider,
@@ -182,29 +277,36 @@ onMounted(() => {
     return
   }
 
+  const palette = CHART_THEME[appTheme.value]
   const chartApi = createChart(container.value, {
     autoSize: true,
     layout: {
-      background: { type: ColorType.Solid, color: '#061821' },
-      textColor: '#8195a3',
+      background: { type: ColorType.Solid, color: palette.background },
+      textColor: palette.text,
       fontFamily: '"JetBrains Mono Variable", "SFMono-Regular", Consolas, monospace',
       fontSize: 12,
     },
     grid: {
-      vertLines: { color: '#12303b' },
-      horzLines: { color: '#12303b' },
+      vertLines: { color: palette.grid },
+      horzLines: { color: palette.grid },
     },
     crosshair: {
       mode: CrosshairMode.Normal,
-      vertLine: { color: '#5b7280', labelBackgroundColor: '#24414e' },
-      horzLine: { color: '#5b7280', labelBackgroundColor: '#24414e' },
+      vertLine: {
+        color: palette.crosshair,
+        labelBackgroundColor: palette.crosshairLabel,
+      },
+      horzLine: {
+        color: palette.crosshair,
+        labelBackgroundColor: palette.crosshairLabel,
+      },
     },
     rightPriceScale: {
-      borderColor: '#173744',
+      borderColor: palette.border,
       scaleMargins: { top: 0.08, bottom: 0.05 },
     },
     timeScale: {
-      borderColor: '#173744',
+      borderColor: palette.border,
       timeVisible: true,
       secondsVisible: false,
       rightOffset: 8,
@@ -224,14 +326,18 @@ onMounted(() => {
     },
   })
 
-  const candles = chartApi.addSeries(CandlestickSeries, {
-    upColor: '#24c7ad',
-    downColor: '#ef6671',
-    borderVisible: false,
-    wickUpColor: '#24c7ad',
-    wickDownColor: '#ef6671',
+  const candles = chartApi.addCustomSeries(new RoundedCandleSeries(), {
+    color: CANDLE_UP_COLOR,
+    upColor: CANDLE_UP_COLOR,
+    downColor: CANDLE_DOWN_COLOR,
+    wickUpColor: CANDLE_UP_COLOR,
+    wickDownColor: CANDLE_DOWN_COLOR,
+    wickVisible: true,
     priceLineColor: '#21bfa0',
     lastValueVisible: true,
+    radius: (barSpacing: number) => barSpacing < 4
+      ? 0
+      : Math.min(4, barSpacing / 3),
   }, 0)
 
   const volume = chartApi.addSeries(HistogramSeries, {
@@ -244,28 +350,11 @@ onMounted(() => {
 
   const mainPane = chartApi.panes()[0]
   if (mainPane) {
-    createTextWatermark(mainPane, {
+    watermark = createTextWatermark(mainPane, {
       visible: true,
       horzAlign: 'center',
       vertAlign: 'center',
-      lines: [
-        {
-          text: displaySymbol(),
-          color: 'rgba(132, 158, 171, 0.10)',
-          fontSize: 46,
-          lineHeight: 54,
-          fontFamily: '"Inter Variable", Inter, sans-serif',
-          fontStyle: '700',
-        },
-        {
-          text: props.selection.interval.toUpperCase(),
-          color: 'rgba(132, 158, 171, 0.075)',
-          fontSize: 22,
-          lineHeight: 30,
-          fontFamily: '"JetBrains Mono Variable", monospace',
-          fontStyle: '600',
-        },
-      ],
+      lines: watermarkLines(palette),
     })
 
     const paneElement = mainPane.getHTMLElement()
@@ -333,9 +422,12 @@ onBeforeUnmount(() => {
   unsubscribeCandle?.()
   candleSeries.value = null
   volumeSeries.value = null
+  watermark = undefined
   chart.value?.remove()
   chart.value = null
 })
+
+watch(appTheme, applyChartTheme, { flush: 'sync' })
 
 </script>
 

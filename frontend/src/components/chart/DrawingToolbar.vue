@@ -1,14 +1,46 @@
+<script setup lang="ts">
+import {
+  ChartSpline,
+  Eye,
+  MousePointer2,
+  PenTool,
+  Ruler,
+  Shapes,
+  Trash2,
+  TrendingUp,
+  Type as TextIcon,
+} from '@lucide/vue'
+</script>
+
 <template>
   <div class="drawing-toolbar" aria-label="Ferramentas de desenho">
-    <button class="active" title="Cursor" type="button">＋</button>
-    <button title="Linha de tendência" type="button">╱</button>
-    <button title="Fib" type="button">⌁</button>
-    <button title="Pincel" type="button">〽</button>
-    <button title="Texto" type="button">T</button>
-    <button title="Formas" type="button">◇</button>
-    <button title="Régua" type="button">⌐</button>
+    <button aria-label="Cursor" class="active" title="Cursor" type="button">
+      <MousePointer2 aria-hidden="true" />
+    </button>
+    <button aria-label="Linha de tendência" title="Linha de tendência" type="button">
+      <TrendingUp aria-hidden="true" />
+    </button>
+    <button aria-label="Fibonacci" title="Fibonacci" type="button">
+      <ChartSpline aria-hidden="true" />
+    </button>
+    <button aria-label="Pincel" title="Pincel" type="button">
+      <PenTool aria-hidden="true" />
+    </button>
+    <button aria-label="Texto" title="Texto" type="button">
+      <TextIcon aria-hidden="true" />
+    </button>
+    <button aria-label="Formas" title="Formas" type="button">
+      <Shapes aria-hidden="true" />
+    </button>
+    <button aria-label="Régua" title="Régua" type="button">
+      <Ruler aria-hidden="true" />
+    </button>
     <span />
-    <button title="Mostrar desenhos" type="button">◉</button>
-    <button title="Excluir" type="button">♙</button>
+    <button aria-label="Mostrar desenhos" title="Mostrar desenhos" type="button">
+      <Eye aria-hidden="true" />
+    </button>
+    <button aria-label="Excluir" title="Excluir" type="button">
+      <Trash2 aria-hidden="true" />
+    </button>
   </div>
 </template>

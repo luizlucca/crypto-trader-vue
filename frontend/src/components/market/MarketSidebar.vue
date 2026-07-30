@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Search, Star } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { favoriteKey } from '../../services/favorites'
 import {
@@ -109,7 +110,7 @@ function selectSymbol(event: MouseEvent, symbol: MarketPair): void {
     <section class="sidebar-section market-section">
       <h2>MERCADO</h2>
       <label class="search-field">
-        <span>⌕</span>
+        <Search aria-hidden="true" />
         <input
           v-model="search"
           aria-label="Buscar símbolo"
@@ -136,7 +137,14 @@ function selectSymbol(event: MouseEvent, symbol: MarketPair): void {
         <button class="active" type="button">USDT</button>
         <button disabled type="button">COIN</button>
         <button disabled type="button">FIAT</button>
-        <button type="button" @click="emit('openSearch', '')">★</button>
+        <button
+          aria-label="Abrir favoritos"
+          title="Abrir favoritos"
+          type="button"
+          @click="emit('openSearch', '')"
+        >
+          <Star aria-hidden="true" />
+        </button>
       </div>
       <div class="market-table market-table-header">
         <button
@@ -177,7 +185,7 @@ function selectSymbol(event: MouseEvent, symbol: MarketPair): void {
             @click="selectSymbol($event, item)"
           >
             <span class="market-symbol-cell">
-              <CryptoAssetIcon :size="17" :symbol="item.baseAsset" />
+              <CryptoAssetIcon :size="20" :symbol="item.baseAsset" />
               <span>
                 {{ favoriteKeys.has(favoriteKey(item)) ? '★' : '' }}
                 {{ displaySymbol(item) }}
@@ -217,7 +225,7 @@ function selectSymbol(event: MouseEvent, symbol: MarketPair): void {
         @click="selectSymbol($event, item)"
       >
         <span class="market-symbol-cell">
-          <CryptoAssetIcon :size="16" :symbol="item.baseAsset" />
+          <CryptoAssetIcon :size="18" :symbol="item.baseAsset" />
           <span>★ {{ displaySymbol(item) }}</span>
         </span>
         <span

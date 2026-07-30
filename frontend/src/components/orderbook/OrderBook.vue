@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ChevronDown, Columns3, Rows3 } from '@lucide/vue'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type {
   MarketSelection,
@@ -202,9 +203,15 @@ watch(
     <header class="panel-header">
       <h2>LIVRO DE ORDENS</h2>
       <div>
-        <button class="active" type="button">▥</button>
-        <button type="button">▥</button>
-        <button type="button">⌄</button>
+        <button aria-label="Livro combinado" class="active" title="Livro combinado" type="button">
+          <Rows3 aria-hidden="true" />
+        </button>
+        <button aria-label="Livro em colunas" title="Livro em colunas" type="button">
+          <Columns3 aria-hidden="true" />
+        </button>
+        <button aria-label="Mais opções" title="Mais opções" type="button">
+          <ChevronDown aria-hidden="true" />
+        </button>
       </div>
     </header>
     <div class="book-columns">
