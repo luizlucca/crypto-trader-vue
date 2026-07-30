@@ -88,6 +88,8 @@ stream sem alterar o contrato consumido pelo renderer.
   preço, isolado do grafo reativo do workspace.
 - `components/layout/PanelResizeHandle.vue`: divisor acessível que altera
   apenas a coluna CSS do painel de mercados.
+- `components/settings/GeneralSettingsPanel.vue`: painel isolado e extensível
+  para aparência, preferências gerais e futuras credenciais de providers.
 - `components/market/CryptoAssetIcon.vue`: ícones SVG curados com fallback.
 - `components/workspace`: gerencia abas e orquestra os ciclos das sessões.
 - `services/marketData.ts`: fronteira única entre os componentes Vue e a API
@@ -101,11 +103,64 @@ Cada montagem do gráfico cria uma instância no `onMounted` e a remove no
 `series.update()`. Timestamps da Binance são normalizados de milissegundos para
 segundos no provider antes de chegar ao Lightweight Charts.
 
+Os candles usam uma `ICustomSeriesPaneView` baseada no exemplo oficial
+Rounded Candles. O renderer trabalha em coordenadas bitmap para preservar
+nitidez HiDPI e percorre somente o intervalo visível, sem criar um array
+intermediário por frame. A direção continua seguindo a semântica OHLC
+(`close >= open`), e o raio é reduzido até zero quando as barras ficam
+comprimidas.
+
 O símbolo e o período são desenhados no próprio canvas pela API oficial
 `createTextWatermark`; não existe uma camada HTML concorrendo com os eventos do
 gráfico. O arraste sobre o painel principal desativa o auto scale antes do
 handler nativo da biblioteca, permitindo movimentar conjuntamente os eixos X e
 Y. Um duplo clique na escala de preços restaura o ajuste automático.
+
+O tema fica em um serviço compartilhado e persistido no `localStorage`.
+Luminosidade (`dark`/`light`) e paleta são estados independentes. O catálogo
+possui 30 presets fixos, cada um com variantes clara e escura e cores
+semânticas próprias para alta, baixa, volume, superfícies, texto e destaque.
+A raiz recebe `data-theme`, `data-theme-preset` e custom properties semânticas.
+A janela de pesquisa usa a mesma origem/storage e inicializa diretamente na
+aparência salva.
+
+No gráfico, candles não carregam cores individuais no histórico; o renderer
+usa as opções direcionais da série. Assim, uma troca de preset recolore todos
+os candles por `series.applyOptions()` e atualiza layout, escalas, crosshair e
+watermark por `chart.applyOptions()`, sem recriar o chart ou tocar nos streams.
+Os pontos de volume atualmente carregados recebem novamente suas cores
+direcionais; o intervalo lógico visível é salvo e restaurado para não mover o
+viewport.
+
+A janela principal inicia em tela cheia. O gráfico inicia nas últimas 20 barras
+com quatro posições vazias à direita. Ao aproximar-se do limite esquerdo, a
+escala lógica solicita uma página de 400 candles anteriores ao processo
+utilitário. A página usa cursor `endTime` exclusivo na Binance, é inserida por
+`setData()` e restaura o intervalo lógico deslocado pelo número de barras
+adicionadas. Durante esse trabalho, uma superfície opaca bloqueia somente o
+painel do gráfico e seus manipuladores de zoom/pan; streams realtime e o livro
+continuam ativos.
+
+O painel de configurações é teletransportado para uma camada fixa, sem
+backdrop, blur ou alteração da grade do workspace. `contain` e `isolation`
+limitam layout e pintura à própria superfície. Gráfico e livro continuam
+montados e recebendo dados enquanto o painel está aberto. A navegação já
+reserva seções separadas para preferências gerais e providers, evitando que
+futuras chaves de API sejam misturadas ao estado visual.
+
+O painel funciona como uma subjanela persistente. O arraste escreve somente um
+`translate3d` coalescido por `requestAnimationFrame`; nenhum estado Vue muda no
+caminho do ponteiro. No resize, um contorno leve acompanha o cursor e largura,
+altura e reflow do conteúdo são aplicados uma única vez ao soltar. Geometria,
+posição e tamanho ficam no `localStorage`.
+
+Temas personalizados são definições pequenas e validadas, limitadas a 12 por
+dispositivo. Cada definição parte de um dos 30 presets e guarda cores e
+opacidades separadas para claro e escuro. O editor não altera o chart enquanto
+o usuário experimenta: sua miniatura é local. Ao salvar, candles e fundo podem
+usar RGBA; preços e textos mantêm versões sólidas para preservar contraste.
+As miniaturas do catálogo recebem a própria `ThemePalette`, portanto mostram
+fundo, grade, destaque e candles de alta/baixa antes da seleção.
 
 Cada aba possui seleção, período, status, latência, geração de cancelamento e
 `sessionId` próprios. O processo realtime mantém conexões de candles e livro

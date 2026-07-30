@@ -84,8 +84,14 @@ const api: CryptoProDesktopAPI = {
     getCandles(
       selection: MarketSelection,
       limit = 500,
+      before?: number,
     ): Promise<Candle[]> {
-      return marketRequest({ kind: 'candles', selection, limit })
+      return marketRequest({
+        kind: 'candles',
+        selection,
+        limit,
+        ...(before === undefined ? {} : { before }),
+      })
     },
     startStream(
       sessionId: string,

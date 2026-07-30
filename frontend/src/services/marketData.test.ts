@@ -42,6 +42,23 @@ describe('marketData transport', () => {
     expect(payload).toEqual(selection)
   })
 
+  it('forwards an immutable historical cursor to Electron', async () => {
+    const getCandles = vi.fn().mockResolvedValue([])
+    vi.stubGlobal('window', {
+      cryptoPro: {
+        marketData: { getCandles },
+      },
+    })
+
+    await loadCandles(selection, 400, 1_722_398_400)
+
+    expect(getCandles).toHaveBeenCalledWith(
+      selection,
+      400,
+      1_722_398_400,
+    )
+  })
+
   it('sends an explicit session id and a plain selection for each tab', async () => {
     const startStream = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('window', {

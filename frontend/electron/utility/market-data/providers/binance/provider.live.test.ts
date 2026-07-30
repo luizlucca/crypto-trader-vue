@@ -29,7 +29,7 @@ describe.runIf(live)('BinanceProvider live', () => {
           quoteAsset: 'USDT',
           forceRefresh: true,
         }),
-        provider.getCandles(selected, 5),
+        provider.getCandles(selected, { limit: 5 }),
       ])
 
       expect(catalog.items.some((item) => item.symbol === 'BTCUSDT')).toBe(true)

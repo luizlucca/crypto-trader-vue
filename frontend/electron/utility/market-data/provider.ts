@@ -27,11 +27,19 @@ export interface CatalogOptions {
   forceRefresh: boolean
 }
 
+export interface CandleHistoryOptions {
+  limit: number
+  before?: number
+}
+
 export interface MarketDataProvider {
   readonly name: string
   getCatalog(options: CatalogOptions): Promise<MarketCatalog>
   getSymbols(market: Market, quoteAsset: string): Promise<MarketSymbol[]>
-  getCandles(selection: MarketSelection, limit: number): Promise<Candle[]>
+  getCandles(
+    selection: MarketSelection,
+    options: CandleHistoryOptions,
+  ): Promise<Candle[]>
   streamCandles(
     selection: MarketSelection,
     onState: ConnectionStateHandler,

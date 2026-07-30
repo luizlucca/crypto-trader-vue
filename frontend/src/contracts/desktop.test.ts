@@ -63,4 +63,25 @@ describe('desktop market-data contract', () => {
       initialQuery: '',
     })).toBe(false)
   })
+
+  it('accepts only safe historical candle cursors', () => {
+    expect(isMarketDataRequest({
+      kind: 'candles',
+      selection,
+      limit: 400,
+      before: 1_722_398_400,
+    })).toBe(true)
+    expect(isMarketDataRequest({
+      kind: 'candles',
+      selection,
+      limit: 400,
+      before: -1,
+    })).toBe(false)
+    expect(isMarketDataRequest({
+      kind: 'candles',
+      selection,
+      limit: 400,
+      before: 1.5,
+    })).toBe(false)
+  })
 })

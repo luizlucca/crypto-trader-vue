@@ -25,6 +25,10 @@ O primeiro recorte funcional integra a Binance Futures e exibe:
 Veja [docs/architecture.md](docs/architecture.md) para as decisões de
 arquitetura e performance.
 
+O ponto de entrada para specs, ADRs, roadmap, performance, testes, bugs e
+Definition of Done está em [docs/README.md](docs/README.md). Alterações de
+comportamento percebido também são registradas no [CHANGELOG.md](CHANGELOG.md).
+
 ## Desenvolvimento com Electron
 
 Recomendado: Node.js 22.

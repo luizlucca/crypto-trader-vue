@@ -9,6 +9,7 @@ import type {
   OrderBookSnapshot,
 } from '../../../../../src/types/market'
 import type {
+  CandleHistoryOptions,
   CatalogOptions,
   ConnectionStateHandler,
   MarketDataProvider,
@@ -124,17 +125,23 @@ export class BinanceProvider implements MarketDataProvider {
 
   async getCandles(
     selection: MarketSelection,
-    limit: number,
+    options: CandleHistoryOptions,
   ): Promise<Candle[]> {
     const symbol = normalizeSymbol(selection.symbol)
     validateInterval(selection.interval)
-    const normalizedLimit = validateCandleLimit(limit)
+    const normalizedLimit = validateCandleLimit(options.limit)
     const endpoint = endpointsFor(selection.market)
     const query = new URLSearchParams({
       symbol,
       interval: selection.interval,
       limit: String(normalizedLimit),
     })
+    if (options.before !== undefined) {
+      query.set(
+        'endTime',
+        String(Math.max(0, Math.trunc(options.before * 1_000) - 1)),
+      )
+    }
     const rows = await fetchJSON<unknown[][]>(
       `${endpoint.rest}/klines?${query.toString()}`,
     )

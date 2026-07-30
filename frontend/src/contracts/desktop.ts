@@ -39,6 +39,7 @@ export interface CandlesRequest {
   kind: 'candles'
   selection: MarketSelection
   limit: number
+  before?: number
 }
 
 export interface StartStreamRequest {
@@ -135,7 +136,11 @@ export interface DesktopMarketDataAPI {
     market: Market,
     quoteAsset?: string,
   ): Promise<MarketSymbol[]>
-  getCandles(selection: MarketSelection, limit?: number): Promise<Candle[]>
+  getCandles(
+    selection: MarketSelection,
+    limit?: number,
+    before?: number,
+  ): Promise<Candle[]>
   startStream(
     sessionId: string,
     selection: MarketSelection,
@@ -312,6 +317,13 @@ export function isMarketDataRequest(value: unknown): value is MarketDataRequest 
         && Number.isInteger(request.limit)
         && (request.limit ?? 0) >= 1
         && (request.limit ?? 0) <= 1_000
+        && (
+          request.before === undefined
+          || (
+            Number.isSafeInteger(request.before)
+            && request.before > 0
+          )
+        )
     case 'start-stream':
       return isSessionId(request.sessionId)
         && isMarketSelection(request.selection)

@@ -9,6 +9,7 @@ import {
   type HistogramData,
   type IChartApi,
   type ISeriesApi,
+  type LogicalRangeChangeEventHandler,
   type ITextWatermarkPluginApi,
   type Time,
   type UTCTimestamp,
@@ -44,7 +45,9 @@ const legendHigh = ref<HTMLElement | null>(null)
 const legendLow = ref<HTMLElement | null>(null)
 const legendClose = ref<HTMLElement | null>(null)
 const loading = ref(true)
+const historyLoading = ref(false)
 const errorMessage = ref('')
+const historyErrorMessage = ref('')
 const chart = shallowRef<IChartApi | null>(null)
 const candleSeries = shallowRef<RoundedCandleSeriesApi | null>(null)
 const volumeSeries = shallowRef<ISeriesApi<'Histogram'> | null>(null)
@@ -55,6 +58,28 @@ let lastTimestamp = 0
 let historyGeneration = 0
 let pendingCandle: Candle | undefined
 let displayedCandles: Candle[] = []
+let historyExhausted = false
+let visibleLogicalRangeHandler: LogicalRangeChangeEventHandler | undefined
+
+const INITIAL_HISTORY_SIZE = 500
+const HISTORY_PAGE_SIZE = 400
+const HISTORY_PREFETCH_THRESHOLD = 8
+const INITIAL_VISIBLE_BARS = 20
+const INITIAL_RIGHT_SPACE_BARS = 4
+
+const enabledScaleInteractions = {
+  axisPressedMouseMove: { time: true, price: true },
+  axisDoubleClickReset: { time: true, price: true },
+  mouseWheel: true,
+  pinch: true,
+} as const
+
+const enabledScrollInteractions = {
+  mouseWheel: true,
+  pressedMouseMove: true,
+  horzTouchDrag: true,
+  vertTouchDrag: true,
+} as const
 
 function candlePoint(candle: Candle): RoundedCandleData<UTCTimestamp> {
   return {
@@ -86,10 +111,38 @@ function rememberDisplayedCandle(candle: Candle): void {
     displayedCandles[lastIndex] = candle
   } else if (!last || candle.time > last.time) {
     displayedCandles.push(candle)
-    if (displayedCandles.length > 500) {
-      displayedCandles.shift()
-    }
   }
+}
+
+function setChartInteractionsLocked(locked: boolean): void {
+  chart.value?.applyOptions({
+    handleScale: locked
+      ? {
+          axisPressedMouseMove: false,
+          axisDoubleClickReset: false,
+          mouseWheel: false,
+          pinch: false,
+        }
+      : enabledScaleInteractions,
+    handleScroll: locked
+      ? {
+          mouseWheel: false,
+          pressedMouseMove: false,
+          horzTouchDrag: false,
+          vertTouchDrag: false,
+        }
+      : enabledScrollInteractions,
+  })
+}
+
+function showInitialCandleWindow(candleCount: number): void {
+  if (candleCount < 1) {
+    return
+  }
+  chart.value?.timeScale().setVisibleLogicalRange({
+    from: Math.max(0, candleCount - INITIAL_VISIBLE_BARS),
+    to: candleCount - 1 + INITIAL_RIGHT_SPACE_BARS,
+  })
 }
 
 async function loadHistory(): Promise<void> {
@@ -98,7 +151,10 @@ async function loadHistory(): Promise<void> {
   }
 
   loading.value = true
+  historyLoading.value = false
   errorMessage.value = ''
+  historyErrorMessage.value = ''
+  historyExhausted = false
   lastTimestamp = 0
   pendingCandle = undefined
   displayedCandles = []
@@ -107,9 +163,11 @@ async function loadHistory(): Promise<void> {
   candleSeries.value.setData([])
   volumeSeries.value.setData([])
   try {
-    const history = props.initialHistory?.length
-      ? props.initialHistory
-      : await loadCandles(props.selection, 500)
+    const cachedHistory = props.initialHistory
+    const hasCachedHistory = Boolean(cachedHistory?.length)
+    const history = cachedHistory?.length
+      ? cachedHistory
+      : await loadCandles(props.selection, INITIAL_HISTORY_SIZE)
     if (
       generation !== historyGeneration
       || fingerprint !== selectionFingerprint()
@@ -119,6 +177,8 @@ async function loadHistory(): Promise<void> {
     const candles = [...new Map(
       history.map((candle) => [candle.time, candle]),
     ).values()].sort((left, right) => left.time - right.time)
+    historyExhausted = !hasCachedHistory
+      && candles.length < INITIAL_HISTORY_SIZE
     displayedCandles = candles
     candleSeries.value.setData(candles.map(candlePoint))
     volumeSeries.value.setData(candles.map((candle) => volumePoint(candle)))
@@ -139,13 +199,106 @@ async function loadHistory(): Promise<void> {
       updateLegend(latestPendingCandle)
     }
     emit('history', props.sessionId, fingerprint, candles)
-    chart.value?.timeScale().fitContent()
+    showInitialCandleWindow(displayedCandles.length)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error)
   } finally {
     if (generation === historyGeneration) {
       loading.value = false
     }
+  }
+}
+
+async function loadOlderHistory(): Promise<void> {
+  const candles = candleSeries.value
+  const volume = volumeSeries.value
+  const chartApi = chart.value
+  const oldest = displayedCandles[0]
+  if (
+    !candles
+    || !volume
+    || !chartApi
+    || !oldest
+    || loading.value
+    || historyLoading.value
+    || historyExhausted
+  ) {
+    return
+  }
+
+  const generation = historyGeneration
+  const fingerprint = selectionFingerprint()
+  const visibleRange = chartApi.timeScale().getVisibleLogicalRange()
+  historyLoading.value = true
+  historyErrorMessage.value = ''
+  setChartInteractionsLocked(true)
+
+  try {
+    const page = await loadCandles(
+      props.selection,
+      HISTORY_PAGE_SIZE,
+      oldest.time,
+    )
+    if (
+      generation !== historyGeneration
+      || fingerprint !== selectionFingerprint()
+    ) {
+      return
+    }
+
+    const olderCandles = [...new Map(
+      page
+        .filter((candle) => candle.time < oldest.time)
+        .map((candle) => [candle.time, candle]),
+    ).values()].sort((left, right) => left.time - right.time)
+
+    if (olderCandles.length === 0) {
+      historyExhausted = true
+      return
+    }
+
+    // Replacing the full data set is the supported prepend operation in
+    // Lightweight Charts. The renderer keeps processing live updates while
+    // the REST request runs in Electron's utility process.
+    displayedCandles = [...olderCandles, ...displayedCandles]
+    candles.setData(displayedCandles.map(candlePoint))
+    volume.setData(displayedCandles.map((candle) => volumePoint(candle)))
+
+    // Prepending shifts every previous logical index by the inserted count.
+    // Restoring that shifted range keeps the same candles under the cursor.
+    if (visibleRange) {
+      chartApi.timeScale().setVisibleLogicalRange({
+        from: visibleRange.from + olderCandles.length,
+        to: visibleRange.to + olderCandles.length,
+      })
+    }
+    historyExhausted = page.length < HISTORY_PAGE_SIZE
+  } catch (error) {
+    historyErrorMessage.value = error instanceof Error
+      ? error.message
+      : String(error)
+  } finally {
+    if (generation === historyGeneration) {
+      historyLoading.value = false
+      setChartInteractionsLocked(false)
+    }
+  }
+}
+
+function handleVisibleLogicalRangeChange(
+  range: Parameters<LogicalRangeChangeEventHandler>[0],
+): void {
+  if (
+    !range
+    || loading.value
+    || historyLoading.value
+    || historyExhausted
+  ) {
+    return
+  }
+  const bars = candleSeries.value?.barsInLogicalRange(range)
+  if (bars && bars.barsBefore <= HISTORY_PREFETCH_THRESHOLD) {
+    void loadOlderHistory()
   }
 }
 
@@ -316,18 +469,8 @@ onMounted(() => {
       rightOffset: 8,
       barSpacing: 8,
     },
-    handleScale: {
-      axisPressedMouseMove: { time: true, price: true },
-      axisDoubleClickReset: { time: true, price: true },
-      mouseWheel: true,
-      pinch: true,
-    },
-    handleScroll: {
-      mouseWheel: true,
-      pressedMouseMove: true,
-      horzTouchDrag: true,
-      vertTouchDrag: true,
-    },
+    handleScale: enabledScaleInteractions,
+    handleScroll: enabledScrollInteractions,
   })
 
   const candles = chartApi.addCustomSeries(new RoundedCandleSeries(), {
@@ -393,6 +536,10 @@ onMounted(() => {
   chart.value = chartApi
   candleSeries.value = candles
   volumeSeries.value = volume
+  visibleLogicalRangeHandler = handleVisibleLogicalRangeChange
+  chartApi.timeScale().subscribeVisibleLogicalRangeChange(
+    visibleLogicalRangeHandler,
+  )
 
   unsubscribeCandle = onCandle(props.sessionId, (candle) => {
     if (!isCurrentSelection(candle)) {
@@ -422,6 +569,12 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   historyGeneration += 1
+  if (visibleLogicalRangeHandler) {
+    chart.value?.timeScale().unsubscribeVisibleLogicalRangeChange(
+      visibleLogicalRangeHandler,
+    )
+    visibleLogicalRangeHandler = undefined
+  }
   releaseVerticalPricePan?.()
   releaseVerticalPricePan = undefined
   unsubscribeCandle?.()
@@ -454,9 +607,34 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
         <span>C <b ref="legendClose">—</b></span>
         <i>LIVE</i>
       </div>
-      <div v-if="loading" class="chart-message">Carregando candles…</div>
-      <div v-else-if="errorMessage" class="chart-message error">{{ errorMessage }}</div>
+      <div v-if="errorMessage" class="chart-message error">{{ errorMessage }}</div>
+      <div
+        v-if="historyErrorMessage && !loading && !historyLoading"
+        class="chart-history-error"
+      >
+        <span>Falha ao carregar candles anteriores.</span>
+        <button type="button" @click="loadOlderHistory">Tentar novamente</button>
+      </div>
       <span class="tradingview-attribution">Charts by TradingView</span>
+    </div>
+    <div
+      v-if="loading || historyLoading"
+      class="chart-interaction-lock"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      @pointerdown.prevent
+      @wheel.prevent
+      @dblclick.prevent
+      @contextmenu.prevent
+    >
+      <span class="chart-loading-spinner" aria-hidden="true" />
+      <strong>
+        {{ historyLoading
+          ? `Carregando ${HISTORY_PAGE_SIZE} candles anteriores…`
+          : 'Carregando candles…' }}
+      </strong>
+      <small>O gráfico será liberado assim que o histórico estiver pronto.</small>
     </div>
   </section>
 </template>

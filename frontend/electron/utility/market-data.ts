@@ -37,7 +37,10 @@ async function execute(request: MarketDataRequest): Promise<unknown> {
     case 'candles':
       return registry
         .get(request.selection.provider)
-        .getCandles(request.selection, request.limit)
+        .getCandles(request.selection, {
+          limit: request.limit,
+          before: request.before,
+        })
     case 'start-stream':
       sessions.start(
         request.sessionId,

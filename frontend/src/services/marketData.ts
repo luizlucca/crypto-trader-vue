@@ -89,10 +89,12 @@ export async function loadMarketCatalog(
 export async function loadCandles(
   selection: MarketSelection,
   limit = 500,
+  before?: number,
 ): Promise<Candle[]> {
   return desktopMarketData().getCandles(
     copyMarketSelection(selection),
     limit,
+    before,
   )
 }
 
