@@ -6,34 +6,23 @@ import {
   ref,
   shallowRef,
 } from 'vue'
-import { loadMarketCatalog } from '../../services/marketData'
-import { copyMarketPair } from '../../contracts/desktop'
+import { createDefaultMarketSelection } from '@/domain/marketSelection'
+import { loadMarketCatalog } from '@/services/marketData'
+import { copyMarketPair } from '@shared/contracts/desktop'
 import {
   favoriteKey,
   loadFavoriteKeys,
   saveFavoriteKeys,
-} from '../../services/favorites'
-import type { SymbolSearchContext } from '../../contracts/desktop'
+} from '@/services/favorites'
+import type { SymbolSearchContext } from '@shared/contracts/desktop'
 import type {
   MarketCatalog,
   MarketPair,
   MarketSelection,
-} from '../../types/market'
+} from '@shared/types/market'
 import SymbolSearchModal from './SymbolSearchModal.vue'
 
-const fallbackSelection: MarketSelection = {
-  provider: 'binance',
-  market: 'futures',
-  symbol: 'BTCUSDT',
-  interval: '1h',
-  baseAsset: 'BTC',
-  quoteAsset: 'USDT',
-  priceTickSize: 0.01,
-  pricePrecision: 2,
-  quantityPrecision: 3,
-}
-
-const selection = reactive<MarketSelection>({ ...fallbackSelection })
+const selection = reactive<MarketSelection>(createDefaultMarketSelection())
 const catalog = shallowRef<MarketCatalog | null>(null)
 const favoriteKeys = shallowRef(loadFavoriteKeys())
 const initialQuery = ref('')

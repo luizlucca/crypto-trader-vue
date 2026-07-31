@@ -5,7 +5,7 @@ import type {
   MarketSymbol,
   OrderBookLevel,
   OrderBookSnapshot,
-} from '../../../../../src/types/market'
+} from '@shared/types/market'
 
 const provider = 'binance'
 

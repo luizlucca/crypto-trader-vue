@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { subscribeRealtimePrice } from '../../services/realtimePrice'
-import { formatMarketPrice } from '../../services/numberFormat'
-import type { Market } from '../../types/market'
+import { subscribeRealtimePrice } from '@/services/realtimePrice'
+import { formatMarketPrice } from '@/services/numberFormat'
+import type { Market } from '@shared/types/market'
 
 const props = defineProps<{
   provider: string

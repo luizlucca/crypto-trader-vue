@@ -6,13 +6,13 @@ import type {
   MarketSelection,
   MarketSymbol,
   OrderBookSnapshot,
-} from '../../../src/types/market'
+} from '@shared/types/market'
 
-export type ConnectionStateName =
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  | 'error'
+export type ConnectionStateName
+  = | 'connecting'
+    | 'connected'
+    | 'reconnecting'
+    | 'error'
 
 export interface ConnectionState {
   state: ConnectionStateName

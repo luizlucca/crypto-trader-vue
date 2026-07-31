@@ -6,7 +6,7 @@ import {
   appThemePreset,
   saveCustomTheme,
   type AppTheme,
-} from '../../services/theme'
+} from '@/services/theme'
 import {
   customizeThemePalette,
   defaultThemeCustomization,
@@ -16,7 +16,7 @@ import {
   DEFAULT_THEME_PRESET_ID,
   type ThemePresetId,
   type ThemeVariantCustomization,
-} from '../../services/themeCatalog'
+} from '@/services/themeCatalog'
 import ThemePresetPreview from './ThemePresetPreview.vue'
 
 const emit = defineEmits<{

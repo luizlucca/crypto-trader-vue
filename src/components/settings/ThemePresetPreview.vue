@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ThemePalette } from '../../services/themeCatalog'
+import type { ThemePalette } from '@/services/themeCatalog'
 
 const props = defineProps<{
   palette: ThemePalette

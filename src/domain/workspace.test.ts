@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { MarketSelection } from './market'
+import type { MarketSelection } from '@shared/types/market'
+import {
+  marketSelectionFingerprint,
+  selectionForNewTab,
+} from './marketSelection'
 import {
   applyWorkspaceStreamStatus,
   createWorkspaceTab,
-  marketSelectionFingerprint,
-  selectionForNewTab,
   workspaceTabLabel,
 } from './workspace'
 

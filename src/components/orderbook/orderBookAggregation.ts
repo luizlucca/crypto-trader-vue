@@ -1,16 +1,27 @@
-import type { OrderBookLevel } from '../../types/market'
+import type { OrderBookLevel } from '@shared/types/market'
 
 export type OrderBookSide = 'ask' | 'bid'
 
 const MAX_SAFE_PRECISION = 8
 
+// The aggregation step and tick size come from a small, stable set, but this
+// runs inside the order book's per-frame path. Caching keeps the string work
+// off the hot path without changing the result.
+const decimalPlacesCache = new Map<number, number>()
+
 function decimalPlaces(value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
     return 0
   }
+  const cached = decimalPlacesCache.get(value)
+  if (cached !== undefined) {
+    return cached
+  }
   const normalized = value.toFixed(MAX_SAFE_PRECISION).replace(/0+$/, '')
   const decimalPoint = normalized.indexOf('.')
-  return decimalPoint < 0 ? 0 : normalized.length - decimalPoint - 1
+  const places = decimalPoint < 0 ? 0 : normalized.length - decimalPoint - 1
+  decimalPlacesCache.set(value, places)
+  return places
 }
 
 export function aggregationPrecision(step: number): number {

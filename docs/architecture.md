@@ -31,6 +31,30 @@ pesquisa, processo realtime e processo de catálogo. Uma ordenação, resize da
 janela de pesquisa ou parsing de um catálogo grande não agenda trabalho na
 thread do gráfico e não bloqueia a ingestão dos WebSockets.
 
+## Camadas de módulo
+
+A dependência entre pastas tem sentido único e é verificada por lint
+([ADR-0004](./adr/0004-camadas-e-fronteiras-de-modulo.md)):
+
+```text
+        shared/            contratos e tipos neutros
+       ▲       ▲           sem Vue, sem Electron
+       │       │
+    src/     electron/
+  renderer   main + preload + utility
+```
+
+- `shared/contracts/desktop.ts`: única fonte para comandos, eventos, validação
+  e API disponibilizada ao Vue.
+- `shared/types/market.ts`: tipos de domínio consumidos pelos dois lados.
+- `src/domain`: regra pura e testável do renderer, sem dependência de Vue.
+- `src/types`: apenas declarações de ambiente do renderer.
+
+`electron/` importa somente `@shared/`; um import de `@/` falha em
+`npm run lint`. Os aliases `@shared/*` e `@/*` são declarados em
+`electron.vite.config.ts`, `tsconfig.json`, `tsconfig.node.json` e
+`vitest.config.ts`.
+
 ## Camada desktop Electron
 
 - `electron/main`: ciclo de vida das janelas, validação IPC,
@@ -41,8 +65,6 @@ thread do gráfico e não bloqueia a ingestão dos WebSockets.
   providers.
 - `electron/utility/market-data/providers/binance`: endpoints, REST,
   WebSocket e normalização dos payloads.
-- `src/contracts/desktop.ts`: única fonte para comandos, eventos e
-  API disponibilizada ao Vue.
 
 As duas janelas usam `nodeIntegration: false`, `contextIsolation: true` e
 `sandbox: true`. Navegação externa, criação arbitrária de janelas e permissões
@@ -91,11 +113,19 @@ stream sem alterar o contrato consumido pelo renderer.
 - `components/settings/GeneralSettingsPanel.vue`: painel isolado e extensível
   para aparência, preferências gerais e futuras credenciais de providers.
 - `components/market/CryptoAssetIcon.vue`: ícones SVG curados com fallback.
-- `components/workspace`: gerencia abas e orquestra os ciclos das sessões.
+- `components/workspace`: compõe os painéis e traduz eventos das janelas; o
+  ciclo de vida das abas e sessões vive em `composables/useWorkspaceTabs.ts`.
 - `services/marketData.ts`: fronteira única entre os componentes Vue e a API
   Electron exposta pelo preload.
 - `services/realtimePrice.ts`: canal quente de preço sem estado Vue.
-- `types/market.ts`: contratos de domínio compartilhados.
+- `domain/marketSelection.ts`: seleção padrão, fingerprint de stream e derivação
+  de seleção para nova aba — fonte única para workspace e janela de pesquisa.
+- `domain/workspace.ts`: modelo da aba e aplicação de estado dos streams.
+- `domain/topSelection.ts`: seleção parcial dos melhores N itens sem ordenar a
+  coleção inteira.
+- `composables/`: estado de baixo volume com ciclo de vida Vue. O cache de
+  candles mora aqui, mas é o único que **não** usa reatividade — ele é escrito
+  a cada tick, e a restrição está documentada no próprio módulo.
 
 Cada montagem do gráfico cria uma instância no `onMounted` e a remove no
 `onBeforeUnmount`.
@@ -115,6 +145,19 @@ O símbolo e o período são desenhados no próprio canvas pela API oficial
 gráfico. O arraste sobre o painel principal desativa o auto scale antes do
 handler nativo da biblioteca, permitindo movimentar conjuntamente os eixos X e
 Y. Um duplo clique na escala de preços restaura o ajuste automático.
+
+Os estilos ficam em `src/styles/`, divididos por domínio; `src/style.css` guarda
+apenas os `@import`. **A ordem desses imports é a ordem da cascata** e não deve
+ser alterada sem verificar: a divisão garante que dois blocos com o mesmo
+seletor permaneçam no mesmo arquivo, preservando a precedência original.
+
+As cores da interface derivam dos tokens, por `var(--token)` ou por
+`color-mix()` quando o tom pretendido fica entre dois tokens. Assim uma troca de
+preset recolore o app inteiro, e não só o gráfico. Permanecem fixas apenas as
+cores de marca — o amarelo da Binance não deve seguir o tema. Ao criar um tom
+novo, lembre que tokens de superfície invertem entre claro e escuro enquanto
+`--accent-contrast` continua branco: uma fórmula validada só no escuro pode
+resolver para branco-sobre-branco no claro.
 
 O tema fica em um serviço compartilhado e persistido no `localStorage`.
 Luminosidade (`dark`/`light`) e paleta são estados independentes. O catálogo
@@ -162,8 +205,11 @@ usar RGBA; preços e textos mantêm versões sólidas para preservar contraste.
 As miniaturas do catálogo recebem a própria `ThemePalette`, portanto mostram
 fundo, grade, destaque e candles de alta/baixa antes da seleção.
 
-Cada aba possui seleção, período, status, latência, geração de cancelamento e
-`sessionId` próprios. O processo realtime mantém conexões de candles e livro
+Cada aba possui seleção, período, status, geração de cancelamento e `sessionId`
+próprios; a latência trafega pelo canal imperativo, fora do modelo da aba.
+Trocar de par, mercado ou período é assíncrono, então uma segunda troca pode
+começar antes de a primeira terminar. A geração é comparada antes de cada
+continuação escrever no estado: se não for mais a mais recente, ela aborta. O processo realtime mantém conexões de candles e livro
 independentes para cada aba. Ao alternar, a aplicação desmonta o canvas e o
 livro anteriores e monta somente os da aba visível. Candles das abas inativas
 continuam alimentando um cache limitado a 500 barras, de forma que retornar a
@@ -191,11 +237,24 @@ quente não executa `querySelector`, não cria slices e só escreve no DOM quand
 o valor realmente mudou. Antes do IPC, `auditTime(16)` limita o livro ao máximo
 útil de um snapshot por frame e impede crescimento da fila.
 
-Preço de alta frequência não sobe para refs do `TradingWorkspace`. O gráfico e
-o livro publicam o preço em um canal imperativo; somente `RealtimePriceText`
-escreve no nó do ativo selecionado. A latência é amostrada a cada 500 ms antes
-de atualizar o estado da aba, portanto não transforma snapshots do livro em
-renders do workspace ou da pesquisa.
+Preço e latência de alta frequência não sobem para refs do `TradingWorkspace`.
+Ambos usam `services/imperativeChannel.ts`: um publish/subscribe indexado por
+chave, fora do grafo reativo. O gráfico e o livro publicam o preço; somente
+`RealtimePriceText` escreve no nó do ativo selecionado. A latência é amostrada
+a cada 500 ms e vai direto para `StreamLatencyText`, sem passar pelo modelo da
+aba — antes ela era escrita em `WorkspaceTab.latency` e, como a lista de abas é
+reativa profunda, cada amostra agendava uma render pass do componente que
+hospeda o gráfico.
+
+A indexação por chave importa: a versão anterior do canal de preço percorria
+todos os assinantes a cada publicação. Com uma publicação por frame do livro,
+mais uma por tick de candle, o custo crescia com o número de nós de preço
+montados, não com os que observam aquele par.
+
+O painel de mercados exibe 14 linhas de um catálogo que chega a milhares de
+pares e recalcula a cada tecla. `domain/topSelection.ts` faz seleção parcial:
+percorre a coleção uma vez e aloca apenas o buffer do resultado, em vez de
+copiar e ordenar o catálogo inteiro na thread que pinta o gráfico.
 
 Favoritos são persistidos no `localStorage` e separados por provedor, mercado
 e símbolo. As janelas sincronizam favoritos por IPC. A pesquisa carrega o
@@ -239,6 +298,7 @@ principal nem com o processo dos WebSockets.
 Testes TypeScript comuns não acessam a rede:
 
 ```sh
+npm run lint
 npm test
 npm run typecheck
 npm run build

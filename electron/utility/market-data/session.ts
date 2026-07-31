@@ -1,12 +1,12 @@
 import { auditTime, type Subscription } from 'rxjs'
 import type {
   MarketSessionEvent,
-} from '../../../src/contracts/desktop'
+} from '@shared/contracts/desktop'
 import type {
   MarketSelection,
   OrderBookSnapshot,
   StreamStatus,
-} from '../../../src/types/market'
+} from '@shared/types/market'
 import type {
   ConnectionState,
   ConnectionStateName,

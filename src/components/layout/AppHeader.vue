@@ -10,9 +10,9 @@ import {
   Sun,
   X,
 } from '@lucide/vue'
-import { appTheme, toggleTheme } from '../../services/theme'
-import type { StreamStatus } from '../../types/market'
-import type { MarketSelection } from '../../types/market'
+import { appTheme, toggleTheme } from '@/services/theme'
+import type { StreamStatus } from '@shared/types/market'
+import type { MarketSelection } from '@shared/types/market'
 
 defineProps<{
   status: StreamStatus['state']

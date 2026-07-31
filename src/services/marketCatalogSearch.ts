@@ -1,10 +1,10 @@
-import type { MarketPair } from '../types/market'
+import type { MarketPair } from '@shared/types/market'
 
-export type CatalogSortKey =
-  | 'symbol'
-  | 'lastPrice'
-  | 'priceChangePercent'
-  | 'quoteVolume'
+export type CatalogSortKey
+  = | 'symbol'
+    | 'lastPrice'
+    | 'priceChangePercent'
+    | 'quoteVolume'
 export type CatalogSortDirection = 'asc' | 'desc'
 
 export interface CatalogSearchCriteria {
@@ -40,9 +40,9 @@ export interface CatalogWorkerSearchRequest {
   criteria: CatalogSearchCriteria
 }
 
-export type CatalogWorkerRequest =
-  | CatalogWorkerInitRequest
-  | CatalogWorkerSearchRequest
+export type CatalogWorkerRequest
+  = | CatalogWorkerInitRequest
+    | CatalogWorkerSearchRequest
 
 export interface CatalogWorkerReadyResponse {
   type: 'ready'
@@ -64,10 +64,10 @@ export interface CatalogWorkerErrorResponse {
   message: string
 }
 
-export type CatalogWorkerResponse =
-  | CatalogWorkerReadyResponse
-  | CatalogWorkerResultResponse
-  | CatalogWorkerErrorResponse
+export type CatalogWorkerResponse
+  = | CatalogWorkerReadyResponse
+    | CatalogWorkerResultResponse
+    | CatalogWorkerErrorResponse
 
 function normalizedFavoriteKey(item: MarketPair): string {
   return `${item.provider}:${item.market}:${item.symbol}`.toLowerCase()

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { MarketSelection } from '../../../../../src/types/market'
+import type { MarketSelection } from '@shared/types/market'
 import { BinanceProvider } from './provider'
 
 afterEach(() => {

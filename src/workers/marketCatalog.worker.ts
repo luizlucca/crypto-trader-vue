@@ -6,7 +6,7 @@ import {
   searchCatalog,
   type CatalogWorkerRequest,
   type CatalogWorkerResponse,
-} from '../services/marketCatalogSearch'
+} from '@/services/marketCatalogSearch'
 
 const workerScope = self as unknown as DedicatedWorkerGlobalScope
 let generation = 0

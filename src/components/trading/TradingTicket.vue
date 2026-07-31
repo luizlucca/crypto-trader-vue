@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MarketSelection } from '../../types/market'
+import type { MarketSelection } from '@shared/types/market'
 
 defineProps<{ selection: MarketSelection }>()
 </script>
@@ -23,20 +23,20 @@ defineProps<{ selection: MarketSelection }>()
     <div class="balance-row"><span>Disponível</span><strong>2.487,35 USDT</strong></div>
     <label class="ticket-field">
       <span>Preço</span>
-      <div><input value="66.500,0" /><small>{{ selection.quoteAsset }}</small></div>
+      <div><input value="66.500,0"><small>{{ selection.quoteAsset }}</small></div>
     </label>
     <label class="ticket-field">
       <span>Quantidade</span>
-      <div><input value="0,050" /><small>{{ selection.baseAsset }}</small></div>
+      <div><input value="0,050"><small>{{ selection.baseAsset }}</small></div>
     </label>
 
     <div class="leverage">
       <div><span>Alavancagem</span><strong>10x</strong></div>
-      <input aria-label="Alavancagem" max="100" min="1" type="range" value="10" />
+      <input aria-label="Alavancagem" max="100" min="1" type="range" value="10">
       <div class="leverage-labels"><span>1x</span><span>5x</span><span>10x</span><span>25x</span><span>100x</span></div>
     </div>
 
-    <label class="check-row"><input checked type="checkbox" /> TP/SL</label>
+    <label class="check-row"><input checked type="checkbox"> TP/SL</label>
     <span class="field-caption">Predefinições (TP / SL)</span>
     <div class="preset-grid">
       <button class="moderate" type="button"><strong>Moderado</strong><span>TP 0,50%</span><span>SL 0,25%</span></button>
@@ -45,10 +45,10 @@ defineProps<{ selection: MarketSelection }>()
     </div>
 
     <div class="estimate-fields">
-      <label><span>TP</span><input value="67.500,0" /></label>
-      <strong class="positive">+66,25 USDT<br /><small>(+1,99%)</small></strong>
-      <label><span>SL</span><input value="65.800,0" /></label>
-      <strong class="negative">-33,25 USDT<br /><small>(-1,00%)</small></strong>
+      <label><span>TP</span><input value="67.500,0"></label>
+      <strong class="positive">+66,25 USDT<br><small>(+1,99%)</small></strong>
+      <label><span>SL</span><input value="65.800,0"></label>
+      <strong class="negative">-33,25 USDT<br><small>(-1,00%)</small></strong>
     </div>
 
     <div class="ticket-summary">

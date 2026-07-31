@@ -17,13 +17,14 @@ import {
 import {
   RoundedCandleSeries,
   type RoundedCandleSeriesApi,
-} from '../../plugins/roundedCandles/RoundedCandleSeries'
-import type { RoundedCandleData } from '../../plugins/roundedCandles/data'
-import type { Candle, MarketSelection } from '../../types/market'
-import { loadCandles, onCandle } from '../../services/marketData'
-import { publishRealtimePrice } from '../../services/realtimePrice'
-import { appThemePalette } from '../../services/theme'
-import type { ThemePalette } from '../../services/themeCatalog'
+} from '@/plugins/roundedCandles/RoundedCandleSeries'
+import type { RoundedCandleData } from '@/plugins/roundedCandles/data'
+import type { Candle, MarketSelection } from '@shared/types/market'
+import { marketSelectionFingerprint } from '@/domain/marketSelection'
+import { loadCandles, onCandle } from '@/services/marketData'
+import { publishRealtimePrice } from '@/services/realtimePrice'
+import { appThemePalette } from '@/services/theme'
+import type { ThemePalette } from '@/services/themeCatalog'
 import ChartToolbar from './ChartToolbar.vue'
 import DrawingToolbar from './DrawingToolbar.vue'
 
@@ -187,11 +188,8 @@ async function loadHistory(): Promise<void> {
       lastTimestamp = lastCandle.time
       updateLegend(lastCandle)
     }
-    const latestPendingCandle = currentPendingCandle()
-    if (
-      latestPendingCandle
-      && latestPendingCandle.time >= lastTimestamp
-    ) {
+    const latestPendingCandle = readPendingCandle()
+    if (latestPendingCandle && latestPendingCandle.time >= lastTimestamp) {
       candleSeries.value.update(candlePoint(latestPendingCandle))
       volumeSeries.value.update(volumePoint(latestPendingCandle))
       lastTimestamp = latestPendingCandle.time
@@ -303,15 +301,16 @@ function handleVisibleLogicalRangeChange(
 }
 
 function selectionFingerprint(): string {
-  return [
-    props.selection.provider,
-    props.selection.market,
-    props.selection.symbol,
-    props.selection.interval,
-  ].join(':')
+  return marketSelectionFingerprint(props.selection)
 }
 
-function currentPendingCandle(): Candle | undefined {
+/**
+ * `loadHistory` clears `pendingCandle` before awaiting, so control-flow
+ * analysis narrows it to `undefined` for the rest of that function and cannot
+ * see the realtime callback that reassigns it. Reading through a call defeats
+ * the narrowing without widening the variable's declared type.
+ */
+function readPendingCandle(): Candle | undefined {
   return pendingCandle
 }
 

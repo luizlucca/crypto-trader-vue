@@ -2,8 +2,8 @@ import type {
   MarketDataRequest,
   UtilityMessage,
   UtilityRequest,
-} from '../../src/contracts/desktop'
-import { isMarketDataRequest } from '../../src/contracts/desktop'
+} from '@shared/contracts/desktop'
+import { isMarketDataRequest } from '@shared/contracts/desktop'
 import { ProviderRegistry } from './market-data/provider'
 import { BinanceProvider } from './market-data/providers/binance/provider'
 import { MarketSessionPool } from './market-data/session'

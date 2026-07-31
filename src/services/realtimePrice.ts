@@ -1,4 +1,5 @@
-import type { Market } from '../types/market'
+import type { Market } from '@shared/types/market'
+import { createImperativeChannel } from './imperativeChannel'
 
 export interface RealtimePrice {
   provider: string
@@ -7,15 +8,15 @@ export interface RealtimePrice {
   value: number
 }
 
-interface PriceSubscriber {
-  provider: string
-  market: Market
-  symbol: string
-  callback: (value: number) => void
-}
-
-const subscribers = new Set<PriceSubscriber>()
-const latestPrices = new Map<string, number>()
+/**
+ * Keyed by instrument rather than by session: the chart and the order book of
+ * a tab observe the same pair, and two tabs on the same pair share subscribers.
+ *
+ * Previously this was a flat Set scanned on every publication, comparing three
+ * strings per subscriber at roughly 60 publications per second. Indexing by key
+ * makes a publication cost only the listeners actually watching that pair.
+ */
+const channel = createImperativeChannel<number>()
 
 function priceKey(provider: string, market: Market, symbol: string): string {
   return `${provider}:${market}:${symbol}`.toLowerCase()
@@ -25,23 +26,10 @@ export function publishRealtimePrice(price: RealtimePrice): void {
   if (!Number.isFinite(price.value) || price.value <= 0) {
     return
   }
-
-  const provider = price.provider.toLowerCase()
-  const symbol = price.symbol.toUpperCase()
-  latestPrices.set(
-    priceKey(provider, price.market, symbol),
+  channel.publish(
+    priceKey(price.provider, price.market, price.symbol),
     price.value,
   )
-
-  subscribers.forEach((subscriber) => {
-    if (
-      subscriber.provider === provider
-      && subscriber.market === price.market
-      && subscriber.symbol === symbol
-    ) {
-      subscriber.callback(price.value)
-    }
-  })
 }
 
 export function subscribeRealtimePrice(
@@ -50,20 +38,5 @@ export function subscribeRealtimePrice(
   symbol: string,
   callback: (value: number) => void,
 ): () => void {
-  const subscriber: PriceSubscriber = {
-    provider: provider.toLowerCase(),
-    market,
-    symbol: symbol.toUpperCase(),
-    callback,
-  }
-  subscribers.add(subscriber)
-
-  const latest = latestPrices.get(priceKey(provider, market, symbol))
-  if (latest !== undefined) {
-    callback(latest)
-  }
-
-  return () => {
-    subscribers.delete(subscriber)
-  }
+  return channel.subscribe(priceKey(provider, market, symbol), callback)
 }

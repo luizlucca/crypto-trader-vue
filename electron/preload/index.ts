@@ -6,7 +6,7 @@ import {
   type MarketDataRequest,
   type SymbolSelectionResult,
   type SymbolSearchContext,
-} from '../../src/contracts/desktop'
+} from '@shared/contracts/desktop'
 import type {
   Candle,
   Market,
@@ -16,7 +16,7 @@ import type {
   MarketSymbol,
   OrderBookSnapshot,
   StreamStatus,
-} from '../../src/types/market'
+} from '@shared/types/market'
 
 interface MarketPayloadMap {
   candle: Candle

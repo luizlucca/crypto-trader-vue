@@ -1,0 +1,173 @@
+.order-book .panel-header > div {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.book-aggregation {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: 3px;
+}
+
+.book-aggregation > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.book-aggregation select {
+  height: 24px;
+  min-width: 58px;
+  padding: 0 18px 0 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  background-color: var(--control-bg);
+  font: 600 10.5px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.book-aggregation select:hover,
+.book-aggregation select:focus-visible {
+  border-color: var(--blue);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.order-book {
+  grid-column: 5;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  contain: layout paint style;
+}
+
+.book-columns,
+.book-row {
+  display: grid;
+  grid-template-columns: 1fr .85fr .85fr;
+  align-items: center;
+  column-gap: 5px;
+  padding: 0 9px;
+}
+
+.book-columns {
+  height: 28px;
+  color: color-mix(in srgb, var(--muted) 80%, var(--chart-border));
+  font-size: 10px;
+}
+
+.book-columns span:not(:first-child),
+.book-row span:not(:first-of-type) {
+  text-align: right;
+}
+
+.book-side {
+  min-height: 0;
+}
+
+.book-row {
+  position: relative;
+  height: 20px;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--text-strong) 40%, var(--muted));
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+}
+
+.book-row i {
+  position: absolute;
+  z-index: 0;
+  top: 1px;
+  right: 0;
+  bottom: 1px;
+  width: 0;
+  pointer-events: none;
+}
+
+.book-row i[data-side="ask"] {
+  background: rgba(240, 79, 94, .13);
+}
+
+.book-row i[data-side="bid"] {
+  background: rgba(24, 197, 143, .13);
+}
+
+.book-row span {
+  z-index: 1;
+}
+
+.asks .book-row span:first-of-type {
+  color: color-mix(in srgb, var(--accent-contrast) 10%, var(--red));
+}
+
+.bids .book-row span:first-of-type {
+  color: color-mix(in srgb, var(--accent-contrast) 5%, var(--green));
+}
+
+.book-mid {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  height: 48px;
+  padding: 0 9px;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.book-mid strong {
+  color: var(--green);
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.book-mid > span {
+  margin-left: 6px;
+  color: var(--green);
+}
+
+.book-mid small {
+  justify-self: end;
+  color: color-mix(in srgb, var(--text) 45%, var(--chart-border));
+  font-size: 10px;
+}
+
+.book-ratio {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  margin-top: auto;
+  padding: 0 9px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.book-ratio span:first-child {
+  color: var(--green);
+}
+
+.book-ratio span:last-child {
+  color: var(--red);
+}
+
+.book-ratio i {
+  position: relative;
+  flex: 1;
+  height: 3px;
+  background: var(--red);
+}
+
+.book-ratio b {
+  display: block;
+  width: 50%;
+  height: 100%;
+  background: var(--green);
+}

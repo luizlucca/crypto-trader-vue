@@ -71,7 +71,7 @@ export class RoundedCandleRenderer<
     const radius = Math.max(
       0,
       options.radius(effectiveBarSpacing)
-        * Math.min(horizontalPixelRatio, verticalPixelRatio),
+      * Math.min(horizontalPixelRatio, verticalPixelRatio),
     )
 
     for (let index = visibleRange.from; index < visibleRange.to; index += 1) {

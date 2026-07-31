@@ -1,4 +1,4 @@
-import type { MarketPair } from '../types/market'
+import type { MarketPair } from '@shared/types/market'
 import {
   collectQuoteAssets,
   createSearchIndex,

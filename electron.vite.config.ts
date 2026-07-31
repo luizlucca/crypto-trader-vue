@@ -5,8 +5,16 @@ import { defineConfig } from 'electron-vite'
 
 const root = dirname(fileURLToPath(import.meta.url))
 
+// `@shared` is the only module boundary both sides may cross. `@` belongs to
+// the renderer and must never be imported from `electron/`.
+const alias = {
+  '@shared': resolve(root, 'shared'),
+  '@': resolve(root, 'src'),
+}
+
 export default defineConfig({
   main: {
+    resolve: { alias },
     build: {
       rollupOptions: {
         input: {
@@ -22,6 +30,7 @@ export default defineConfig({
     },
   },
   preload: {
+    resolve: { alias },
     build: {
       rollupOptions: {
         input: {
@@ -37,6 +46,7 @@ export default defineConfig({
   },
   renderer: {
     root,
+    resolve: { alias },
     plugins: [vue()],
     build: {
       rollupOptions: {

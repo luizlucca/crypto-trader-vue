@@ -7,12 +7,17 @@ import type {
   StartStreamRequest,
   UtilityMessage,
   UtilityRequest,
-} from '../../src/contracts/desktop'
+} from '@shared/contracts/desktop'
 
 interface PendingRequest {
   resolve: (value: unknown) => void
   reject: (reason: Error) => void
   timeout: NodeJS.Timeout
+}
+
+interface ReadyWaiter {
+  resolve: () => void
+  reject: (error: Error) => void
 }
 
 const requestTimeoutMs = 20_000
@@ -21,10 +26,8 @@ export class MarketDataCoordinator {
   private child: UtilityProcess | undefined
   private pending = new Map<string, PendingRequest>()
   private ready = false
-  private readyWaiters: Array<{
-    resolve: () => void
-    reject: (error: Error) => void
-  }> = []
+  private readyWaiters: ReadyWaiter[] = []
+
   private shuttingDown = false
   private restartTimer: NodeJS.Timeout | undefined
   private activeSubscriptions = new Map<string, StartStreamRequest>()
@@ -131,17 +134,33 @@ export class MarketDataCoordinator {
     }
     this.start()
     return new Promise<void>((resolve, reject) => {
-      this.readyWaiters.push({ resolve, reject })
-      setTimeout(() => {
-        const index = this.readyWaiters.findIndex(
-          (waiter) => waiter.resolve === resolve,
-        )
-        if (index >= 0) {
-          this.readyWaiters.splice(index, 1)
-          reject(new Error('Timeout ao iniciar processo de market data'))
-        }
+      // The timer is cleared on every exit path. Leaving it armed kept a
+      // pending timeout alive for the full window after each request issued
+      // while the process was still starting.
+      const timeout = setTimeout(() => {
+        this.removeReadyWaiter(waiter)
+        reject(new Error('Timeout ao iniciar processo de market data'))
       }, requestTimeoutMs)
+
+      const waiter: ReadyWaiter = {
+        resolve: () => {
+          clearTimeout(timeout)
+          resolve()
+        },
+        reject: (error: Error) => {
+          clearTimeout(timeout)
+          reject(error)
+        },
+      }
+      this.readyWaiters.push(waiter)
     })
+  }
+
+  private removeReadyWaiter(waiter: ReadyWaiter): void {
+    const index = this.readyWaiters.indexOf(waiter)
+    if (index >= 0) {
+      this.readyWaiters.splice(index, 1)
+    }
   }
 
   private handleMessage(message: unknown): void {

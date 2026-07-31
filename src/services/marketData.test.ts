@@ -1,6 +1,6 @@
 import { isProxy, reactive } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Candle, MarketSelection } from '../types/market'
+import type { Candle, MarketSelection } from '@shared/types/market'
 import {
   loadCandles,
   onCandle,

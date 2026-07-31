@@ -1,0 +1,314 @@
+.connection {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 86px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.connection.connected {
+  color: var(--green);
+}
+
+.connection.reconnecting {
+  color: var(--warning);
+}
+
+.connection.error {
+  color: var(--red);
+}
+
+.connection-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.market-sidebar {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--navigation-bg);
+  border: 1px solid var(--border);
+}
+
+.sidebar-section {
+  padding: 10px 10px 9px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  margin-top: 9px;
+  padding: 0 8px;
+  border: 1px solid #163743;
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.search-field > svg {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  stroke-width: 2;
+}
+
+.search-field input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--muted) 50%, var(--accent-contrast));
+  font-size: 11.5px;
+}
+
+.market-kind,
+.quote-tabs {
+  display: flex;
+  margin-top: 7px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.market-kind button {
+  flex: 1;
+  height: 26px;
+  color: var(--muted);
+  background: var(--panel);
+  font-size: 11px;
+}
+
+.market-kind button.active {
+  color: color-mix(in srgb, var(--text-strong) 80%, var(--chart-text));
+  background: var(--hover-bg);
+  box-shadow: inset 0 -2px var(--blue);
+}
+
+.quote-tabs {
+  border: 0;
+}
+
+.quote-tabs button {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  height: 25px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 10.5px;
+}
+
+.quote-tabs button svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.9;
+}
+
+.quote-tabs button.active {
+  color: white;
+  background: var(--border-soft);
+  border-radius: 3px;
+}
+
+.quote-tabs button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.market-list {
+  height: min(300px, 32vh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--selected-bg) 90%, var(--text-strong)) transparent;
+}
+
+.market-loading {
+  display: grid;
+  place-items: center;
+  min-height: 68px;
+  color: color-mix(in srgb, var(--selected-bg) 60%, var(--text-strong));
+  font-size: 11px;
+}
+
+.market-table {
+  display: grid;
+  grid-template-columns: 1.4fr .8fr .66fr;
+  width: 100%;
+  align-items: center;
+  column-gap: 3px;
+}
+
+.market-table-header {
+  height: 24px;
+  color: color-mix(in srgb, var(--muted) 80%, var(--chart-border));
+  font-size: 10px;
+}
+
+.market-table-header button {
+  height: 24px;
+  min-width: 0;
+  padding: 0 2px;
+  overflow: hidden;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: inherit;
+}
+
+.market-table-header button:not(:first-child),
+.market-row > span:not(:first-child) {
+  text-align: right;
+}
+
+.market-table-header button:hover,
+.market-table-header button[aria-sort]:not([aria-sort="none"]) {
+  color: color-mix(in srgb, var(--accent-hover) 75%, var(--warning));
+}
+
+.market-table-header i {
+  color: color-mix(in srgb, var(--selected-bg) 40%, var(--chart-text));
+  font-size: 9px;
+  font-style: normal;
+}
+
+.market-row {
+  height: 25px;
+  padding: 0 2px;
+  color: color-mix(in srgb, var(--text) 70%, var(--muted));
+  background: transparent;
+  font-size: 10.5px;
+}
+
+.market-row:hover,
+.market-row.selected {
+  background: var(--hover-bg);
+}
+
+.market-row.selected {
+  box-shadow: inset 2px 0 var(--blue);
+}
+
+.market-symbol-cell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left !important;
+}
+
+.market-symbol-cell > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crypto-asset-icon {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.crypto-asset-icon > span,
+.crypto-asset-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.crypto-asset-icon.fallback {
+  color: color-mix(in srgb, var(--selected-bg) 30%, var(--text-strong));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--chart-border) 90%, var(--accent-hover)), #0d2a36);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--selected-bg) 80%, var(--text-strong));
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.crypto-asset-icon.fallback > span {
+  display: grid;
+  place-items: center;
+}
+
+.favorites-section {
+  padding-top: 11px;
+}
+
+.favorites-empty {
+  padding: 10px 0 4px;
+  color: color-mix(in srgb, var(--hover-bg) 15%, var(--muted));
+  font-size: 10.5px;
+}
+
+.favorite-row {
+  width: 100%;
+  padding: 0;
+  background: transparent;
+}
+
+.favorite-row:hover {
+  color: color-mix(in srgb, var(--text-strong) 75%, var(--chart-text));
+}
+
+.connections-section {
+  border-bottom: 0;
+}
+
+.connection-row > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.connection-row b {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--panel-raised) 55%, var(--text));
+}
+
+.connection-row b.online {
+  background: var(--green);
+  box-shadow: 0 0 7px var(--green);
+}
+
+.provider-icon {
+  width: 12px;
+  height: 12px;
+  border: 1px solid color-mix(in srgb, var(--panel-raised) 45%, var(--text));
+  border-radius: 2px;
+}
+
+.provider-icon.binance {
+  transform: rotate(45deg) scale(.72);
+  border: 0;
+  background: #f2ba18;
+}
+
+.symbol-quote-filters .favorites-filter {
+  margin-left: auto;
+}
+
+.symbol-quote-filters .favorites-filter.active {
+  color: #f2bd3d;
+}
+
+.symbol-favorite.active svg,
+.favorites-filter.active svg {
+  fill: currentColor;
+}

@@ -5,9 +5,10 @@ import type {
   MarketSelection,
   OrderBookLevel,
   OrderBookSnapshot,
-} from '../../types/market'
-import { onOrderBook } from '../../services/marketData'
-import { publishRealtimePrice } from '../../services/realtimePrice'
+} from '@shared/types/market'
+import { onOrderBook } from '@/services/marketData'
+import { publishRealtimePrice } from '@/services/realtimePrice'
+import { publishStreamLatency } from '@/services/streamLatency'
 import {
   aggregateOrderBookLevels,
   aggregationPrecision,
@@ -23,7 +24,6 @@ const props = defineProps<{
   aggregationStep: number
 }>()
 const emit = defineEmits<{
-  latency: [value: number]
   aggregationStep: [value: number]
 }>()
 const rowIndexes = Array.from({ length: ROW_COUNT }, (_, index) => index)
@@ -77,11 +77,18 @@ function matches(snapshot: OrderBookSnapshot): boolean {
     && snapshot.symbol === props.selection.symbol
 }
 
+/** Digit counts resolved once per frame instead of once per row. */
+interface RowPrecision {
+  price: number
+  quantity: number
+}
+
 function renderRows(
   elements: Array<BookRowElements | undefined>,
   levels: OrderBookLevel[],
   side: 'ask' | 'bid',
   reverse: boolean,
+  precision: RowPrecision,
 ): void {
   const visibleLevelCount = Math.min(ROW_COUNT, levels.length)
   let maxTotal = 1
@@ -106,13 +113,8 @@ function renderRows(
       return
     }
 
-    writeText(row.price, formatAggregatedPrice(level.price))
-    writeText(
-      row.quantity,
-      level.quantity.toFixed(
-        Math.min(props.selection.quantityPrecision, 8),
-      ),
-    )
+    writeText(row.price, level.price.toFixed(precision.price))
+    writeText(row.quantity, level.quantity.toFixed(precision.quantity))
     writeText(row.total, level.total.toFixed(3))
     writeWidth(
       row.fill,
@@ -125,20 +127,30 @@ function renderRows(
 }
 
 function renderSnapshot(snapshot: OrderBookSnapshot): void {
+  // Read the reactive props once per frame. Reaching into them per row also
+  // meant recomputing the aggregated precision — a `toFixed` and a regex — for
+  // each of the twenty rows, sixty times a second.
+  const step = props.aggregationStep
+  const { pricePrecision, quantityPrecision } = props.selection
+  const precision: RowPrecision = {
+    price: aggregationPrecision(step),
+    quantity: Math.min(quantityPrecision, 8),
+  }
+
   const asks = aggregateOrderBookLevels(
     snapshot.asks,
     'ask',
-    props.aggregationStep,
-    props.selection.pricePrecision,
+    step,
+    pricePrecision,
   )
   const bids = aggregateOrderBookLevels(
     snapshot.bids,
     'bid',
-    props.aggregationStep,
-    props.selection.pricePrecision,
+    step,
+    pricePrecision,
   )
-  renderRows(askRows, asks, 'ask', true)
-  renderRows(bidRows, bids, 'bid', false)
+  renderRows(askRows, asks, 'ask', true, precision)
+  renderRows(bidRows, bids, 'bid', false, precision)
   renderRatio(bids, asks)
   if (midPrice.value) {
     writeText(midPrice.value, formatPrice(snapshot.midPrice))
@@ -155,7 +167,8 @@ function renderSnapshot(snapshot: OrderBookSnapshot): void {
   const now = Date.now()
   if (now - lastMetricsAt >= 500) {
     lastMetricsAt = now
-    emit('latency', Math.max(0, now - snapshot.eventTime))
+    // Imperative channel, never a Vue emit: see services/streamLatency.ts.
+    publishStreamLatency(props.sessionId, now - snapshot.eventTime)
   }
 }
 
@@ -225,10 +238,6 @@ function formatPrice(value: number): string {
   return value.toFixed(Math.min(props.selection.pricePrecision, 8))
 }
 
-function formatAggregatedPrice(value: number): string {
-  return value.toFixed(aggregationPrecision(props.aggregationStep))
-}
-
 function changeAggregation(event: Event): void {
   const value = Number((event.target as HTMLSelectElement).value)
   if (Number.isFinite(value) && value > 0) {
@@ -275,8 +284,9 @@ function clearBook(): void {
   latestSnapshot = null
   lastUpdateID = 0
   lastMetricsAt = 0
-  renderRows(askRows, [], 'ask', false)
-  renderRows(bidRows, [], 'bid', false)
+  const empty: RowPrecision = { price: 0, quantity: 0 }
+  renderRows(askRows, [], 'ask', false, empty)
+  renderRows(bidRows, [], 'bid', false, empty)
   if (midPrice.value) writeText(midPrice.value, '—')
   if (spread.value) writeText(spread.value, 'Spread —')
   clearRatio()

@@ -1,8 +1,4 @@
-import type {
-  MarketSelection,
-  MarketSymbol,
-  StreamStatus,
-} from './market'
+import type { MarketSelection, StreamStatus } from '@shared/types/market'
 
 export const MAX_WORKSPACE_TABS = 8
 
@@ -13,7 +9,6 @@ export interface WorkspaceTab {
   candleState: StreamStatus['candleState']
   orderBookState: StreamStatus['orderBookState']
   statusMessage: string
-  latency: number | null
   orderBookAggregation: number
   generation: number
   renderRevision: number
@@ -35,7 +30,6 @@ export function createWorkspaceTab(
     candleState: 'connecting',
     orderBookState: 'connecting',
     statusMessage: '',
-    latency: null,
     orderBookAggregation: selection.priceTickSize,
     generation: 0,
     renderRevision: 0,
@@ -54,32 +48,4 @@ export function applyWorkspaceStreamStatus(
   tab.candleState = status.candleState
   tab.orderBookState = status.orderBookState
   tab.statusMessage = status.message ?? ''
-}
-
-export function selectionForNewTab(
-  source: MarketSelection,
-  symbol: MarketSymbol,
-): MarketSelection {
-  return {
-    ...source,
-    provider: symbol.provider,
-    market: symbol.market,
-    symbol: symbol.symbol,
-    baseAsset: symbol.baseAsset,
-    quoteAsset: symbol.quoteAsset,
-    priceTickSize: symbol.priceTickSize,
-    pricePrecision: symbol.pricePrecision,
-    quantityPrecision: symbol.quantityPrecision,
-  }
-}
-
-export function marketSelectionFingerprint(
-  selection: MarketSelection,
-): string {
-  return [
-    selection.provider,
-    selection.market,
-    selection.symbol,
-    selection.interval,
-  ].join(':')
 }

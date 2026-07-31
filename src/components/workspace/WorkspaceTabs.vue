@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { workspaceTabLabel, type WorkspaceTab } from '../../types/workspace'
+import { workspaceTabLabel, type WorkspaceTab } from '@/domain/workspace'
 
 defineProps<{
   tabs: WorkspaceTab[]

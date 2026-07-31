@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { Search, Star } from '@lucide/vue'
 import { computed, ref } from 'vue'
-import { favoriteKey } from '../../services/favorites'
+import { selectTop } from '@/domain/topSelection'
+import { favoriteKey } from '@/services/favorites'
 import {
   formatMarketPercent,
   formatMarketPrice,
-} from '../../services/numberFormat'
+} from '@/services/numberFormat'
 import CryptoAssetIcon from './CryptoAssetIcon.vue'
 import RealtimePriceText from './RealtimePriceText.vue'
 import type {
@@ -13,7 +14,7 @@ import type {
   MarketPair,
   MarketSelection,
   StreamStatus,
-} from '../../types/market'
+} from '@shared/types/market'
 
 type SidebarSortKey = 'symbol' | 'lastPrice' | 'priceChangePercent'
 type SortDirection = 'asc' | 'desc'
@@ -37,29 +38,38 @@ const search = ref('')
 const sortKey = ref<SidebarSortKey>('symbol')
 const sortDirection = ref<SortDirection>('asc')
 
+const VISIBLE_ROWS = 14
+const VISIBLE_FAVORITES = 8
+
+// The catalog holds thousands of pairs and this recomputes on every keystroke,
+// on the thread that paints the chart. `selectTop` avoids copying and sorting
+// the whole array to display a handful of rows.
 const visibleSymbols = computed(() => {
   const query = search.value.trim().toUpperCase().replace('/', '')
   const direction = sortDirection.value === 'asc' ? 1 : -1
-  return [...props.symbols]
-    .filter((symbol) => !query || symbol.symbol.includes(query))
-    .sort((left, right) => {
-      let result = 0
-      if (sortKey.value === 'symbol') {
-        result = left.symbol.localeCompare(right.symbol)
-      } else {
-        result = left[sortKey.value] - right[sortKey.value]
-      }
+  const key = sortKey.value
+
+  return selectTop(
+    props.symbols,
+    VISIBLE_ROWS,
+    (left, right) => {
+      const result = key === 'symbol'
+        ? left.symbol.localeCompare(right.symbol)
+        : left[key] - right[key]
       return result === 0
         ? left.symbol.localeCompare(right.symbol)
         : result * direction
-    })
-    .slice(0, 14)
+    },
+    query ? (symbol) => symbol.symbol.includes(query) : undefined,
+  )
 })
 
-const favorites = computed(() => props.symbols
-  .filter((symbol) => props.favoriteKeys.has(favoriteKey(symbol)))
-  .sort((left, right) => right.quoteVolume - left.quoteVolume)
-  .slice(0, 8))
+const favorites = computed(() => selectTop(
+  props.symbols,
+  VISIBLE_FAVORITES,
+  (left, right) => right.quoteVolume - left.quoteVolume,
+  (symbol) => props.favoriteKeys.has(favoriteKey(symbol)),
+))
 
 function displaySymbol(symbol: MarketPair): string {
   return `${symbol.baseAsset}/${symbol.quoteAsset}`
@@ -115,7 +125,7 @@ function selectSymbol(event: MouseEvent, symbol: MarketPair): void {
           v-model="search"
           aria-label="Buscar símbolo"
           placeholder="Buscar ativo…"
-        />
+        >
       </label>
       <div class="market-kind">
         <button

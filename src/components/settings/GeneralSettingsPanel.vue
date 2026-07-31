@@ -12,7 +12,14 @@ import {
   Trash2,
   X,
 } from '@lucide/vue'
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue'
 import {
   appTheme,
   appThemePreset,
@@ -20,13 +27,13 @@ import {
   deleteCustomTheme,
   setTheme,
   setThemePreset,
-} from '../../services/theme'
+} from '@/services/theme'
 import {
   isCustomThemeId,
   themePresets,
   type CustomThemeId,
   type ThemeSelectionId,
-} from '../../services/themeCatalog'
+} from '@/services/themeCatalog'
 import CustomThemeEditor from './CustomThemeEditor.vue'
 import ThemePresetPreview from './ThemePresetPreview.vue'
 
@@ -382,9 +389,6 @@ function finishPointerOperation(event: PointerEvent): void {
     operation.captureTarget.releasePointerCapture(operation.pointerId)
   }
   panel.value?.classList.remove(`is-${operation.kind}`)
-  if (operation.captureTarget.hasPointerCapture(operation.pointerId)) {
-    operation.captureTarget.releasePointerCapture(operation.pointerId)
-  }
   if (panel.value) {
     panel.value.style.transform = ''
   }
@@ -458,8 +462,10 @@ watch(
   },
 )
 
-window.addEventListener('keydown', handleWindowKey)
-window.addEventListener('resize', handleViewportResize)
+onMounted(() => {
+  window.addEventListener('keydown', handleWindowKey)
+  window.addEventListener('resize', handleViewportResize)
+})
 
 onBeforeUnmount(() => {
   cancelPointerOperation()

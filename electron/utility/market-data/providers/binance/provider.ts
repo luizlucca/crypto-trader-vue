@@ -7,7 +7,7 @@ import type {
   MarketSelection,
   MarketSymbol,
   OrderBookSnapshot,
-} from '../../../../../src/types/market'
+} from '@shared/types/market'
 import type {
   CandleHistoryOptions,
   CatalogOptions,

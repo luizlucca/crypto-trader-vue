@@ -1,4 +1,4 @@
-import type { Market } from '../../../../../src/types/market'
+import type { Market } from '@shared/types/market'
 
 export interface BinanceEndpoints {
   rest: string

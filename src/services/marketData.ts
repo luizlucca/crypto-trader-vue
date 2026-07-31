@@ -1,4 +1,4 @@
-import { copyMarketSelection } from '../contracts/desktop'
+import { copyMarketSelection } from '@shared/contracts/desktop'
 import type {
   Candle,
   MarketCatalog,
@@ -6,7 +6,7 @@ import type {
   MarketSymbol,
   OrderBookSnapshot,
   StreamStatus,
-} from '../types/market'
+} from '@shared/types/market'
 
 type SessionEventHandler<T> = (payload: T) => void
 type SessionEventSubscriber<T> = (

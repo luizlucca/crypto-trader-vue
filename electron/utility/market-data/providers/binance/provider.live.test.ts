@@ -1,6 +1,6 @@
 import { firstValueFrom, timeout } from 'rxjs'
 import { describe, expect, it } from 'vitest'
-import type { Market, MarketSelection } from '../../../../../src/types/market'
+import type { Market, MarketSelection } from '@shared/types/market'
 import { BinanceProvider } from './provider'
 
 const live = process.env.BINANCE_LIVE_TEST === '1'

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { isMarketDataRequest, isSymbolSearchContext } from './desktop'
-import type { MarketSelection } from '../types/market'
+import type { MarketSelection } from '@shared/types/market'
 
 const selection: MarketSelection = {
   provider: 'binance',

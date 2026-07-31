@@ -18,3 +18,4 @@ novo ADR que cite o anterior.
 | [0001](./0001-electron-vue-typescript.md) | Electron + Vue + TypeScript end-to-end | Aceito |
 | [0002](./0002-isolamento-de-dados-realtime.md) | Dados de mercado em processos utilitários | Aceito |
 | [0003](./0003-renderizacao-imperativa-do-grafico.md) | Lightweight Charts imperativo no caminho quente | Aceito |
+| [0004](./0004-camadas-e-fronteiras-de-modulo.md) | Camadas `shared`/`src`/`electron` impostas por lint | Aceito |

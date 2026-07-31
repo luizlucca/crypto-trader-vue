@@ -14,12 +14,17 @@
     "lib": [
       "ES2022",
       "DOM"
-    ]
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": [
+        "shared/*"
+      ]
+    }
   },
   "include": [
     "electron.vite.config.ts",
     "electron/**/*.ts",
-    "src/contracts/**/*.ts",
-    "src/types/**/*.ts"
+    "shared/**/*.ts"
   ]
 }

@@ -7,7 +7,7 @@ import type {
   MarketSymbol,
   OrderBookSnapshot,
   StreamStatus,
-} from '../types/market'
+} from '@shared/types/market'
 
 export const DESKTOP_CHANNELS = {
   marketRequest: 'cryptopro:market:request',
@@ -67,14 +67,14 @@ export interface SetStreamVisibilityRequest {
   visible: boolean
 }
 
-export type MarketDataRequest =
-  | CatalogRequest
-  | SymbolsRequest
-  | CandlesRequest
-  | StartStreamRequest
-  | UpdateCandleStreamRequest
-  | StopStreamRequest
-  | SetStreamVisibilityRequest
+export type MarketDataRequest
+  = | CatalogRequest
+    | SymbolsRequest
+    | CandlesRequest
+    | StartStreamRequest
+    | UpdateCandleStreamRequest
+    | StopStreamRequest
+    | SetStreamVisibilityRequest
 
 export interface UtilityRequest {
   type: 'request'
@@ -82,31 +82,31 @@ export interface UtilityRequest {
   request: MarketDataRequest
 }
 
-export type MarketDataEvent =
-  | { sessionId: string; kind: 'candle'; payload: Candle }
-  | { sessionId: string; kind: 'orderbook'; payload: OrderBookSnapshot }
-  | { sessionId: string; kind: 'status'; payload: StreamStatus }
+export type MarketDataEvent
+  = | { sessionId: string, kind: 'candle', payload: Candle }
+    | { sessionId: string, kind: 'orderbook', payload: OrderBookSnapshot }
+    | { sessionId: string, kind: 'status', payload: StreamStatus }
 
-export type MarketSessionEvent =
-  | { kind: 'candle'; payload: Candle }
-  | { kind: 'orderbook'; payload: OrderBookSnapshot }
-  | { kind: 'status'; payload: StreamStatus }
+export type MarketSessionEvent
+  = | { kind: 'candle', payload: Candle }
+    | { kind: 'orderbook', payload: OrderBookSnapshot }
+    | { kind: 'status', payload: StreamStatus }
 
-export type UtilityMessage =
-  | { type: 'ready' }
-  | {
+export type UtilityMessage
+  = | { type: 'ready' }
+    | {
       type: 'response'
       requestId: string
       ok: true
       result: unknown
     }
-  | {
+    | {
       type: 'response'
       requestId: string
       ok: false
       error: string
     }
-  | {
+    | {
       type: 'event'
       event: MarketDataEvent
     }

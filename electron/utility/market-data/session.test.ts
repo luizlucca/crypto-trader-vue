@@ -1,13 +1,13 @@
 import { Subject } from 'rxjs'
 import { describe, expect, it, vi } from 'vitest'
-import type { MarketSessionEvent } from '../../../src/contracts/desktop'
+import type { MarketSessionEvent } from '@shared/contracts/desktop'
 import type {
   Candle,
   MarketCatalog,
   MarketSelection,
   MarketSymbol,
   OrderBookSnapshot,
-} from '../../../src/types/market'
+} from '@shared/types/market'
 import type {
   CatalogOptions,
   ConnectionStateHandler,

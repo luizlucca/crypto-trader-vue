@@ -30,6 +30,7 @@ e inclua o link no índice antes de iniciar a implementação.
 | F-009 | [Temas e painel de configurações](./F-009-temas-configuracoes.md) | Implementada |
 | F-010 | [Tipografia e ícones de criptoativos](./F-010-tipografia-icones.md) | Implementada |
 | F-011 | [Agregação de preços do livro de ordens](./F-011-agregacao-livro-ordens.md) | Implementada |
+| F-012 | [Arquitetura modular do renderer](./F-012-arquitetura-modular.md) | Em evolução |
 
 Para a visão transversal de processos, IPC e isolamento de performance, veja a
 [arquitetura](../architecture.md).
