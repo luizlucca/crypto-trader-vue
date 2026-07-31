@@ -96,11 +96,21 @@ atualização forçada ignora o TTL, e chamadas concorrentes aguardam a mesma
 requisição em andamento. Se a Binance falhar após uma carga bem-sucedida, o
 último catálogo é entregue com a marca `stale`.
 
-O livro usa o stream parcial `depth20@100ms`. Como a interface mostra apenas os
-melhores níveis, isso evita manter e reconstruir milhares de posições do livro
-completo. Quando funcionalidades de microestrutura exigirem profundidade total,
-o provider pode ganhar uma implementação baseada em snapshot REST + diff
-stream sem alterar o contrato consumido pelo renderer.
+O livro é mantido por inteiro no processo utilitário, a partir de um snapshot
+REST somado ao *diff depth stream* (`@depth@100ms`). O stream parcial anterior
+(`@depth20`) entrega no máximo 20 níveis, o que esvaziava as linhas assim que o
+usuário escolhia uma agregação mais larga (F-013).
+
+Spot e Futures **não compartilham a regra de sequência**: o primeiro tem
+snapshot de até 5000 níveis e encadeia por `U`; o segundo, até 1000 níveis e
+encadeia por `pu`. Aplicar a regra errada produz um livro que parece plausível
+enquanto diverge em silêncio, então uma quebra de continuidade descarta o livro
+e refaz o snapshot em vez de prosseguir.
+
+A agregação acontece nesse mesmo processo, não no renderer: o IPC carrega
+apenas as linhas exibidas, e o custo por frame passa a ser constante,
+independente da profundidade mantida em memória. O renderer informa o passo por
+um comando dedicado, que re-agrega sem tocar no socket nem no livro.
 
 ## Renderer principal
 

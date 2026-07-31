@@ -41,7 +41,10 @@ describe.runIf(live)('BinanceProvider live', () => {
           provider.streamCandles(selected, () => {}).pipe(timeout(15_000)),
         ),
         firstValueFrom(
-          provider.streamOrderBook(selected, () => {}).pipe(timeout(15_000)),
+          provider.streamOrderBook(selected, () => {}, {
+            aggregationStep: () => selected.priceTickSize,
+            rowsPerSide: () => 10,
+          }).pipe(timeout(15_000)),
         ),
       ])
 

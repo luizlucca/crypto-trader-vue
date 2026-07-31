@@ -69,12 +69,13 @@ describe('marketData transport', () => {
     })
 
     const reactiveSelection = reactive({ ...selection, interval: '5m' })
-    await startMarketStream('tab-two', reactiveSelection, false)
+    await startMarketStream('tab-two', reactiveSelection, false, 0.5)
 
     expect(startStream).toHaveBeenCalledWith(
       'tab-two',
       { ...selection, interval: '5m' },
       false,
+      0.5,
     )
     expect(isProxy(startStream.mock.calls[0][1])).toBe(false)
   })

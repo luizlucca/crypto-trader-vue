@@ -10,12 +10,11 @@ import { onOrderBook } from '@/services/marketData'
 import { publishRealtimePrice } from '@/services/realtimePrice'
 import { publishStreamLatency } from '@/services/streamLatency'
 import {
-  aggregateOrderBookLevels,
   aggregationPrecision,
   createAggregationOptions,
   formatAggregationStep,
-} from './orderBookAggregation'
-import { calculateOrderBookRatio } from './orderBookRatio'
+} from '@shared/domain/orderBook'
+import { calculateOrderBookRatio } from '@shared/domain/orderBookRatio'
 
 const ROW_COUNT = 10
 const props = defineProps<{
@@ -127,31 +126,15 @@ function renderRows(
 }
 
 function renderSnapshot(snapshot: OrderBookSnapshot): void {
-  // Read the reactive props once per frame. Reaching into them per row also
-  // meant recomputing the aggregated precision — a `toFixed` and a regex — for
-  // each of the twenty rows, sixty times a second.
-  const step = props.aggregationStep
-  const { pricePrecision, quantityPrecision } = props.selection
+  // Levels arrive already aggregated from the utility process, which owns the
+  // full local book (F-013). The renderer only formats and writes them.
   const precision: RowPrecision = {
-    price: aggregationPrecision(step),
-    quantity: Math.min(quantityPrecision, 8),
+    price: aggregationPrecision(props.aggregationStep),
+    quantity: Math.min(props.selection.quantityPrecision, 8),
   }
-
-  const asks = aggregateOrderBookLevels(
-    snapshot.asks,
-    'ask',
-    step,
-    pricePrecision,
-  )
-  const bids = aggregateOrderBookLevels(
-    snapshot.bids,
-    'bid',
-    step,
-    pricePrecision,
-  )
-  renderRows(askRows, asks, 'ask', true, precision)
-  renderRows(bidRows, bids, 'bid', false, precision)
-  renderRatio(bids, asks)
+  renderRows(askRows, snapshot.asks, 'ask', true, precision)
+  renderRows(bidRows, snapshot.bids, 'bid', false, precision)
+  renderRatio(snapshot.bids, snapshot.asks)
   if (midPrice.value) {
     writeText(midPrice.value, formatPrice(snapshot.midPrice))
   }

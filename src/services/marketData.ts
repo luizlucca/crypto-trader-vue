@@ -102,12 +102,22 @@ export function startMarketStream(
   sessionId: string,
   selection: MarketSelection,
   visible = true,
+  aggregationStep?: number,
 ): Promise<void> {
   return desktopMarketData().startStream(
     sessionId,
     copyMarketSelection(selection),
     visible,
+    aggregationStep,
   )
+}
+
+export function setMarketOrderBookAggregation(
+  sessionId: string,
+  step: number,
+): Promise<void> {
+  return window.cryptoPro?.marketData.setOrderBookAggregation(sessionId, step)
+    ?? Promise.resolve()
 }
 
 export function stopMarketStream(sessionId: string): Promise<void> {

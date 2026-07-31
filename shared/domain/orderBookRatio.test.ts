@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { OrderBookLevel } from '@shared/types/market'
+import type { OrderBookLevel } from '../types/market'
 import { calculateOrderBookRatio } from './orderBookRatio'
 
 function level(quantity: number): OrderBookLevel {

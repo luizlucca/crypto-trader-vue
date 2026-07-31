@@ -1,4 +1,4 @@
-import { map, type Observable } from 'rxjs'
+import { map, Observable } from 'rxjs'
 import type {
   Candle,
   Market,
@@ -6,6 +6,7 @@ import type {
   MarketPair,
   MarketSelection,
   MarketSymbol,
+  OrderBookLevel,
   OrderBookSnapshot,
 } from '@shared/types/market'
 import type {
@@ -13,12 +14,17 @@ import type {
   CatalogOptions,
   ConnectionStateHandler,
   MarketDataProvider,
+  OrderBookStreamOptions,
 } from '../../provider'
+import { aggregateOrderBookLevels } from '@shared/domain/orderBook'
+import { BinanceOrderBook, SNAPSHOT_LIMIT } from './orderBookSync'
 import { endpointsFor } from './endpoints'
 import {
+  buildOrderBookSnapshot,
   mergeCatalog,
   normalizeCandleRow,
-  normalizeDepthEvent,
+  normalizeDepthSnapshot,
+  normalizeDepthUpdate,
   normalizeExchangeSymbols,
   normalizeKlineEvent,
   type BinanceExchangeSymbol,
@@ -42,6 +48,11 @@ interface CatalogCacheEntry {
 
 interface ExchangeInfoPayload {
   symbols?: BinanceExchangeSymbol[]
+}
+
+/** The local book stores `[price, quantity]`; aggregation wants levels. */
+function toLevels(entries: [number, number][]): OrderBookLevel[] {
+  return entries.map(([price, quantity]) => ({ price, quantity, total: 0 }))
 }
 
 async function fetchJSON<T>(url: string): Promise<T> {
@@ -174,18 +185,110 @@ export class BinanceProvider implements MarketDataProvider {
     )
   }
 
+  /**
+   * Keeps a full local book from a REST snapshot plus the diff stream, and
+   * emits only the aggregated rows the interface shows.
+   *
+   * The previous implementation used `@depth20`, whose twenty levels collapse
+   * into a handful of rows once prices are grouped into wider buckets. The
+   * partial stream cannot go deeper than twenty, so the local book is the only
+   * way to keep every row filled at any aggregation (F-013).
+   */
   streamOrderBook(
     selection: MarketSelection,
     onState: ConnectionStateHandler,
+    options: OrderBookStreamOptions,
   ): Observable<OrderBookSnapshot> {
     const symbol = normalizeSymbol(selection.symbol)
-    const endpoint = endpointsFor(selection.market)
+    const market = selection.market
+    const endpoint = endpointsFor(market)
     const streamURL = `${endpoint.publicWebSocket}/${
       symbol.toLowerCase()
-    }@depth20@100ms`
-    return websocketJSON$<unknown>(streamURL, onState).pipe(
-      map((event) => normalizeDepthEvent(event, selection.market, symbol)),
-    )
+    }@depth@100ms`
+
+    return new Observable<OrderBookSnapshot>((subscriber) => {
+      const book = new BinanceOrderBook(market)
+      let resyncing = false
+      let disposed = false
+
+      const resynchronise = async (): Promise<void> => {
+        if (resyncing || disposed) {
+          return
+        }
+        resyncing = true
+        try {
+          // Retried by the caller's reconnect policy if it throws.
+          const snapshot = normalizeDepthSnapshot(await fetchJSON<unknown>(
+            `${endpoint.rest}/depth?symbol=${symbol}`
+            + `&limit=${SNAPSHOT_LIMIT[market]}`,
+          ))
+          if (disposed) {
+            return
+          }
+          if (!book.applySnapshot(snapshot)) {
+            // The buffered events could not bridge the gap; try a newer one.
+            resyncing = false
+            void resynchronise()
+            return
+          }
+        } catch (error) {
+          if (!disposed) {
+            onState({
+              state: 'reconnecting',
+              message: error instanceof Error ? error.message : String(error),
+            })
+          }
+        } finally {
+          resyncing = false
+        }
+      }
+
+      const emit = (eventTime: number): void => {
+        const rows = options.rowsPerSide()
+        const step = options.aggregationStep()
+        // Pull more raw levels than rows: aggregation merges many into one.
+        const depth = Math.max(rows, Math.min(rows * 200, 4_000))
+        const best = book.best(depth)
+        subscriber.next(buildOrderBookSnapshot(
+          market,
+          symbol,
+          eventTime,
+          book.lastAppliedUpdateId,
+          aggregateOrderBookLevels(
+            toLevels(best.bids), 'bid', step, selection.pricePrecision,
+          ).slice(0, rows),
+          aggregateOrderBookLevels(
+            toLevels(best.asks), 'ask', step, selection.pricePrecision,
+          ).slice(0, rows),
+        ))
+      }
+
+      const subscription = websocketJSON$<unknown>(streamURL, onState)
+        .subscribe({
+          next: (event) => {
+            const update = normalizeDepthUpdate(event)
+            const outcome = book.apply(update)
+            if (outcome.status === 'desynchronised') {
+              onState({ state: 'reconnecting', message: outcome.reason })
+              book.reset()
+              void resynchronise()
+              return
+            }
+            if (outcome.status === 'applied') {
+              emit(update.eventTime)
+            }
+          },
+          error: (error) => subscriber.error(error),
+        })
+
+      void resynchronise()
+
+      return () => {
+        disposed = true
+        subscription.unsubscribe()
+        book.reset()
+      }
+    })
   }
 
   private async refreshCatalog(market: Market): Promise<CatalogCacheEntry> {

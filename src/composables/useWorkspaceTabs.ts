@@ -27,6 +27,7 @@ import {
 } from '@/domain/workspace'
 import {
   onStreamStatus,
+  setMarketOrderBookAggregation,
   setMarketStreamVisibility,
   startMarketStream,
   stopMarketStream,
@@ -67,6 +68,7 @@ export interface WorkspaceTabsController {
   changeMarket: (market: Market) => Promise<void>
   changeSymbol: (symbol: MarketSymbol, tab?: WorkspaceTab) => Promise<void>
   changeInterval: (interval: string) => Promise<void>
+  changeOrderBookAggregation: (step: number) => void
   initialHistory: (tab: WorkspaceTab) => Candle[] | undefined
   storeHistory: (
     sessionId: string,
@@ -171,6 +173,7 @@ export function useWorkspaceTabs(
         tab.id,
         tab.selection,
         tab.id === activeTabId.value,
+        tab.orderBookAggregation,
       )
     } catch (error) {
       if (stillOwns(tab, generation)) {
@@ -292,6 +295,21 @@ export function useWorkspaceTabs(
         reportError(tab, error, 'candles')
       }
     }
+  }
+
+  /**
+   * Re-groups the book without restarting anything: the utility process keeps
+   * the full local book and simply aggregates it at the new step.
+   */
+  function changeOrderBookAggregation(step: number): void {
+    const tab = activeTab.value
+    if (!Number.isFinite(step) || step <= 0 || step === tab.orderBookAggregation) {
+      return
+    }
+    tab.orderBookAggregation = step
+    void setMarketOrderBookAggregation(tab.id, step).catch((error) => {
+      reportError(tab, error)
+    })
   }
 
   function activate(tabId: string): void {
@@ -426,6 +444,7 @@ export function useWorkspaceTabs(
     changeMarket,
     changeSymbol,
     changeInterval,
+    changeOrderBookAggregation,
     initialHistory: (tab) => history.read(tab.id, tab.selection),
     storeHistory: (sessionId, fingerprint, candles) => {
       const tab = find(sessionId)

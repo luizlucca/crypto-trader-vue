@@ -3,7 +3,7 @@ import {
   aggregateOrderBookLevels,
   createAggregationOptions,
   formatAggregationStep,
-} from './orderBookAggregation'
+} from './orderBook'
 
 describe('order book aggregation', () => {
   it('creates Binance-style steps from the native tick size', () => {

@@ -47,6 +47,8 @@ export interface StartStreamRequest {
   sessionId: string
   selection: MarketSelection
   visible: boolean
+  /** Initial price grouping; defaults to the symbol tick size when absent. */
+  aggregationStep?: number
 }
 
 export interface StopStreamRequest {
@@ -67,6 +69,16 @@ export interface SetStreamVisibilityRequest {
   visible: boolean
 }
 
+/**
+ * Changes the order-book price grouping. The utility process owns the full
+ * local book, so this only re-aggregates: no socket or snapshot is redone.
+ */
+export interface SetOrderBookAggregationRequest {
+  kind: 'set-order-book-aggregation'
+  sessionId: string
+  step: number
+}
+
 export type MarketDataRequest
   = | CatalogRequest
     | SymbolsRequest
@@ -75,6 +87,7 @@ export type MarketDataRequest
     | UpdateCandleStreamRequest
     | StopStreamRequest
     | SetStreamVisibilityRequest
+    | SetOrderBookAggregationRequest
 
 export interface UtilityRequest {
   type: 'request'
@@ -145,6 +158,7 @@ export interface DesktopMarketDataAPI {
     sessionId: string,
     selection: MarketSelection,
     visible?: boolean,
+    aggregationStep?: number,
   ): Promise<void>
   updateCandleStream(
     sessionId: string,
@@ -153,6 +167,7 @@ export interface DesktopMarketDataAPI {
   ): Promise<void>
   stopStream(sessionId: string): Promise<void>
   setStreamVisibility(sessionId: string, visible: boolean): Promise<void>
+  setOrderBookAggregation(sessionId: string, step: number): Promise<void>
   onCandle(
     callback: (sessionId: string, candle: Candle) => void,
   ): () => void
@@ -298,6 +313,13 @@ export function isSymbolSearchContext(
     && typeof context.initialQuery === 'string'
 }
 
+function isAggregationStep(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && value > 0
+    && value <= 1_000_000
+}
+
 function isSessionId(value: unknown): value is string {
   return typeof value === 'string'
     && value.length >= 1
@@ -336,6 +358,10 @@ export function isMarketDataRequest(value: unknown): value is MarketDataRequest 
       return isSessionId(request.sessionId)
         && isMarketSelection(request.selection)
         && typeof request.visible === 'boolean'
+        && (
+          request.aggregationStep === undefined
+          || isAggregationStep(request.aggregationStep)
+        )
     case 'update-candle-stream':
       return isSessionId(request.sessionId)
         && isMarketSelection(request.selection)
@@ -345,6 +371,9 @@ export function isMarketDataRequest(value: unknown): value is MarketDataRequest 
     case 'set-stream-visibility':
       return isSessionId(request.sessionId)
         && typeof request.visible === 'boolean'
+    case 'set-order-book-aggregation':
+      return isSessionId(request.sessionId)
+        && isAggregationStep(request.step)
     default:
       return false
   }

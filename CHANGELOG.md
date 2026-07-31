@@ -35,6 +35,10 @@ observável; detalhes de implementação permanecem nas specs e ADRs.
 
 ### Fixed
 
+- O livro de ordens perdia linhas ao aumentar a agregação: a origem entregava
+  apenas 20 níveis. O processo utilitário passou a manter o livro completo por
+  snapshot REST + diff stream e agora preenche todas as linhas em qualquer
+  granularidade ([F-013]).
 - No tema claro, "Nenhum favorito neste mercado" ficava ilegível.
 - Indicador da aba agora representa o estado do livro e recupera ao receber
   snapshots válidos, sem esconder falhas exclusivas de candles.
@@ -43,6 +47,7 @@ observável; detalhes de implementação permanecem nas specs e ADRs.
 
 [ADR-0004]: docs/adr/0004-camadas-e-fronteiras-de-modulo.md
 [F-012]: docs/specs/F-012-arquitetura-modular.md
+[F-013]: docs/specs/F-013-profundidade-livro-ordens.md
 
 ## Convenção de atualização
 

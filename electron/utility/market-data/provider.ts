@@ -32,6 +32,15 @@ export interface CandleHistoryOptions {
   before?: number
 }
 
+/**
+ * Read as getters, not as fixed values: the user can change the aggregation
+ * while the stream runs, and re-reading avoids resubscribing the socket.
+ */
+export interface OrderBookStreamOptions {
+  aggregationStep: () => number
+  rowsPerSide: () => number
+}
+
 export interface MarketDataProvider {
   readonly name: string
   getCatalog(options: CatalogOptions): Promise<MarketCatalog>
@@ -47,6 +56,7 @@ export interface MarketDataProvider {
   streamOrderBook(
     selection: MarketSelection,
     onState: ConnectionStateHandler,
+    options: OrderBookStreamOptions,
   ): Observable<OrderBookSnapshot>
 }
 

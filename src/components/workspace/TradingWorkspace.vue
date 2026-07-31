@@ -197,7 +197,7 @@ onBeforeUnmount(() => {
         :aggregation-step="activeTab.orderBookAggregation"
         :selection="selection"
         :session-id="activeTab.id"
-        @aggregation-step="activeTab.orderBookAggregation = $event"
+        @aggregation-step="workspace.changeOrderBookAggregation"
       />
       <TradingTicket :selection="selection" />
       <PositionsPanel />

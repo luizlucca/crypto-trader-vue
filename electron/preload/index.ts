@@ -97,12 +97,14 @@ const api: CryptoProDesktopAPI = {
       sessionId: string,
       selection: MarketSelection,
       visible = true,
+      aggregationStep?: number,
     ): Promise<void> {
       return marketRequest({
         kind: 'start-stream',
         sessionId,
         selection,
         visible,
+        ...(aggregationStep === undefined ? {} : { aggregationStep }),
       })
     },
     updateCandleStream(
@@ -125,6 +127,13 @@ const api: CryptoProDesktopAPI = {
         kind: 'set-stream-visibility',
         sessionId,
         visible,
+      })
+    },
+    setOrderBookAggregation(sessionId: string, step: number): Promise<void> {
+      return marketRequest({
+        kind: 'set-order-book-aggregation',
+        sessionId,
+        step,
       })
     },
     onCandle(

@@ -15,6 +15,9 @@ import type {
 
 type StreamName = 'candles' | 'orderbook'
 
+/** Rows the interface shows per side; the provider fills exactly this many. */
+const ORDER_BOOK_ROWS_PER_SIDE = 10
+
 export class MarketSession {
   private candleSubscription: Subscription | undefined
   private orderBookSubscription: Subscription | undefined
@@ -24,6 +27,7 @@ export class MarketSession {
   private lastMessage = ''
   private visible = true
   private latestOrderBook: OrderBookSnapshot | undefined
+  private orderBookAggregation = 0
 
   constructor(
     private readonly emit: (event: MarketSessionEvent) => void,
@@ -33,10 +37,14 @@ export class MarketSession {
     provider: MarketDataProvider,
     selection: MarketSelection,
     visible = true,
+    aggregationStep = selection.priceTickSize,
   ): void {
     this.stop()
     this.selection = { ...selection }
     this.visible = visible
+    this.orderBookAggregation = aggregationStep > 0
+      ? aggregationStep
+      : selection.priceTickSize
     this.latestOrderBook = undefined
     this.candleState = 'connecting'
     this.orderBookState = 'connecting'
@@ -59,9 +67,15 @@ export class MarketSession {
     // Coalescing here prevents IPC queues from growing if a future provider
     // publishes depth updates faster than Binance's current 100 ms stream.
     this.orderBookSubscription = provider
-      .streamOrderBook(selection, (state) => {
-        this.updateState('orderbook', state)
-      })
+      .streamOrderBook(
+        selection,
+        (state) => this.updateState('orderbook', state),
+        {
+          // Read per emission, so changing the grouping never resubscribes.
+          aggregationStep: () => this.orderBookAggregation,
+          rowsPerSide: () => ORDER_BOOK_ROWS_PER_SIDE,
+        },
+      )
       .pipe(auditTime(16))
       .subscribe({
         next: (snapshot) => {
@@ -108,6 +122,17 @@ export class MarketSession {
         next: (candle) => this.emit({ kind: 'candle', payload: candle }),
         error: (error) => this.handleFatal('candles', error),
       })
+  }
+
+  /**
+   * Changes the price grouping without touching the socket or the local book:
+   * the provider re-reads the step on the next emission.
+   */
+  setOrderBookAggregation(step: number): void {
+    if (!Number.isFinite(step) || step <= 0) {
+      return
+    }
+    this.orderBookAggregation = step
   }
 
   setVisible(visible: boolean): void {
@@ -212,13 +237,18 @@ export class MarketSessionPool {
     provider: MarketDataProvider,
     selection: MarketSelection,
     visible: boolean,
+    aggregationStep?: number,
   ): void {
     let session = this.sessions.get(sessionId)
     if (!session) {
       session = new MarketSession((event) => this.emit(sessionId, event))
       this.sessions.set(sessionId, session)
     }
-    session.start(provider, selection, visible)
+    session.start(provider, selection, visible, aggregationStep)
+  }
+
+  setOrderBookAggregation(sessionId: string, step: number): void {
+    this.sessions.get(sessionId)?.setOrderBookAggregation(step)
   }
 
   setVisible(sessionId: string, visible: boolean): void {

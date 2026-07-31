@@ -1,4 +1,4 @@
-import type { OrderBookLevel } from '@shared/types/market'
+import type { OrderBookLevel } from '../types/market'
 
 export interface OrderBookRatio {
   buyPercent: number

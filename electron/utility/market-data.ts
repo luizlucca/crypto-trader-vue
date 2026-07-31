@@ -47,6 +47,7 @@ async function execute(request: MarketDataRequest): Promise<unknown> {
         registry.get(request.selection.provider),
         request.selection,
         request.visible,
+        request.aggregationStep,
       )
       return undefined
     case 'update-candle-stream':
@@ -62,6 +63,9 @@ async function execute(request: MarketDataRequest): Promise<unknown> {
       return undefined
     case 'set-stream-visibility':
       sessions.setVisible(request.sessionId, request.visible)
+      return undefined
+    case 'set-order-book-aggregation':
+      sessions.setOrderBookAggregation(request.sessionId, request.step)
       return undefined
   }
 }

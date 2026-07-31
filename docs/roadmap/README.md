@@ -18,9 +18,11 @@ avaliado.
 | ID | Item | Prioridade | Dependências |
 | --- | --- | --- | --- |
 | DA-001 | Mini-tickers para atualizar catálogo entre refreshes | P1 | F-002, F-006 |
-| DA-002 | Livro completo por snapshot + diff stream | P1 | F-002, F-003 |
 | DA-003 | Indicadores e ferramentas de desenho reais | P1 | F-004 |
 | DA-004 | Primitivas visuais de entrada, TP, SL e break-even | P1 | F-004 |
+
+DA-002 (livro completo por snapshot + diff stream) foi entregue pela
+[F-013](../specs/F-013-profundidade-livro-ordens.md).
 
 ## Posterior — execução e segurança
 

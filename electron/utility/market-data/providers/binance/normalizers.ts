@@ -6,6 +6,7 @@ import type {
   OrderBookLevel,
   OrderBookSnapshot,
 } from '@shared/types/market'
+import type { DepthSnapshot, DepthUpdate } from './orderBookSync'
 
 const provider = 'binance'
 
@@ -61,7 +62,9 @@ interface BinanceDepthEvent {
   E?: number
   s?: string
   lastUpdateId?: number
+  U?: number
   u?: number
+  pu?: number
   bids?: string[][]
   asks?: string[][]
   b?: string[][]
@@ -240,6 +243,76 @@ export function normalizeLevels(rawLevels: string[][]): OrderBookLevel[] {
     levels.push({ price, quantity, total: cumulative })
   }
   return levels
+}
+
+function normalizeDeltas(rawLevels: string[][] | undefined): [number, number][] {
+  const deltas: [number, number][] = []
+  for (const raw of rawLevels ?? []) {
+    if (raw.length < 2) {
+      continue
+    }
+    const price = Number(raw[0])
+    const quantity = Number(raw[1])
+    // A zero quantity is a removal, so it must survive the finite check.
+    if (Number.isFinite(price) && Number.isFinite(quantity) && price > 0) {
+      deltas.push([price, quantity])
+    }
+  }
+  return deltas
+}
+
+/** One diff of the `@depth` stream, before it reaches the local book. */
+export function normalizeDepthUpdate(
+  raw: unknown,
+  now = Date.now(),
+): DepthUpdate {
+  const event = raw as BinanceDepthEvent
+  return {
+    firstUpdateId: finiteNumber(event.U),
+    finalUpdateId: finiteNumber(event.u),
+    // Futures only; `undefined` marks the first event after a snapshot.
+    previousUpdateId: typeof event.pu === 'number' ? event.pu : undefined,
+    eventTime: finiteNumber(event.E, now),
+    bids: normalizeDeltas(event.b ?? event.bids),
+    asks: normalizeDeltas(event.a ?? event.asks),
+  }
+}
+
+/** The REST `/depth` payload that seeds the local book. */
+export function normalizeDepthSnapshot(raw: unknown): DepthSnapshot {
+  const event = raw as BinanceDepthEvent
+  return {
+    lastUpdateId: finiteNumber(event.lastUpdateId ?? event.u),
+    bids: normalizeDeltas(event.bids),
+    asks: normalizeDeltas(event.asks),
+  }
+}
+
+/** Builds the renderer-facing snapshot from already aggregated levels. */
+export function buildOrderBookSnapshot(
+  market: Market,
+  symbol: string,
+  eventTime: number,
+  lastUpdateId: number,
+  bids: OrderBookLevel[],
+  asks: OrderBookLevel[],
+): OrderBookSnapshot {
+  const bestBid = bids[0]?.price
+  const bestAsk = asks[0]?.price
+  const hasSpread = Number.isFinite(bestBid) && Number.isFinite(bestAsk)
+  return {
+    provider,
+    market,
+    symbol,
+    eventTime,
+    lastUpdateId,
+    bids,
+    asks,
+    midPrice: hasSpread ? ((bestBid as number) + (bestAsk as number)) / 2 : 0,
+    spread: hasSpread
+      ? Math.max(0, (bestAsk as number) - (bestBid as number))
+      : 0,
+  }
 }
 
 export function normalizeDepthEvent(
