@@ -1,0 +1,89 @@
+import type { IndicatorDefinition, IndicatorInputs } from './indicators'
+
+/**
+ * Messages exchanged with the indicator worker.
+ *
+ * Bars live in the worker, not in the messages. The chart sends the full
+ * history once and then a single bar per tick, so the drawing thread allocates
+ * nothing per tick and the worker keeps the array the library consumes instead
+ * of rebuilding it on every calculation.
+ *
+ * The full history travels as parallel `Float64Array`s: transferable, so
+ * crossing threads costs no copy.
+ */
+
+export interface IndicatorBarsPayload {
+  /** Seconds, matching the chart's `UTCTimestamp`. */
+  time: Float64Array
+  open: Float64Array
+  high: Float64Array
+  low: Float64Array
+  close: Float64Array
+  volume: Float64Array
+}
+
+/** A single bar, sent as plain numbers to avoid allocating on the hot path. */
+export interface IndicatorBar {
+  time: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+export type IndicatorRequest
+  = | { kind: 'catalog' }
+    | {
+      kind: 'attach'
+      instanceId: string
+      definitionId: string
+      inputs: IndicatorInputs
+    }
+    | { kind: 'detach', instanceId: string }
+  /** Replaces the retained history: first load or a new page of older bars. */
+    | { kind: 'bars-replace', bars: IndicatorBarsPayload }
+  /** Appends, or replaces when the time matches the bar still forming. */
+    | { kind: 'bars-tail', bar: IndicatorBar }
+    | {
+      kind: 'compute'
+      /** Discards results whose generation is no longer the newest. */
+      generation: number
+      /** Forces a full result even if a diff would be enough. */
+      full: boolean
+    }
+
+/**
+ * A plot update. `from` is the index of the first changed point, so the chart
+ * can `update()` only the tail when nothing older moved.
+ */
+export interface IndicatorPlotPatch {
+  plotId: string
+  /** True when the whole series must be replaced via `setData`. */
+  full: boolean
+  from: number
+  time: Float64Array
+  value: Float64Array
+}
+
+export type IndicatorResponse
+  = | { kind: 'catalog', definitions: IndicatorDefinition[] }
+  /**
+   * Always sent once per `compute`, after any `result`. A calculation where
+   * nothing changed produces no result at all, so without this the client
+   * could never tell "still running" from "finished with no changes" — and
+   * would wait forever, dropping every later recalculation.
+   */
+    | { kind: 'computed', generation: number }
+    | {
+      kind: 'result'
+      generation: number
+      instanceId: string
+      patches: IndicatorPlotPatch[]
+    }
+    | {
+      kind: 'error'
+      generation: number
+      instanceId?: string
+      message: string
+    }

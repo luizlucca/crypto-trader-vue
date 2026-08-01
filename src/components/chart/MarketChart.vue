@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import {
   ColorType,
   CrosshairMode,
@@ -21,12 +21,22 @@ import {
 import type { RoundedCandleData } from '@/plugins/roundedCandles/data'
 import type { Candle, MarketSelection } from '@shared/types/market'
 import { marketSelectionFingerprint } from '@/domain/marketSelection'
+import { useChartIndicators } from '@/composables/useChartIndicators'
 import { loadCandles, onCandle } from '@/services/marketData'
 import { publishRealtimePrice } from '@/services/realtimePrice'
 import { appThemePalette } from '@/services/theme'
 import type { ThemePalette } from '@/services/themeCatalog'
+import type {
+  IndicatorDefinition,
+  IndicatorInputs,
+  IndicatorInstance,
+  IndicatorPlotStyle,
+} from '@/domain/indicators'
 import ChartToolbar from './ChartToolbar.vue'
 import DrawingToolbar from './DrawingToolbar.vue'
+import AppliedIndicators from './indicators/AppliedIndicators.vue'
+import IndicatorPicker from './indicators/IndicatorPicker.vue'
+import IndicatorSettings from './indicators/IndicatorSettings.vue'
 
 const props = defineProps<{
   sessionId: string
@@ -61,6 +71,97 @@ let pendingCandle: Candle | undefined
 let displayedCandles: Candle[] = []
 let historyExhausted = false
 let visibleLogicalRangeHandler: LogicalRangeChangeEventHandler | undefined
+
+/**
+ * Indicators read the same candles the chart holds. The arrays are rebuilt per
+ * request rather than kept in sync, because a compute happens at most once per
+ * in-flight round trip, not once per tick.
+ */
+const indicators = useChartIndicators({
+  chart: () => chart.value,
+  bars: () => {
+    const count = displayedCandles.length
+    const bars = {
+      time: new Array<number>(count),
+      open: new Array<number>(count),
+      high: new Array<number>(count),
+      low: new Array<number>(count),
+      close: new Array<number>(count),
+      volume: new Array<number>(count),
+    }
+    for (let i = 0; i < count; i += 1) {
+      const candle = displayedCandles[i]
+      bars.time[i] = candle.time
+      bars.open[i] = candle.open
+      bars.high[i] = candle.high
+      bars.low[i] = candle.low
+      bars.close[i] = candle.close
+      bars.volume[i] = candle.volume
+    }
+    return bars
+  },
+  onError: (message) => {
+    historyErrorMessage.value = message
+  },
+})
+
+/**
+ * Mirror of the applied indicators for the template only. The indicator data
+ * path never touches it: the list changes when the user adds or removes one,
+ * not when values update.
+ */
+const appliedIndicators = shallowRef<
+  { instance: IndicatorInstance, definition: IndicatorDefinition }[]
+>([])
+const pickerOpen = ref(false)
+const configuringId = ref<string | null>(null)
+
+const configuring = computed(() => (
+  configuringId.value
+    ? appliedIndicators.value.find(
+        (entry) => entry.instance.instanceId === configuringId.value,
+      )
+    : undefined
+))
+
+function syncAppliedIndicators(): void {
+  appliedIndicators.value = indicators.applied()
+}
+
+function addIndicator(definition: IndicatorDefinition): void {
+  const instance = indicators.add(definition)
+  pickerOpen.value = false
+  if (instance) {
+    syncAppliedIndicators()
+    // Open the parameters right away only when there is something to change.
+    configuringId.value = definition.inputs.length > 0
+      ? instance.instanceId
+      : null
+  }
+}
+
+function removeIndicator(instanceId: string): void {
+  indicators.remove(instanceId)
+  if (configuringId.value === instanceId) {
+    configuringId.value = null
+  }
+  syncAppliedIndicators()
+}
+
+function applyIndicatorInputs(instanceId: string, inputs: IndicatorInputs): void {
+  indicators.updateInputs(instanceId, inputs)
+  syncAppliedIndicators()
+}
+
+function applyIndicatorStyles(
+  instanceId: string,
+  styles: Record<string, IndicatorPlotStyle>,
+): void {
+  indicators.updateStyles(instanceId, styles)
+  syncAppliedIndicators()
+}
+
+defineExpose({ indicators })
 
 const INITIAL_HISTORY_SIZE = 500
 const HISTORY_PAGE_SIZE = 400
@@ -198,6 +299,7 @@ async function loadHistory(): Promise<void> {
     }
     emit('history', props.sessionId, fingerprint, candles)
     showInitialCandleWindow(displayedCandles.length)
+    indicators.invalidate()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error)
   } finally {
@@ -271,6 +373,7 @@ async function loadOlderHistory(): Promise<void> {
       })
     }
     historyExhausted = page.length < HISTORY_PAGE_SIZE
+    indicators.invalidate()
   } catch (error) {
     historyErrorMessage.value = error instanceof Error
       ? error.message
@@ -559,6 +662,14 @@ onMounted(() => {
     lastTimestamp = candle.time
     rememberDisplayedCandle(candle)
     updateLegend(candle)
+    indicators.refresh({
+      time: candle.time,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: candle.volume,
+    })
   })
 
   // The chart owns its initial load. This avoids a parent-ref race while
@@ -567,6 +678,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  indicators.dispose()
   historyGeneration += 1
   if (visibleLogicalRangeHandler) {
     chart.value?.timeScale().unsubscribeVisibleLogicalRangeChange(
@@ -592,7 +704,9 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
 <template>
   <section class="chart-panel">
     <ChartToolbar
+      :indicator-count="appliedIndicators.length"
       :interval="selection.interval"
+      @indicators="pickerOpen = true"
       @interval="emit('interval', $event)"
     />
     <div class="chart-stage">
@@ -614,6 +728,22 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
         <span>Falha ao carregar candles anteriores.</span>
         <button type="button" @click="loadOlderHistory">Tentar novamente</button>
       </div>
+      <AppliedIndicators
+        :applied="appliedIndicators"
+        @configure="configuringId = $event"
+        @remove="removeIndicator"
+      />
+      <IndicatorSettings
+        v-if="configuring"
+        :key="configuring.instance.instanceId"
+        :definition="configuring.definition"
+        :inputs="configuring.instance.inputs"
+        :populated-plots="indicators.populatedPlots(configuring.instance.instanceId)"
+        :styles="configuring.instance.styles"
+        @apply="applyIndicatorInputs(configuring.instance.instanceId, $event)"
+        @close="configuringId = null"
+        @styles="applyIndicatorStyles(configuring.instance.instanceId, $event)"
+      />
       <span class="tradingview-attribution">Charts by TradingView</span>
     </div>
     <div
@@ -635,5 +765,11 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
       </strong>
       <small>O gráfico será liberado assim que o histórico estiver pronto.</small>
     </div>
+    <IndicatorPicker
+      :load="() => indicators.catalog()"
+      :open="pickerOpen"
+      @close="pickerOpen = false"
+      @select="addIndicator"
+    />
   </section>
 </template>

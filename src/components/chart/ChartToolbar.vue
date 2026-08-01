@@ -8,8 +8,8 @@ import {
   Settings,
 } from '@lucide/vue'
 
-defineProps<{ interval: string }>()
-defineEmits<{ interval: [value: string] }>()
+defineProps<{ interval: string, indicatorCount: number }>()
+defineEmits<{ interval: [value: string], indicators: [] }>()
 
 const intervals = ['1m', '5m', '15m', '1h', '4h', '1D']
 </script>
@@ -29,8 +29,13 @@ const intervals = ['1m', '5m', '15m', '1h', '4h', '1D']
       {{ value }}
     </button>
     <span class="toolbar-divider" />
-    <button type="button">
+    <button
+      :class="{ active: indicatorCount > 0 }"
+      type="button"
+      @click="$emit('indicators')"
+    >
       <ChartNoAxesCombined aria-hidden="true" /> Indicadores
+      <i v-if="indicatorCount > 0" class="toolbar-badge">{{ indicatorCount }}</i>
     </button>
     <button type="button"><Bell aria-hidden="true" /> Alerta</button>
     <button type="button"><Rewind aria-hidden="true" /> Replay</button>

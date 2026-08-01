@@ -7,5 +7,6 @@
 @import './styles/chart.css';
 @import './styles/orderbook.css';
 @import './styles/trading.css';
+@import './styles/indicators.css';
 @import './styles/settings.css';
 @import './styles/symbol-search.css';
