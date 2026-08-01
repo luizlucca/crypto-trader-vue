@@ -1,18 +1,38 @@
 <script setup lang="ts">
-import { Search, TriangleAlert, X } from '@lucide/vue'
+import { ChevronRight, Search, TriangleAlert, X } from '@lucide/vue'
 import { computed, onMounted, ref, shallowRef, watch } from 'vue'
-import type { IndicatorDefinition } from '@/domain/indicators'
+import type {
+  IndicatorDefinition,
+  IndicatorInputs,
+  IndicatorInstance,
+  IndicatorPlotStyle,
+} from '@/domain/indicators'
 import { selectTop } from '@/domain/topSelection'
+import IndicatorForm from './IndicatorForm.vue'
 
 const props = defineProps<{
   open: boolean
   /** Resolved lazily: loading the catalog spins up the worker. */
   load: () => Promise<IndicatorDefinition[]>
+  /**
+   * The indicator currently drawn as a preview, if any. Choosing one applies
+   * it to the chart straight away so the settings can be judged against real
+   * data; confirming keeps it and cancelling removes it.
+   */
+  preview: { instance: IndicatorInstance, definition: IndicatorDefinition } | null
+  populatedPlots: readonly string[]
 }>()
 
 const emit = defineEmits<{
   close: []
-  select: [definition: IndicatorDefinition]
+  /** Draw this indicator now, unconfirmed. */
+  preview: [definition: IndicatorDefinition]
+  /** Keep the previewed indicator. */
+  confirm: []
+  /** Remove the previewed indicator. */
+  discard: []
+  inputs: [inputs: IndicatorInputs]
+  styles: [styles: Record<string, IndicatorPlotStyle>]
 }>()
 
 /**
@@ -115,6 +135,15 @@ function handleKey(event: KeyboardEvent): void {
   }
 }
 
+/** Clicking a row previews it; clicking the open one collapses and discards. */
+function toggle(definition: IndicatorDefinition): void {
+  if (props.preview?.definition.id === definition.id) {
+    emit('discard')
+    return
+  }
+  emit('preview', definition)
+}
+
 watch(() => props.open, (open) => {
   if (!open) {
     return
@@ -199,21 +228,61 @@ onMounted(() => {
             </p>
 
             <template v-else>
-              <button
+              <div
                 v-for="definition in verified"
                 :key="definition.id"
-                class="indicator-option"
-                type="button"
-                @click="emit('select', definition)"
+                class="indicator-entry"
               >
-                <span class="indicator-option-title">
-                  <strong>{{ definition.name }}</strong>
-                  <small>{{ definition.overlay ? 'Sobre o preço' : 'Painel próprio' }}</small>
-                </span>
-                <span class="indicator-option-description">
-                  {{ definition.description }}
-                </span>
-              </button>
+                <button
+                  :aria-expanded="preview?.definition.id === definition.id"
+                  :class="{ expanded: preview?.definition.id === definition.id }"
+                  class="indicator-option"
+                  type="button"
+                  @click="toggle(definition)"
+                >
+                  <ChevronRight aria-hidden="true" class="indicator-option-chevron" />
+                  <span class="indicator-option-body">
+                    <span class="indicator-option-title">
+                      <strong>{{ definition.name }}</strong>
+                      <small>{{ definition.overlay ? 'Sobre o preço' : 'Painel próprio' }}</small>
+                    </span>
+                    <span class="indicator-option-description">
+                      {{ definition.description }}
+                    </span>
+                  </span>
+                </button>
+
+                <!--
+                  Accordion body. The indicator is already on the chart at this
+                  point, so every change is judged against real data.
+                -->
+                <section
+                  v-if="preview?.definition.id === definition.id"
+                  class="indicator-inline-settings"
+                >
+                  <IndicatorForm
+                    :key="preview.instance.instanceId"
+                    :definition="preview.definition"
+                    :inputs="preview.instance.inputs"
+                    :populated-plots="populatedPlots"
+                    :styles="preview.instance.styles"
+                    @inputs="emit('inputs', $event)"
+                    @styles="emit('styles', $event)"
+                  />
+                  <footer class="indicator-inline-actions">
+                    <button type="button" @click="emit('discard')">
+                      Cancelar
+                    </button>
+                    <button
+                      class="indicator-apply"
+                      type="button"
+                      @click="emit('confirm')"
+                    >
+                      Aplicar
+                    </button>
+                  </footer>
+                </section>
+              </div>
 
               <div v-if="unverified.length" class="indicator-unverified-note">
                 <TriangleAlert aria-hidden="true" />
@@ -223,21 +292,61 @@ onMounted(() => {
                 </span>
               </div>
 
-              <button
+              <div
                 v-for="definition in unverified"
                 :key="definition.id"
-                class="indicator-option unverified"
-                type="button"
-                @click="emit('select', definition)"
+                class="indicator-entry"
               >
-                <span class="indicator-option-title">
-                  <strong>{{ definition.name }}</strong>
-                  <small>{{ definition.overlay ? 'Sobre o preço' : 'Painel próprio' }}</small>
-                </span>
-                <span class="indicator-option-description">
-                  {{ definition.description }}
-                </span>
-              </button>
+                <button
+                  :aria-expanded="preview?.definition.id === definition.id"
+                  :class="{ expanded: preview?.definition.id === definition.id }"
+                  class="indicator-option unverified"
+                  type="button"
+                  @click="toggle(definition)"
+                >
+                  <ChevronRight aria-hidden="true" class="indicator-option-chevron" />
+                  <span class="indicator-option-body">
+                    <span class="indicator-option-title">
+                      <strong>{{ definition.name }}</strong>
+                      <small>{{ definition.overlay ? 'Sobre o preço' : 'Painel próprio' }}</small>
+                    </span>
+                    <span class="indicator-option-description">
+                      {{ definition.description }}
+                    </span>
+                  </span>
+                </button>
+
+                <!--
+                  Accordion body. The indicator is already on the chart at this
+                  point, so every change is judged against real data.
+                -->
+                <section
+                  v-if="preview?.definition.id === definition.id"
+                  class="indicator-inline-settings"
+                >
+                  <IndicatorForm
+                    :key="preview.instance.instanceId"
+                    :definition="preview.definition"
+                    :inputs="preview.instance.inputs"
+                    :populated-plots="populatedPlots"
+                    :styles="preview.instance.styles"
+                    @inputs="emit('inputs', $event)"
+                    @styles="emit('styles', $event)"
+                  />
+                  <footer class="indicator-inline-actions">
+                    <button type="button" @click="emit('discard')">
+                      Cancelar
+                    </button>
+                    <button
+                      class="indicator-apply"
+                      type="button"
+                      @click="emit('confirm')"
+                    >
+                      Aplicar
+                    </button>
+                  </footer>
+                </section>
+              </div>
             </template>
           </div>
         </div>

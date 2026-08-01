@@ -16,7 +16,9 @@ decisões sem sair da plataforma.
 ## Comportamento esperado
 
 - Um seletor lista os indicadores por categoria, com busca por nome.
-- Escolher um indicador o aplica imediatamente, com os parâmetros padrão.
+- Escolher um indicador o desenha imediatamente e abre suas configurações no
+  próprio seletor, em sanfona. Confirmar mantém; cancelar ou fechar o seletor
+  remove.
 - Cada indicador expõe seus próprios parâmetros, e o formulário é montado a
   partir da definição do indicador — não de código escrito por indicador.
 - Indicadores de sobreposição (médias, bandas) desenham no painel do preço;
@@ -130,6 +132,22 @@ descartado, pelo mesmo padrão de `generation` já usado em `useWorkspaceTabs`.
 
 Carregar histórico anterior invalida o resultado retido e força um `setData()`,
 porque aí a série muda inteira.
+
+### Escolher e configurar são o mesmo passo
+
+A primeira versão separava as duas coisas: escolher fechava o seletor e abria
+uma janela de configuração. Isso custava um passo e criava uma ambiguidade
+real — fechar a janela sem confirmar deixava o indicador aplicado, porque não
+havia diferença entre "estou avaliando" e "quero manter".
+
+O seletor passou a expandir as configurações do indicador escolhido em sanfona,
+usando a própria área do modal. O indicador é desenhado no gráfico assim que é
+escolhido, para que os ajustes sejam julgados contra dados reais, mas fica
+**não confirmado**: cancelar, escolher outro ou fechar o seletor o remove.
+
+O formulário vive em `IndicatorForm.vue` e é usado por dois hosts — a sanfona
+do seletor e a janela flutuante que edita um indicador já aplicado. Os seis
+tipos de parâmetro são mapeados uma vez só.
 
 ### Renderização
 

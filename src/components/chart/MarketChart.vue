@@ -115,6 +115,12 @@ const appliedIndicators = shallowRef<
 >([])
 const pickerOpen = ref(false)
 const configuringId = ref<string | null>(null)
+/**
+ * An indicator drawn but not confirmed. It exists on the chart so the user can
+ * judge the settings against real data; closing the picker or cancelling
+ * removes it, which is why it is tracked apart from the applied ones.
+ */
+const previewId = ref<string | null>(null)
 
 const configuring = computed(() => (
   configuringId.value
@@ -124,19 +130,56 @@ const configuring = computed(() => (
     : undefined
 ))
 
+const preview = computed(() => (
+  previewId.value
+    ? appliedIndicators.value.find(
+      (entry) => entry.instance.instanceId === previewId.value,
+    ) ?? null
+    : null
+))
+
 function syncAppliedIndicators(): void {
   appliedIndicators.value = indicators.applied()
 }
 
-function addIndicator(definition: IndicatorDefinition): void {
+/** Draws the indicator immediately, still unconfirmed. */
+function previewIndicator(definition: IndicatorDefinition): void {
+  discardPreview()
   const instance = indicators.add(definition)
-  pickerOpen.value = false
   if (instance) {
+    previewId.value = instance.instanceId
     syncAppliedIndicators()
-    // Open the parameters right away only when there is something to change.
-    configuringId.value = definition.inputs.length > 0
-      ? instance.instanceId
-      : null
+  }
+}
+
+function confirmPreview(): void {
+  previewId.value = null
+}
+
+function discardPreview(): void {
+  if (!previewId.value) {
+    return
+  }
+  indicators.remove(previewId.value)
+  previewId.value = null
+  syncAppliedIndicators()
+}
+
+/** Closing the picker with an unconfirmed indicator discards it. */
+function closePicker(): void {
+  discardPreview()
+  pickerOpen.value = false
+}
+
+function previewInputs(inputs: IndicatorInputs): void {
+  if (previewId.value) {
+    applyIndicatorInputs(previewId.value, inputs)
+  }
+}
+
+function previewStyles(styles: Record<string, IndicatorPlotStyle>): void {
+  if (previewId.value) {
+    applyIndicatorStyles(previewId.value, styles)
   }
 }
 
@@ -144,6 +187,9 @@ function removeIndicator(instanceId: string): void {
   indicators.remove(instanceId)
   if (configuringId.value === instanceId) {
     configuringId.value = null
+  }
+  if (previewId.value === instanceId) {
+    previewId.value = null
   }
   syncAppliedIndicators()
 }
@@ -740,8 +786,8 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
         :inputs="configuring.instance.inputs"
         :populated-plots="indicators.populatedPlots(configuring.instance.instanceId)"
         :styles="configuring.instance.styles"
-        @apply="applyIndicatorInputs(configuring.instance.instanceId, $event)"
         @close="configuringId = null"
+        @inputs="applyIndicatorInputs(configuring.instance.instanceId, $event)"
         @styles="applyIndicatorStyles(configuring.instance.instanceId, $event)"
       />
       <span class="tradingview-attribution">Charts by TradingView</span>
@@ -768,8 +814,16 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
     <IndicatorPicker
       :load="() => indicators.catalog()"
       :open="pickerOpen"
-      @close="pickerOpen = false"
-      @select="addIndicator"
+      :populated-plots="preview
+        ? indicators.populatedPlots(preview.instance.instanceId)
+        : []"
+      :preview="preview"
+      @close="closePicker"
+      @confirm="confirmPreview"
+      @discard="discardPreview"
+      @inputs="previewInputs"
+      @preview="previewIndicator"
+      @styles="previewStyles"
     />
   </section>
 </template>
