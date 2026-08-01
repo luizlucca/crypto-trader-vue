@@ -35,6 +35,7 @@ import {
   createIndicatorClient,
   type IndicatorBars,
   type IndicatorClient,
+  type IndicatorPatchHandler,
 } from '@/services/indicators'
 
 interface MountedIndicator {
@@ -70,6 +71,11 @@ export interface ChartIndicatorsOptions {
   /** Full history, read only when it is replaced — never per tick. */
   bars: () => IndicatorBars
   onError?: (message: string) => void
+  /** Test seam; production always uses the real Worker-backed client. */
+  createClient?: (
+    onPatch: IndicatorPatchHandler,
+    getBars: () => IndicatorBars,
+  ) => IndicatorClient
 }
 
 /**
@@ -93,7 +99,10 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     if (client) {
       return client
     }
-    const created = createIndicatorClient(applyPatches, options.bars)
+    const created = (options.createClient ?? createIndicatorClient)(
+      applyPatches,
+      options.bars,
+    )
     if (options.onError) {
       created.setErrorHandler(options.onError)
     }
@@ -136,45 +145,83 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     if (!entry) {
       return
     }
-    if (!entry.calculated) {
-      entry.calculated = true
-      populatedRevision.value += 1
-    }
-    if (markers) {
-      applyMarkers(entry, markers)
-      if (markers.length > 0) {
-        entry.populated.add('__markers')
-        populatedRevision.value += 1
+    const createdNow = ensureChartObjects(entry, patches)
+    const newlyPopulated: string[] = []
+    try {
+      if (markers) {
+        applyMarkers(entry, markers)
+        if (markers.length > 0 && !entry.populated.has('__markers')) {
+          newlyPopulated.push('__markers')
+        }
       }
-    }
-    for (const patch of patches) {
-      const series = entry.series.get(patch.plotId)
-      if (!series) {
-        continue
-      }
-      if (patch.time.length > 0 && !entry.populated.has(patch.plotId)) {
-        entry.populated.add(patch.plotId)
-        populatedRevision.value += 1
-      }
-      if (patch.full) {
-        // Whole series replaced: first application or new history page.
-        const points = new Array(patch.time.length)
+      for (const patch of patches) {
+        const series = entry.series.get(patch.plotId)
+        if (!series) {
+          if (patch.time.length > 0) {
+            throw new Error(
+              `Série ${patch.plotId} não está montada em ${entry.definition.name}`,
+            )
+          }
+          continue
+        }
+        if (patch.time.length > 0 && !entry.populated.has(patch.plotId)) {
+          newlyPopulated.push(patch.plotId)
+        }
+        if (patch.full) {
+          // Whole series replaced: first application or new history page.
+          const points = new Array(patch.time.length)
+          for (let i = 0; i < patch.time.length; i += 1) {
+            points[i] = {
+              time: patch.time[i] as UTCTimestamp,
+              value: patch.value[i],
+            }
+          }
+          series.setData(points)
+          // `setData` is synchronous. A non-empty patch that leaves no data is
+          // not a successful commit and must enter the bounded full retry.
+          if (patch.time.length > 0 && series.data().length === 0) {
+            throw new Error(
+              `Lightweight Charts não reteve os dados de ${entry.definition.name}/${patch.plotId}`,
+            )
+          }
+          continue
+        }
+        // Ordinary tick: only the tail moved, so update point by point.
         for (let i = 0; i < patch.time.length; i += 1) {
-          points[i] = {
+          series.update({
             time: patch.time[i] as UTCTimestamp,
             value: patch.value[i],
-          }
+          })
         }
-        series.setData(points)
-        continue
       }
-      // Ordinary tick: only the tail moved, so update point by point.
-      for (let i = 0; i < patch.time.length; i += 1) {
-        series.update({
-          time: patch.time[i] as UTCTimestamp,
-          value: patch.value[i],
-        })
+
+      // Commit presentation bookkeeping only after every chart mutation worked.
+      // If one setData/update throws, the client requests a complete retry and
+      // this instance never advertises a half-applied result as calculated.
+      let presentationChanged = false
+      for (const plotId of newlyPopulated) {
+        if (!entry.populated.has(plotId)) {
+          entry.populated.add(plotId)
+          presentationChanged = true
+        }
       }
+      if (!entry.calculated) {
+        entry.calculated = true
+        presentationChanged = true
+      }
+      if (presentationChanged) {
+        populatedRevision.value += 1
+      }
+    } catch (error) {
+      if (createdNow) {
+        const chart = options.chart()
+        if (chart) {
+          // Initial application is atomic: never retain a pane containing a
+          // partially-filled set of series after one plot failed.
+          removeChartObjects(chart, entry)
+        }
+      }
+      throw error
     }
   }
 
@@ -213,9 +260,9 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     chart: IChartApi,
     definition: IndicatorDefinition,
     styles: Record<string, IndicatorPlotStyle>,
-    paneIndex: number,
+    pane: IPaneApi<Time> | undefined,
+    series: Map<string, ISeriesApi<SeriesType>>,
   ): Map<string, ISeriesApi<SeriesType>> {
-    const series = new Map<string, ISeriesApi<SeriesType>>()
     for (const plot of definition.plots) {
       // The catalog says how each plot is meant to be drawn; a MACD histogram
       // rendered as a line misreads the indicator.
@@ -223,13 +270,96 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       const type = kind === 'histogram'
         ? HistogramSeries
         : kind === 'area' ? AreaSeries : LineSeries
-      series.set(plot.id, chart.addSeries(
-        type,
-        seriesOptions(styles[plot.id], kind),
-        paneIndex,
-      ))
+      const created = pane
+        ? pane.addSeries(type, seriesOptions(styles[plot.id], kind))
+        : chart.addSeries(type, seriesOptions(styles[plot.id], kind), 0)
+      series.set(plot.id, created)
     }
     return series
+  }
+
+  /**
+   * Mounts visual objects only once the worker has produced drawable data.
+   * A slow or failed calculation therefore cannot expose a permanent empty
+   * pane, and the ordinary realtime path pays only the `series.size` check.
+   */
+  function ensureChartObjects(
+    entry: MountedIndicator,
+    patches: IndicatorPlotPatch[],
+  ): boolean {
+    if (
+      entry.series.size > 0
+      || !patches.some((patch) => patch.time.length > 0)
+    ) {
+      return false
+    }
+    const chart = options.chart()
+    if (!chart) {
+      throw new Error(`Gráfico indisponível ao montar ${entry.definition.name}`)
+    }
+
+    try {
+      entry.pane = entry.definition.overlay ? undefined : chart.addPane(true)
+      createSeries(
+        chart,
+        entry.definition,
+        entry.instance.styles,
+        entry.pane,
+        entry.series,
+      )
+      return true
+    } catch (error) {
+      removeChartObjects(chart, entry)
+      throw error
+    }
+  }
+
+  function removeChartObjects(
+    chart: IChartApi,
+    entry: MountedIndicator,
+  ): void {
+    const failures: string[] = []
+    try {
+      entry.markers?.setMarkers([])
+    } catch (error) {
+      failures.push(
+        `markers: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+    entry.markers = undefined
+
+    entry.series.forEach((series, plotId) => {
+      try {
+        chart.removeSeries(series)
+      } catch (error) {
+        failures.push(
+          `${plotId}: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    })
+    entry.series.clear()
+
+    const paneIndex = entry.pane?.paneIndex() ?? -1
+    const paneIsEmpty = entry.pane?.getSeries().length === 0
+    if (paneIndex >= 0 && paneIsEmpty) {
+      try {
+        // Oscillator panes are created with preserveEmptyPane=true, so their
+        // lifetime is explicit and cannot race the last removeSeries call.
+        chart.removePane(paneIndex)
+        entry.pane = undefined
+      } catch (error) {
+        failures.push(
+          `pane ${paneIndex}: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    } else if (paneIndex >= 0 && !paneIsEmpty) {
+      failures.push(`pane ${paneIndex}: ainda contém séries após a desmontagem`)
+    }
+    if (failures.length > 0) {
+      options.onError?.(
+        `Falha ao desmontar ${entry.definition.name}: ${failures.join('; ')}`,
+      )
+    }
   }
 
   return {
@@ -254,21 +384,13 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         inputs: resolveInputs(definition, inputs),
         styles: resolvePlotStyles(definition, restore?.styles),
       }
-      /*
-       * Oscillators get their own pane; overlays share the price pane.
-       *
-       * The index is read from the chart instead of a running counter. A
-       * counter drifts as soon as an oscillator is removed — the panes
-       * renumber, the counter does not — and asking for an index beyond
-       * `panes().length` silently produces a series that is never drawn. That
-       * was the source of indicators intermittently appearing empty.
-       */
-      const paneIndex = definition.overlay ? 0 : chart.panes().length
-      const series = createSeries(chart, definition, instance.styles, paneIndex)
+      const series = new Map<string, ISeriesApi<SeriesType>>()
       mounted.set(instance.instanceId, {
         instance,
         definition,
-        pane: definition.overlay ? undefined : chart.panes()[paneIndex],
+        // Pane and series are mounted transactionally by the first non-empty
+        // result, so calculation latency is never represented by a blank pane.
+        pane: undefined,
         series,
         populated: new Set(),
         calculated: false,
@@ -302,22 +424,11 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         client = undefined
       }
 
-      entry.markers?.setMarkers([])
-      entry.markers = undefined
-
       const chart = options.chart()
       if (!chart) {
         return
       }
-      entry.series.forEach((series) => chart.removeSeries(series))
-
-      // Reclaim the pane once empty, so removing an oscillator leaves no blank
-      // strip. `paneIndex()` returns -1 when the chart already reclaimed it,
-      // and panes 0 and 1 belong to price and volume.
-      const paneIndex = entry.pane?.paneIndex() ?? -1
-      if (paneIndex > 1 && entry.pane?.getSeries().length === 0) {
-        chart.removePane(paneIndex)
-      }
+      removeChartObjects(chart, entry)
     },
 
     updateInputs(instanceId: string, inputs: IndicatorInputs): void {
@@ -412,8 +523,11 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     dispose(): void {
       const chart = options.chart()
       mounted.forEach((entry) => {
-        entry.markers?.setMarkers([])
-        entry.series.forEach((series) => chart?.removeSeries(series))
+        if (chart) {
+          removeChartObjects(chart, entry)
+        } else {
+          entry.markers?.setMarkers([])
+        }
       })
       mounted.clear()
       client?.dispose()

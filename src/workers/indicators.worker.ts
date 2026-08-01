@@ -45,6 +45,7 @@ const byId = new Map(registry.map((entry) => [entry.id, entry]))
 /** Retained per instance so a tick can be answered with a diff. */
 interface AttachedIndicator {
   definitionId: string
+  instanceRevision: number
   inputs: IndicatorInputs
   previous: Map<string, { time: Float64Array, value: Float64Array }>
   /** Serialised marker set, to send only when it actually changes. */
@@ -130,6 +131,62 @@ function firstDifference(
   return previous.time.length
 }
 
+/**
+ * Lightweight Charts requires unique, strictly ascending times. Most library
+ * indicators already satisfy that contract, so the normal path stays O(n)
+ * without object allocation. Sorting and de-duplicating is a rare fallback for
+ * a malformed community port, preventing one bad plot from poisoning a pane.
+ */
+function normalizePlotPoints(
+  points: { time: number, value: number }[],
+): { time: Float64Array, value: Float64Array } {
+  let count = 0
+  let ordered = true
+  let lastTime = Number.NEGATIVE_INFINITY
+  const time = new Float64Array(points.length)
+  const value = new Float64Array(points.length)
+
+  for (const point of points) {
+    if (!Number.isFinite(point?.value) || !Number.isFinite(point?.time)) {
+      continue
+    }
+    if (point.time <= lastTime) {
+      ordered = false
+    }
+    time[count] = point.time
+    value[count] = point.value
+    lastTime = point.time
+    count += 1
+  }
+
+  if (ordered) {
+    return {
+      time: time.subarray(0, count),
+      value: value.subarray(0, count),
+    }
+  }
+
+  const sorted = Array.from({ length: count }, (_, index) => ({
+    time: time[index],
+    value: value[index],
+  })).sort((left, right) => left.time - right.time)
+  let uniqueCount = 0
+  for (const point of sorted) {
+    if (uniqueCount > 0 && time[uniqueCount - 1] === point.time) {
+      // A repeated timestamp replaces the earlier value deterministically.
+      value[uniqueCount - 1] = point.value
+      continue
+    }
+    time[uniqueCount] = point.time
+    value[uniqueCount] = point.value
+    uniqueCount += 1
+  }
+  return {
+    time: time.subarray(0, uniqueCount),
+    value: value.subarray(0, uniqueCount),
+  }
+}
+
 const MARKER_POSITIONS = new Set(['aboveBar', 'belowBar', 'inBar'])
 const MARKER_SHAPES = new Set(['circle', 'square', 'arrowUp', 'arrowDown'])
 
@@ -176,19 +233,11 @@ function computeInstance(
   const patches: IndicatorPlotPatch[] = []
 
   for (const [plotId, points] of Object.entries(result.plots ?? {})) {
-    // Points whose value is not finite are gaps; the chart cannot plot them.
-    let count = 0
-    const time = new Float64Array(points.length)
-    const value = new Float64Array(points.length)
-    for (const point of points) {
-      if (Number.isFinite(point?.value) && Number.isFinite(point?.time)) {
-        time[count] = point.time
-        value[count] = point.value
-        count += 1
-      }
-    }
-    const trimmedTime = time.subarray(0, count)
-    const trimmedValue = value.subarray(0, count)
+    // Non-finite values are warm-up gaps and must not reach setData().
+    const normalized = normalizePlotPoints(points)
+    const trimmedTime = normalized.time
+    const trimmedValue = normalized.value
+    const count = trimmedTime.length
 
     const previous = indicator.previous.get(plotId)
     const from = forceFull
@@ -246,8 +295,13 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
   }
 
   if (request.kind === 'attach') {
+    const current = attached.get(request.instanceId)
+    if (current && current.instanceRevision > request.instanceRevision) {
+      return
+    }
     attached.set(request.instanceId, {
       definitionId: request.definitionId,
+      instanceRevision: request.instanceRevision,
       inputs: request.inputs,
       previous: new Map(),
       previousMarkers: '',
@@ -256,7 +310,10 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
   }
 
   if (request.kind === 'detach') {
-    attached.delete(request.instanceId)
+    const current = attached.get(request.instanceId)
+    if (current?.instanceRevision === request.instanceRevision) {
+      attached.delete(request.instanceId)
+    }
     return
   }
 
@@ -271,7 +328,11 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
   }
 
   if (attached.size === 0 || bars.length === 0) {
-    post({ kind: 'computed', generation: request.generation })
+    post({
+      kind: 'computed',
+      generation: request.generation,
+      roundId: request.roundId,
+    })
     return
   }
 
@@ -289,7 +350,9 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
         {
           kind: 'result',
           generation: request.generation,
+          roundId: request.roundId,
           instanceId,
+          instanceRevision: indicator.instanceRevision,
           patches,
           ...(markers === undefined ? {} : { markers }),
         },
@@ -299,11 +362,17 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
       post({
         kind: 'error',
         generation: request.generation,
+        roundId: request.roundId,
         instanceId,
+        instanceRevision: indicator.instanceRevision,
         message: error instanceof Error ? error.message : String(error),
       })
     }
   }
 
-  post({ kind: 'computed', generation: request.generation })
+  post({
+    kind: 'computed',
+    generation: request.generation,
+    roundId: request.roundId,
+  })
 }

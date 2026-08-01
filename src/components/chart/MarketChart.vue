@@ -63,6 +63,7 @@ const loading = ref(true)
 const historyLoading = ref(false)
 const errorMessage = ref('')
 const historyErrorMessage = ref('')
+const indicatorErrorMessage = ref('')
 const chart = shallowRef<IChartApi | null>(null)
 const candleSeries = shallowRef<RoundedCandleSeriesApi | null>(null)
 const volumeSeries = shallowRef<ISeriesApi<'Histogram'> | null>(null)
@@ -106,7 +107,7 @@ const indicators = useChartIndicators({
     return bars
   },
   onError: (message) => {
-    historyErrorMessage.value = message
+    indicatorErrorMessage.value = message
   },
 })
 
@@ -126,20 +127,21 @@ const configuringId = ref<string | null>(null)
  * removes it, which is why it is tracked apart from the applied ones.
  */
 const previewId = ref<string | null>(null)
-// DIAG-TEMP
-;(window as unknown as Record<string, unknown>).__diag = {
-  ind: indicators,
-  panes: () => chart.value?.panes().map((p, i) => ({
-    i, h: Math.round(p.getHeight()), series: p.getSeries().length,
-  })) ?? [],
-  series: () => chart.value?.panes().map((p, i) => ({
-    i,
-    h: Math.round(p.getHeight()),
-    s: p.getSeries().map((s) => ({
-      n: s.data().length,
-      v: (s.options() as { visible?: boolean }).visible !== false,
-    })),
-  })) ?? [],
+if (import.meta.env.DEV) {
+  ;(window as unknown as Record<string, unknown>).__diag = {
+    ind: indicators,
+    panes: () => chart.value?.panes().map((p, i) => ({
+      i, h: Math.round(p.getHeight()), series: p.getSeries().length,
+    })) ?? [],
+    series: () => chart.value?.panes().map((p, i) => ({
+      i,
+      h: Math.round(p.getHeight()),
+      s: p.getSeries().map((s) => ({
+        n: s.data().length,
+        v: (s.options() as { visible?: boolean }).visible !== false,
+      })),
+    })) ?? [],
+  }
 }
 
 const configuring = computed(() => (
@@ -358,6 +360,7 @@ async function loadHistory(): Promise<void> {
   historyLoading.value = false
   errorMessage.value = ''
   historyErrorMessage.value = ''
+  indicatorErrorMessage.value = ''
   historyExhausted = false
   lastTimestamp = 0
   pendingCandle = undefined
@@ -829,6 +832,13 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
       >
         <span>Falha ao carregar candles anteriores.</span>
         <button type="button" @click="loadOlderHistory">Tentar novamente</button>
+      </div>
+      <div
+        v-else-if="indicatorErrorMessage && !loading && !historyLoading"
+        class="chart-history-error"
+      >
+        <span>{{ indicatorErrorMessage }}</span>
+        <button type="button" @click="indicatorErrorMessage = ''">Dispensar</button>
       </div>
       <AppliedIndicators
         :applied="appliedIndicators"

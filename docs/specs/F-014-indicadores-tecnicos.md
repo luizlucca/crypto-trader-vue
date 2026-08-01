@@ -1,7 +1,7 @@
 # F-014 — Indicadores técnicos no gráfico
 
 **Status:** em desenvolvimento  
-**Última revisão:** 2026-07-31  
+**Última revisão:** 2026-08-01
 **Relaciona-se a:** [F-004](./F-004-grafico-lightweight.md),
 [F-005](./F-005-historico-do-grafico.md), ao item DA-003 do
 [roadmap](../roadmap/README.md) e ao
@@ -216,8 +216,12 @@ linha não é detalhe estético — é ler o indicador errado. Estilos sem
 equivalente na biblioteca (`circles`, `cross`, `stepline`) caem em linha, que é
 a aproximação honesta possível.
 
-A série é criada com `chart.addSeries(tipo, options, paneIndex)`. `overlay: true` usa o painel
-0; `overlay: false` cria um painel próprio. As cores vêm de `plotConfig`, mas
+A série usa `chart.addSeries()` para overlays. Osciladores criam um pane
+preservado com `chart.addPane(true)` e adicionam suas séries via `pane.addSeries()`.
+Esses objetos visuais são criados somente quando o primeiro resultado contém
+pontos válidos. Latência ou falha no cálculo não pode mais ser representada por
+um pane vazio permanente.
+As cores vêm de `plotConfig`, mas
 passam pelo tema: um indicador precisa continuar legível nos 30 presets
 (F-009), então a cor declarada é o padrão, e o usuário pode sobrescrevê-la.
 
@@ -232,7 +236,7 @@ src/domain/indicators.ts          catálogo filtrado, validação de parâmetros
                                   identidade de uma instância aplicada
 src/workers/indicators.worker.ts  única fronteira que importa a biblioteca
 src/services/indicators.ts        cliente do Worker: requisições, coalescência,
-                                  descarte por geração
+                                  rodadas, revisões e recuperação
 src/composables/useChartIndicators.ts  ciclo de vida das séries e painéis
 src/components/chart/indicators/
   IndicatorPicker.vue             seleção por categoria + busca
@@ -278,8 +282,11 @@ Além disso:
 - `domain/indicators.test.ts`: validação de parâmetros contra `inputConfig`
   (limites, tipos, opções), e identidade de instâncias — dois RSI com períodos
   diferentes não podem colidir.
-- `services/indicators.test.ts`: coalescência de recálculos e descarte de
-  resultado obsoleto por geração.
+- `services/indicators.test.ts`: descarte por rodada/revisão, retry completo,
+  recuperação do Worker, resultado ausente, erro isolado de cálculo e 100
+  ciclos de inclusão/remoção com uma SMA ativa.
+- `workers/indicatorLibrary.test.ts`: 250 ciclos determinísticos de SMA seguido
+  de MFI/RSI Bollinger Bands, verificando dados nos quatro plots.
 - Medição obrigatória, conforme `docs/performance/README.md`: comparar
   `taskDuration`, `scriptDuration` e contagem de long tasks sem indicadores,
   com três indicadores e com oito, mantendo o livro de ordens ativo.
@@ -359,6 +366,52 @@ Quem cria o worker passou a semeá-lo. O cliente recebe uma função que lê o
 histórico atual e a chama em `ensureWorker`, de modo que nenhum worker pode
 existir sem barras. O caso especial de "primeiro indicador" deixou de existir —
 não havia como acertá-lo em todas as ordens de operação.
+
+### Rodadas e revisões tornam o protocolo determinístico
+
+Uma `generation` global não distingue duas rodadas sobre o mesmo histórico nem
+uma configuração antiga de uma instância reconfigurada. Cada `compute` agora
+recebe um `roundId` monotônico e cada instância possui uma `instanceRevision`.
+`result`, `error` e `computed` devolvem esses identificadores; o cliente só
+aplica ou encerra a rodada quando ambos coincidem com o registro corrente.
+
+Se `setData()` ou `update()` lançar, o estado de apresentação não é confirmado.
+O cliente agenda uma única tentativa completa, evitando que uma série que
+perdeu o primeiro `setData()` receba somente patches de cauda e permaneça vazia.
+No caminho normal, o custo adicional se resume a comparações de inteiros.
+
+### Pane de oscilador tem ciclo de vida explícito
+
+No Lightweight Charts 5.2, remover a última série pode reciclar automaticamente
+um pane vazio. Osciladores com vários plots não dependem mais desse efeito:
+usam `chart.addPane(true)`, recebem as séries pelo `IPaneApi` e mantêm o pane
+preservado durante a desmontagem. Depois de todas as séries saírem, o pane é
+removido explicitamente por seu índice atual.
+
+A criação também é tardia e transacional: a instância chega primeiro ao Worker;
+somente um resultado não vazio cria as séries e o pane. Se qualquer `setData()`
+falhar, as séries anteriores e o pane recém-criado são desfeitos antes do retry.
+Assim o usuário nunca recebe um pane parcialmente preenchido ou vazio como se
+fosse um indicador aplicado com sucesso.
+
+### Falha do Worker é recuperável
+
+O cliente trata `error` e `messageerror`. Barras e registro de instâncias ficam
+retidos fora do Worker; em uma falha ele é recriado, reidratado e recebe um
+cálculo completo. Há limite de tentativas para impedir um ciclo infinito. A
+thread de desenho não executa recálculo durante essa recuperação.
+
+Erros de uma única instância também são recuperáveis. Antes, uma mensagem
+`error` de `lightweight-charts-indicators` era apenas exibida; a rodada terminava
+e o pane previamente criado ficava vazio. Agora a instância recebe nova revisão,
+o Worker recebe um snapshot fresco das barras e um cálculo completo é agendado,
+com limite de tentativas. Uma rodada completa também registra quais instâncias
+deveriam responder: se `computed` chegar sem o respectivo `result`, o mesmo
+reparo é acionado.
+
+Os `Map`/`Set` usados nessa confirmação existem apenas em rodadas completas
+(inclusão, histórico e recuperação). Rodadas incrementais de realtime não
+alocam snapshots do registro, preservando o caminho quente.
 
 ## Catálogo exposto
 

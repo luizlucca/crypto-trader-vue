@@ -37,10 +37,17 @@ export type IndicatorRequest
     | {
       kind: 'attach'
       instanceId: string
+      /** Monotonic per instance; rejects results from older configurations. */
+      instanceRevision: number
       definitionId: string
       inputs: IndicatorInputs
     }
-    | { kind: 'detach', instanceId: string }
+    | {
+      kind: 'detach'
+      instanceId: string
+      /** A delayed detach must not remove a newer incarnation of the instance. */
+      instanceRevision: number
+    }
   /** Replaces the retained history: first load or a new page of older bars. */
     | { kind: 'bars-replace', bars: IndicatorBarsPayload }
   /** Appends, or replaces when the time matches the bar still forming. */
@@ -49,6 +56,8 @@ export type IndicatorRequest
       kind: 'compute'
       /** Discards results whose generation is no longer the newest. */
       generation: number
+      /** Identifies this exact round inside a generation. */
+      roundId: number
       /** Forces a full result even if a diff would be enough. */
       full: boolean
     }
@@ -88,11 +97,13 @@ export type IndicatorResponse
    * could never tell "still running" from "finished with no changes" — and
    * would wait forever, dropping every later recalculation.
    */
-    | { kind: 'computed', generation: number }
+    | { kind: 'computed', generation: number, roundId: number }
     | {
       kind: 'result'
       generation: number
+      roundId: number
       instanceId: string
+      instanceRevision: number
       patches: IndicatorPlotPatch[]
       /** Present only when the marker set changed. */
       markers?: IndicatorMarker[]
@@ -100,6 +111,8 @@ export type IndicatorResponse
     | {
       kind: 'error'
       generation: number
+      roundId: number
       instanceId?: string
+      instanceRevision?: number
       message: string
     }

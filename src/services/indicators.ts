@@ -29,6 +29,34 @@ export interface IndicatorBars {
   volume: number[]
 }
 
+export type IndicatorWorkerFactory = () => Worker
+
+interface RegisteredIndicator {
+  definitionId: string
+  inputs: IndicatorInputs
+  revision: number
+}
+
+interface ActiveRound {
+  generation: number
+  roundId: number
+  full: boolean
+  /** Registry snapshot at dispatch time; later attaches belong to the next round. */
+  expected?: Map<string, number>
+  /** Instances whose result was successfully committed to the chart. */
+  received?: Set<string>
+  /** Instances already handled by an explicit worker/application error. */
+  failed?: Set<string>
+}
+
+interface CatalogWaiter {
+  resolve: (definitions: IndicatorDefinition[]) => void
+  reject: (error: Error) => void
+}
+
+const MAX_WORKER_RECOVERIES = 2
+const MAX_INSTANCE_RECOVERIES = 2
+
 /**
  * Client for the indicator worker.
  *
@@ -43,6 +71,7 @@ export interface IndicatorBars {
 export function createIndicatorClient(
   onPatch: IndicatorPatchHandler,
   getBars: () => IndicatorBars,
+  createWorker: IndicatorWorkerFactory = () => new IndicatorsWorker(),
 ) {
   let worker: Worker | undefined
   /**
@@ -51,16 +80,20 @@ export function createIndicatorClient(
    * terminated when the last indicator is removed, and the next one has to be
    * told what to calculate as well as what to calculate it on.
    */
-  const registered = new Map<string, {
-    definitionId: string
-    inputs: IndicatorInputs
-  }>()
+  const registered = new Map<string, RegisteredIndicator>()
   let generation = 0
-  /** A compute is in flight; a newer request waits here instead of queueing. */
-  let inFlight = false
+  let roundSequence = 0
+  /** Only this exact round is allowed to settle or mutate chart series. */
+  let activeRound: ActiveRound | undefined
   let pending: { full: boolean } | undefined
   let onError: ((message: string) => void) | undefined
-  let catalogWaiters: ((definitions: IndicatorDefinition[]) => void)[] = []
+  let catalogWaiters: CatalogWaiter[] = []
+  let workerRecoveries = 0
+  let disposed = false
+  /** One automatic full retry per instance after a chart application failure. */
+  const applicationRetries = new Map<string, number>()
+  /** Bounded repair attempts for calculation errors or a missing full result. */
+  const instanceRecoveries = new Map<string, number>()
 
   function sendBars(target: Worker, bars: IndicatorBars): void {
     const payload: IndicatorBarsPayload = {
@@ -81,40 +114,197 @@ export function createIndicatorClient(
     ])
   }
 
+  function matchesActiveRound(
+    message: { generation: number, roundId: number },
+  ): boolean {
+    return message.generation === generation
+      && message.generation === activeRound?.generation
+      && message.roundId === activeRound.roundId
+  }
+
+  /**
+   * Rebuilds one worker-side indicator without replacing its chart objects.
+   *
+   * This is deliberately an error-path operation: a fresh bar snapshot and a
+   * new instance revision make a transient library failure recoverable while
+   * the ordinary realtime path remains one tail message plus one compute.
+   */
+  function recoverInstance(instanceId: string, reason: string): void {
+    const current = registered.get(instanceId)
+    const target = worker
+    if (!current || !target || disposed) {
+      return
+    }
+    const recoveries = instanceRecoveries.get(instanceId) ?? 0
+    if (recoveries >= MAX_INSTANCE_RECOVERIES) {
+      activeRound?.failed?.add(instanceId)
+      onError?.(
+        `${reason}. O indicador não pôde ser recuperado após ${recoveries} tentativas`,
+      )
+      return
+    }
+
+    instanceRecoveries.set(instanceId, recoveries + 1)
+    const repaired: RegisteredIndicator = {
+      ...current,
+      revision: current.revision + 1,
+    }
+    registered.set(instanceId, repaired)
+    activeRound?.failed?.add(instanceId)
+    applicationRetries.delete(instanceId)
+
+    // Refreshing the retained bars also eliminates a partially-updated input
+    // snapshot as the cause of the calculation failure. This allocation only
+    // exists on recovery, never on an ordinary market tick.
+    sendBars(target, getBars())
+    target.postMessage({
+      kind: 'attach',
+      instanceId,
+      instanceRevision: repaired.revision,
+      definitionId: repaired.definitionId,
+      inputs: repaired.inputs,
+    } satisfies IndicatorRequest)
+    pending = { full: true }
+  }
+
+  function handleWorkerFailure(failed: Worker, reason: unknown): void {
+    if (worker !== failed || disposed) {
+      return
+    }
+    const message = reason instanceof Error ? reason.message : String(reason)
+    onError?.(`Worker de indicadores interrompido: ${message}`)
+    failed.onmessage = null
+    failed.onerror = null
+    failed.onmessageerror = null
+    failed.terminate()
+    worker = undefined
+    generation += 1
+    activeRound = undefined
+    pending = undefined
+
+    if (workerRecoveries >= MAX_WORKER_RECOVERIES) {
+      const error = new Error(
+        'Não foi possível recuperar o Worker de indicadores automaticamente',
+      )
+      const waiters = catalogWaiters
+      catalogWaiters = []
+      waiters.forEach((waiter) => waiter.reject(error))
+      onError?.(error.message)
+      return
+    }
+    workerRecoveries += 1
+
+    try {
+      const restored = ensureWorker()
+      if (catalogWaiters.length > 0) {
+        restored.postMessage({ kind: 'catalog' } satisfies IndicatorRequest)
+      }
+      if (registered.size > 0) {
+        compute(true)
+      }
+    } catch (error) {
+      const current = worker
+      if (current) {
+        handleWorkerFailure(current, error)
+      } else {
+        const failure = error instanceof Error ? error : new Error(String(error))
+        const waiters = catalogWaiters
+        catalogWaiters = []
+        waiters.forEach((waiter) => waiter.reject(failure))
+        onError?.(failure.message)
+      }
+    }
+  }
+
+  function handleMessage(
+    source: Worker,
+    message: IndicatorResponse,
+  ): void {
+    if (source !== worker || disposed) {
+      return
+    }
+    if (message.kind === 'catalog') {
+      workerRecoveries = 0
+      const waiters = catalogWaiters
+      catalogWaiters = []
+      waiters.forEach((waiter) => waiter.resolve(message.definitions))
+      return
+    }
+    if (message.kind === 'computed') {
+      settle(message.generation, message.roundId)
+      return
+    }
+    if (message.kind === 'error') {
+      if (matchesActiveRound(message)) {
+        onError?.(message.message)
+        if (message.instanceId) {
+          const current = registered.get(message.instanceId)
+          if (
+            current
+            && message.instanceRevision === current.revision
+          ) {
+            recoverInstance(
+              message.instanceId,
+              `Falha ao calcular ${current.definitionId}: ${message.message}`,
+            )
+          }
+        }
+      }
+      return
+    }
+    if (!matchesActiveRound(message)) {
+      return
+    }
+    const round = activeRound
+    if (!round) {
+      return
+    }
+    const current = registered.get(message.instanceId)
+    if (
+      !current
+      || current.revision !== message.instanceRevision
+      || (
+        round.expected
+        && round.expected.get(message.instanceId) !== message.instanceRevision
+      )
+    ) {
+      return
+    }
+    try {
+      onPatch(message.instanceId, message.patches, message.markers)
+      round.received?.add(message.instanceId)
+      applicationRetries.delete(message.instanceId)
+      instanceRecoveries.delete(message.instanceId)
+    } catch (error) {
+      round.failed?.add(message.instanceId)
+      onError?.(error instanceof Error ? error.message : String(error))
+      const retries = applicationRetries.get(message.instanceId) ?? 0
+      if (retries < 1) {
+        applicationRetries.set(message.instanceId, retries + 1)
+        pending = { full: true }
+      }
+    }
+  }
+
   function ensureWorker(): Worker {
     if (worker) {
       return worker
     }
-    const created = new IndicatorsWorker()
-    created.onmessage = (event: MessageEvent<IndicatorResponse>) => {
-      const message = event.data
-      if (message.kind === 'catalog') {
-        const waiters = catalogWaiters
-        catalogWaiters = []
-        waiters.forEach((resolve) => resolve(message.definitions))
-        return
-      }
-      if (message.kind === 'computed') {
-        settle(message.generation)
-        return
-      }
-      if (message.kind === 'error') {
-        onError?.(message.message)
-        return
-      }
-      try {
-        // A result for a superseded generation describes bars that no longer
-        // exist on the chart; applying it would draw the past over the present.
-        if (message.generation === generation) {
-          onPatch(message.instanceId, message.patches, message.markers)
-        }
-      } catch (error) {
-        // A failure applying one indicator must not stop the others, nor the
-        // completion message that releases the next calculation.
-        onError?.(error instanceof Error ? error.message : String(error))
-      }
+    if (disposed) {
+      throw new Error('Cliente de indicadores já foi descartado')
     }
+    const created = createWorker()
     worker = created
+    created.onmessage = (event: MessageEvent<IndicatorResponse>) => {
+      handleMessage(created, event.data)
+    }
+    created.onerror = (event) => {
+      event.preventDefault()
+      handleWorkerFailure(created, event.error ?? event.message)
+    }
+    created.onmessageerror = () => {
+      handleWorkerFailure(created, new Error('Mensagem inválida recebida do Worker'))
+    }
     /*
      * A worker is created here on first use and again after the previous one
      * was terminated — which happens whenever the last indicator is removed.
@@ -127,6 +317,7 @@ export function createIndicatorClient(
       created.postMessage({
         kind: 'attach',
         instanceId,
+        instanceRevision: entry.revision,
         definitionId: entry.definitionId,
         inputs: entry.inputs,
       })
@@ -134,11 +325,35 @@ export function createIndicatorClient(
     return created
   }
 
-  function settle(resultGeneration: number): void {
-    if (resultGeneration !== generation) {
+  function settle(resultGeneration: number, resultRoundId: number): void {
+    const completedRound = activeRound
+    if (!completedRound || !matchesActiveRound({
+      generation: resultGeneration,
+      roundId: resultRoundId,
+    })) {
       return
     }
-    inFlight = false
+
+    // A full compute must acknowledge every instance that existed when the
+    // round was dispatched. Without this check a dropped/failed result leaves
+    // an empty pane forever while the round itself appears to have completed.
+    if (completedRound.full) {
+      completedRound.expected?.forEach((revision, instanceId) => {
+        const current = registered.get(instanceId)
+        if (
+          current?.revision === revision
+          && !completedRound.received?.has(instanceId)
+          && !completedRound.failed?.has(instanceId)
+        ) {
+          recoverInstance(
+            instanceId,
+            `O Worker concluiu sem devolver dados para ${current.definitionId}`,
+          )
+        }
+      })
+    }
+    activeRound = undefined
+    workerRecoveries = 0
     const next = pending
     pending = undefined
     if (next) {
@@ -154,20 +369,66 @@ export function createIndicatorClient(
     if (registered.size === 0) {
       return
     }
-    if (inFlight) {
+    if (activeRound) {
       // Only the newest request survives: a tick that arrives while the worker
       // is busy replaces the one waiting rather than adding to a queue.
       pending = { full: full || (pending?.full ?? false) }
       return
     }
-    inFlight = true
-    send({ kind: 'compute', generation, full })
+    const round: ActiveRound = {
+      generation,
+      roundId: ++roundSequence,
+      full,
+      ...(full
+        ? {
+            expected: new Map(
+              [...registered].map(([instanceId, entry]) => [
+                instanceId,
+                entry.revision,
+              ]),
+            ),
+            received: new Set<string>(),
+            failed: new Set<string>(),
+          }
+        : {}),
+    }
+    activeRound = round
+    send({
+      kind: 'compute',
+      generation: round.generation,
+      roundId: round.roundId,
+      full,
+    })
+  }
+
+  function dispose(): void {
+    if (disposed) {
+      return
+    }
+    disposed = true
+    const current = worker
+    worker = undefined
+    if (current) {
+      current.onmessage = null
+      current.onerror = null
+      current.onmessageerror = null
+      current.terminate()
+    }
+    activeRound = undefined
+    pending = undefined
+    applicationRetries.clear()
+    instanceRecoveries.clear()
+    registered.clear()
+    const error = new Error('Cliente de indicadores descartado')
+    const waiters = catalogWaiters
+    catalogWaiters = []
+    waiters.forEach((waiter) => waiter.reject(error))
   }
 
   return {
     catalog(): Promise<IndicatorDefinition[]> {
-      return new Promise((resolve) => {
-        catalogWaiters.push(resolve)
+      return new Promise((resolve, reject) => {
+        catalogWaiters.push({ resolve, reject })
         send({ kind: 'catalog' })
       })
     },
@@ -197,8 +458,23 @@ export function createIndicatorClient(
       definitionId: string,
       inputs: IndicatorInputs,
     ): void {
-      registered.set(instanceId, { definitionId, inputs })
-      send({ kind: 'attach', instanceId, definitionId, inputs })
+      const currentWorker = worker
+      const revision = (registered.get(instanceId)?.revision ?? 0) + 1
+      registered.set(instanceId, { definitionId, inputs, revision })
+      applicationRetries.delete(instanceId)
+      instanceRecoveries.delete(instanceId)
+      if (currentWorker) {
+        currentWorker.postMessage({
+          kind: 'attach',
+          instanceId,
+          instanceRevision: revision,
+          definitionId,
+          inputs,
+        } satisfies IndicatorRequest)
+      } else {
+        // `ensureWorker` hydrates the complete registry, including this entry.
+        ensureWorker()
+      }
     },
 
     /**
@@ -211,24 +487,42 @@ export function createIndicatorClient(
       definitionId: string,
       inputs: IndicatorInputs,
     ): void {
-      registered.set(instanceId, { definitionId, inputs })
-      send({ kind: 'attach', instanceId, definitionId, inputs })
+      const current = registered.get(instanceId)
+      const revision = (current?.revision ?? 0) + 1
+      registered.set(instanceId, { definitionId, inputs, revision })
+      applicationRetries.delete(instanceId)
+      instanceRecoveries.delete(instanceId)
+      send({
+        kind: 'attach',
+        instanceId,
+        instanceRevision: revision,
+        definitionId,
+        inputs,
+      })
     },
 
     detach(instanceId: string): void {
-      if (!registered.delete(instanceId)) {
+      const current = registered.get(instanceId)
+      if (!current) {
         return
       }
-      send({ kind: 'detach', instanceId })
+      registered.delete(instanceId)
+      applicationRetries.delete(instanceId)
+      instanceRecoveries.delete(instanceId)
+      worker?.postMessage({
+        kind: 'detach',
+        instanceId,
+        instanceRevision: current.revision,
+      } satisfies IndicatorRequest)
       if (registered.size === 0) {
-        this.dispose()
+        dispose()
       }
     },
 
     /** Invalidates in-flight work; the next compute replaces every series. */
     invalidate(): void {
       generation += 1
-      inFlight = false
+      activeRound = undefined
       pending = undefined
     },
 
@@ -238,14 +532,7 @@ export function createIndicatorClient(
       onError = handler
     },
 
-    dispose(): void {
-      worker?.terminate()
-      worker = undefined
-      inFlight = false
-      pending = undefined
-      catalogWaiters = []
-      registered.clear()
-    },
+    dispose,
   }
 }
 
