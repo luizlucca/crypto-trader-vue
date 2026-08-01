@@ -220,6 +220,88 @@ export function resolveInputs(
   return resolved
 }
 
+/**
+ * Families of parameter, used to lay the form out.
+ *
+ * The catalog lists inputs in calculation order, which interleaves kinds: the
+ * SMA declares length, source, offset, smoothing type, smoothing length and
+ * deviation. Editing four numbers then means jumping over two dropdowns.
+ */
+export type IndicatorInputGroupKind
+  = | 'numeric'
+    | 'choice'
+    | 'toggle'
+    | 'color'
+    | 'text'
+
+export interface IndicatorInputGroup {
+  kind: IndicatorInputGroupKind
+  label: string
+  inputs: IndicatorInputSpec[]
+}
+
+const GROUP_LABELS: Record<IndicatorInputGroupKind, string> = {
+  numeric: 'Valores',
+  choice: 'Seleções',
+  toggle: 'Opções',
+  color: 'Cores',
+  text: 'Texto',
+}
+
+/** Presentation order; within a group the catalog order is preserved. */
+const GROUP_ORDER: IndicatorInputGroupKind[] = [
+  'numeric',
+  'choice',
+  'toggle',
+  'color',
+  'text',
+]
+
+export function inputGroupKind(
+  spec: IndicatorInputSpec,
+): IndicatorInputGroupKind {
+  switch (spec.type) {
+    case 'int':
+    case 'float':
+      return 'numeric'
+    case 'bool':
+      return 'toggle'
+    case 'color':
+      return 'color'
+    case 'source':
+      return 'choice'
+    case 'string':
+      // A string with options is a dropdown; without them it is free text.
+      return spec.options?.length ? 'choice' : 'text'
+  }
+}
+
+/**
+ * Groups parameters by family, keeping the catalog order inside each group so
+ * related settings stay in their declared sequence.
+ */
+export function groupIndicatorInputs(
+  inputs: readonly IndicatorInputSpec[],
+): IndicatorInputGroup[] {
+  const buckets = new Map<IndicatorInputGroupKind, IndicatorInputSpec[]>()
+  for (const spec of inputs) {
+    const kind = inputGroupKind(spec)
+    const bucket = buckets.get(kind)
+    if (bucket) {
+      bucket.push(spec)
+    } else {
+      buckets.set(kind, [spec])
+    }
+  }
+  return GROUP_ORDER
+    .filter((kind) => buckets.has(kind))
+    .map((kind) => ({
+      kind,
+      label: GROUP_LABELS[kind],
+      inputs: buckets.get(kind) as IndicatorInputSpec[],
+    }))
+}
+
 /** Label shown on the chart legend, e.g. `RSI 14`. */
 export function instanceLabel(
   definition: IndicatorDefinition,

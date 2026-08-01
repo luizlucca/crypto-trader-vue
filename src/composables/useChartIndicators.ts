@@ -1,16 +1,21 @@
+import { shallowRef } from 'vue'
 import {
   AreaSeries,
+  createSeriesMarkers,
   HistogramSeries,
   LineSeries,
   type IChartApi,
   type IPaneApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
   type SeriesType,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts'
 import type {
   IndicatorBar,
+  IndicatorMarker,
   IndicatorPlotPatch,
 } from '@/domain/indicatorProtocol'
 import type {
@@ -48,11 +53,20 @@ interface MountedIndicator {
    * and draws one — and offering those in the style panel would be noise.
    */
   populated: Set<string>
+  /** A result already arrived, so an empty `populated` is meaningful. */
+  calculated: boolean
+  /**
+   * Markers live on the candle series, not on a series of their own — forty
+   * indicators, every candlestick pattern among them, draw nothing else.
+   */
+  markers?: ISeriesMarkersPluginApi<Time>
 }
 
 export interface ChartIndicatorsOptions {
   /** Resolved lazily: the chart exists only after the component mounts. */
   chart: () => IChartApi | null
+  /** Markers attach to the candle series, which the chart component owns. */
+  candleSeries: () => ISeriesApi<SeriesType> | null
   /** Full history, read only when it is replaced — never per tick. */
   bars: () => IndicatorBars
   onError?: (message: string) => void
@@ -68,6 +82,12 @@ export interface ChartIndicatorsOptions {
 export function useChartIndicators(options: ChartIndicatorsOptions) {
   const mounted = new Map<string, MountedIndicator>()
   let client: IndicatorClient | undefined
+  /**
+   * Bumped only when the set of plots producing data changes — once per plot,
+   * not per patch. `populated` itself stays a plain Set: making it reactive
+   * would put the per-frame indicator path back into Vue's dependency graph.
+   */
+  const populatedRevision = shallowRef(0)
 
   function ensureClient(): IndicatorClient {
     if (client) {
@@ -81,21 +101,60 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     return created
   }
 
+  function applyMarkers(
+    entry: MountedIndicator,
+    markers: IndicatorMarker[],
+  ): void {
+    const series = options.candleSeries()
+    if (!series) {
+      return
+    }
+    const points = markers.map((marker) => ({
+      time: marker.time as UTCTimestamp,
+      position: marker.position,
+      shape: marker.shape,
+      color: marker.color,
+      ...(marker.size === undefined ? {} : { size: marker.size }),
+      ...(marker.text === undefined ? {} : { text: marker.text }),
+    })) as SeriesMarker<Time>[]
+
+    if (entry.markers) {
+      entry.markers.setMarkers(points)
+      return
+    }
+    if (points.length > 0) {
+      entry.markers = createSeriesMarkers(series, points)
+    }
+  }
+
   function applyPatches(
     instanceId: string,
     patches: IndicatorPlotPatch[],
+    markers?: IndicatorMarker[],
   ): void {
     const entry = mounted.get(instanceId)
     if (!entry) {
       return
+    }
+    if (!entry.calculated) {
+      entry.calculated = true
+      populatedRevision.value += 1
+    }
+    if (markers) {
+      applyMarkers(entry, markers)
+      if (markers.length > 0) {
+        entry.populated.add('__markers')
+        populatedRevision.value += 1
+      }
     }
     for (const patch of patches) {
       const series = entry.series.get(patch.plotId)
       if (!series) {
         continue
       }
-      if (patch.time.length > 0) {
+      if (patch.time.length > 0 && !entry.populated.has(patch.plotId)) {
         entry.populated.add(patch.plotId)
+        populatedRevision.value += 1
       }
       if (patch.full) {
         // Whole series replaced: first application or new history page.
@@ -181,16 +240,19 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     add(
       definition: IndicatorDefinition,
       inputs?: Readonly<Record<string, unknown>>,
+      restore?: Pick<IndicatorInstance, 'instanceId' | 'styles'>,
     ): IndicatorInstance | null {
       const chart = options.chart()
       if (!chart) {
         return null
       }
       const instance: IndicatorInstance = {
-        instanceId: createInstanceId(),
+        // Restoring keeps the id, so a layout survives the chart being rebuilt
+        // without the applied list appearing to change identity.
+        instanceId: restore?.instanceId ?? createInstanceId(),
         definitionId: definition.id,
         inputs: resolveInputs(definition, inputs),
-        styles: resolvePlotStyles(definition),
+        styles: resolvePlotStyles(definition, restore?.styles),
       }
       /*
        * Oscillators get their own pane; overlays share the price pane.
@@ -209,6 +271,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         pane: definition.overlay ? undefined : chart.panes()[paneIndex],
         series,
         populated: new Set(),
+        calculated: false,
       })
       // The client seeds every worker it creates, so there is no "first
       // indicator" special case to get wrong here.
@@ -239,6 +302,9 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         client = undefined
       }
 
+      entry.markers?.setMarkers([])
+      entry.markers = undefined
+
       const chart = options.chart()
       if (!chart) {
         return
@@ -260,6 +326,10 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         return
       }
       entry.instance.inputs = resolveInputs(entry.definition, inputs)
+      // New parameters can switch lines on or off, so the record is rebuilt.
+      entry.populated.clear()
+      entry.calculated = false
+      populatedRevision.value += 1
       client.reconfigure(instanceId, entry.definition.id, entry.instance.inputs)
       client.compute(true)
     },
@@ -284,8 +354,16 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       })
     },
 
+    /** True once a result arrived for this instance. */
+    hasCalculated(instanceId: string): boolean {
+      void populatedRevision.value
+      return mounted.get(instanceId)?.calculated ?? false
+    },
+
     /** Plot ids that actually produced points, for the style panel. */
     populatedPlots(instanceId: string): string[] {
+      // Read so the template re-evaluates when the set changes.
+      void populatedRevision.value
       return [...(mounted.get(instanceId)?.populated ?? [])]
     },
 
@@ -334,6 +412,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     dispose(): void {
       const chart = options.chart()
       mounted.forEach((entry) => {
+        entry.markers?.setMarkers([])
         entry.series.forEach((series) => chart?.removeSeries(series))
       })
       mounted.clear()

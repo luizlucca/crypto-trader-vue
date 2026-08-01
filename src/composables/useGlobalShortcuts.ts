@@ -5,6 +5,8 @@ export interface GlobalShortcutHandlers {
   newTab: () => void
   /** Enter on the workspace — open the symbol picker for the current tab. */
   openSearch: () => void
+  /** Ctrl/Cmd+I — open the indicator picker for the active chart. */
+  openIndicators: () => void
   /** While true every shortcut is ignored: a modal owns the keyboard. */
   suspended: Ref<boolean>
 }
@@ -21,14 +23,19 @@ export function useGlobalShortcuts(handlers: GlobalShortcutHandlers): void {
       return
     }
 
-    if (
-      event.key.toLowerCase() === 't'
-      && (event.ctrlKey || event.metaKey)
+    const withModifier = (event.ctrlKey || event.metaKey)
       && !event.altKey
       && !event.shiftKey
-    ) {
+
+    if (withModifier && event.key.toLowerCase() === 't') {
       event.preventDefault()
       handlers.newTab()
+      return
+    }
+
+    if (withModifier && event.key.toLowerCase() === 'i') {
+      event.preventDefault()
+      handlers.openIndicators()
       return
     }
 

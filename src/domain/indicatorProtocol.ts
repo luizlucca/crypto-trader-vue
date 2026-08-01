@@ -66,6 +66,20 @@ export interface IndicatorPlotPatch {
   value: Float64Array
 }
 
+/**
+ * A marker drawn on the candle series. Forty indicators — every candlestick
+ * pattern, the fractals — express themselves only this way and drew nothing
+ * while markers were ignored.
+ */
+export interface IndicatorMarker {
+  time: number
+  position: 'aboveBar' | 'belowBar' | 'inBar'
+  shape: 'circle' | 'square' | 'arrowUp' | 'arrowDown'
+  color: string
+  size?: number
+  text?: string
+}
+
 export type IndicatorResponse
   = | { kind: 'catalog', definitions: IndicatorDefinition[] }
   /**
@@ -80,6 +94,8 @@ export type IndicatorResponse
       generation: number
       instanceId: string
       patches: IndicatorPlotPatch[]
+      /** Present only when the marker set changed. */
+      markers?: IndicatorMarker[]
     }
     | {
       kind: 'error'

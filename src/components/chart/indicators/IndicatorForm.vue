@@ -8,6 +8,7 @@ import type {
 } from '@/domain/indicators'
 import {
   coerceInput,
+  groupIndicatorInputs,
   resolveInputs,
   resolvePlotStyles,
 } from '@/domain/indicators'
@@ -25,6 +26,8 @@ const props = defineProps<{
   styles: Record<string, IndicatorPlotStyle>
   /** Plot ids that produced data; the others are not offered for styling. */
   populatedPlots: readonly string[]
+  /** True once the first calculation returned, so "nothing" means nothing. */
+  calculated: boolean
 }>()
 
 const emit = defineEmits<{
@@ -43,15 +46,37 @@ const styleDraft = ref<Record<string, IndicatorPlotStyle>>(
 )
 
 /**
- * Only lines that actually drew something. Several indicators declare plots
- * that stay empty under the current parameters — the SMA declares four and
- * draws one.
+ * Every declared line, always — the list must not change under the user.
+ *
+ * Filtering by "has data" made it unstable: on open the calculation has not
+ * returned yet, so all four SMA lines showed; once it did, three of them
+ * disappeared because `maType: None` leaves them empty. Which lines produce
+ * data also depends on the parameters, so the list would shift again on every
+ * edit.
+ *
+ * Lines without data are listed and marked instead. That keeps the panel
+ * stable and lets the user pick a colour for a line before enabling the
+ * parameter that turns it on.
  */
-const stylablePlots = computed(() => {
-  const populated = new Set(props.populatedPlots)
-  const drawn = props.definition.plots.filter((plot) => populated.has(plot.id))
-  return drawn.length > 0 ? drawn : props.definition.plots
-})
+const stylablePlots = computed(() => props.definition.plots)
+
+const populated = computed(() => new Set(props.populatedPlots))
+
+/**
+ * Roughly a fifth of the catalog draws nothing with its default parameters —
+ * some express themselves only through fills we do not render, others need a
+ * parameter turned on. Saying so beats a silent no-op on a chart people trade
+ * from.
+ */
+const drawsNothing = computed(
+  () => props.calculated && populated.value.size === 0,
+)
+
+/**
+ * The catalog lists parameters in calculation order, interleaving numbers and
+ * dropdowns. Grouping by family keeps related controls together.
+ */
+const inputGroups = computed(() => groupIndicatorInputs(props.definition.inputs))
 
 watch(() => props.inputs, (next) => {
   draft.value = { ...next }
@@ -117,119 +142,150 @@ defineExpose({ reset })
       <p v-if="definition.inputs.length === 0" class="indicator-no-inputs">
         Este indicador não possui parâmetros configuráveis.
       </p>
-      <label
-        v-for="spec in definition.inputs"
-        :key="spec.id"
-        class="indicator-field"
-      >
-        <span>{{ spec.title }}</span>
-
-        <input
-          v-if="spec.type === 'int' || spec.type === 'float'"
-          :max="spec.max"
-          :min="spec.min"
-          :step="spec.type === 'int' ? 1 : 'any'"
-          :value="draft[spec.id]"
-          type="number"
-          @change="write(spec, fromEvent($event))"
-        >
-        <input
-          v-else-if="spec.type === 'bool'"
-          :checked="Boolean(draft[spec.id])"
-          type="checkbox"
-          @change="write(spec, ($event.target as HTMLInputElement).checked)"
-        >
-        <input
-          v-else-if="spec.type === 'color'"
-          :value="draft[spec.id]"
-          type="color"
-          @change="write(spec, fromEvent($event))"
-        >
-        <select
-          v-else-if="spec.options?.length"
-          :value="draft[spec.id]"
-          @change="write(spec, fromEvent($event))"
-        >
-          <option v-for="option in spec.options" :key="option" :value="option">
-            {{ option }}
-          </option>
-        </select>
-        <select
-          v-else-if="spec.type === 'source'"
-          :value="draft[spec.id]"
-          @change="write(spec, fromEvent($event))"
-        >
-          <option
-            v-for="option in ['open', 'high', 'low', 'close', 'hl2', 'hlc3', 'ohlc4']"
-            :key="option"
-            :value="option"
+      <template v-for="group in inputGroups" :key="group.kind">
+        <!-- A single group needs no heading: it is the whole form. -->
+        <h4 v-if="inputGroups.length > 1" class="indicator-group-title">
+          {{ group.label }}
+        </h4>
+        <div class="indicator-group-fields">
+          <label
+            v-for="spec in group.inputs"
+            :key="spec.id"
+            class="indicator-field"
           >
-            {{ option }}
-          </option>
-        </select>
-        <input
-          v-else
-          :value="draft[spec.id]"
-          type="text"
-          @change="write(spec, fromEvent($event))"
-        >
-      </label>
+            <span>{{ spec.title }}</span>
+
+            <input
+              v-if="spec.type === 'int' || spec.type === 'float'"
+              :max="spec.max"
+              :min="spec.min"
+              :step="spec.type === 'int' ? 1 : 'any'"
+              :value="draft[spec.id]"
+              type="number"
+              @change="write(spec, fromEvent($event))"
+            >
+            <input
+              v-else-if="spec.type === 'bool'"
+              :checked="Boolean(draft[spec.id])"
+              type="checkbox"
+              @change="write(spec, ($event.target as HTMLInputElement).checked)"
+            >
+            <input
+              v-else-if="spec.type === 'color'"
+              :value="draft[spec.id]"
+              type="color"
+              @change="write(spec, fromEvent($event))"
+            >
+            <select
+              v-else-if="spec.options?.length"
+              :value="draft[spec.id]"
+              @change="write(spec, fromEvent($event))"
+            >
+              <option v-for="option in spec.options" :key="option" :value="option">
+                {{ option }}
+              </option>
+            </select>
+            <select
+              v-else-if="spec.type === 'source'"
+              :value="draft[spec.id]"
+              @change="write(spec, fromEvent($event))"
+            >
+              <option
+                v-for="option in ['open', 'high', 'low', 'close', 'hl2', 'hlc3', 'ohlc4']"
+                :key="option"
+                :value="option"
+              >
+                {{ option }}
+              </option>
+            </select>
+            <input
+              v-else
+              :value="draft[spec.id]"
+              type="text"
+              @change="write(spec, fromEvent($event))"
+            >
+          </label>
+        </div>
+      </template>
     </div>
 
-    <!-- One block per plotted line: an indicator can draw several. -->
+    <p v-if="drawsNothing" class="indicator-draws-nothing">
+      Este indicador não desenhou nada com os parâmetros atuais. Alguns
+      dependem de um parâmetro ativado; outros usam recursos visuais ainda não
+      suportados.
+    </p>
+
+    <!-- One row per plotted line: an indicator can draw several. -->
     <div v-else class="indicator-styles">
+      <header class="indicator-styles-legend">
+        <span />
+        <span />
+        <span>Linha</span>
+        <span>Espessura</span>
+        <span>Opacidade</span>
+      </header>
       <article
         v-for="plot in stylablePlots"
         :key="plot.id"
+        :class="{
+          hidden: !styleDraft[plot.id]?.visible,
+          idle: !populated.has(plot.id),
+        }"
         class="indicator-style-row"
       >
-        <header>
-          <label class="indicator-style-visible">
-            <input
-              :checked="styleDraft[plot.id]?.visible"
-              type="checkbox"
-              @change="writeStyle(plot.id, {
-                visible: ($event.target as HTMLInputElement).checked,
-              })"
-            >
-            <strong>{{ plot.title || plot.id }}</strong>
-          </label>
+        <label
+          class="indicator-style-toggle"
+          :title="styleDraft[plot.id]?.visible ? 'Ocultar linha' : 'Mostrar linha'"
+        >
           <input
-            :value="styleDraft[plot.id]?.color"
-            aria-label="Cor da linha"
-            type="color"
-            @input="writeStyle(plot.id, { color: fromEvent($event) })"
+            :checked="styleDraft[plot.id]?.visible"
+            type="checkbox"
+            @change="writeStyle(plot.id, {
+              visible: ($event.target as HTMLInputElement).checked,
+            })"
           >
-        </header>
-        <div class="indicator-style-controls">
-          <label>
-            <span>Espessura</span>
-            <select
-              :value="styleDraft[plot.id]?.lineWidth"
-              @change="writeStyle(plot.id, {
-                lineWidth: Number(fromEvent($event)),
-              })"
-            >
-              <option v-for="width in [1, 2, 3, 4]" :key="width" :value="width">
-                {{ width }}px
-              </option>
-            </select>
-          </label>
-          <label class="indicator-style-opacity">
-            <span>Opacidade</span>
-            <input
-              :value="styleDraft[plot.id]?.opacity"
-              max="1"
-              min="0.1"
-              step="0.05"
-              type="range"
-              @input="writeStyle(plot.id, {
-                opacity: Number(fromEvent($event)),
-              })"
-            >
-            <b>{{ Math.round((styleDraft[plot.id]?.opacity ?? 1) * 100) }}%</b>
-          </label>
-        </div>
+        </label>
+
+        <input
+          :aria-label="`Cor de ${plot.title || plot.id}`"
+          :value="styleDraft[plot.id]?.color"
+          class="indicator-style-swatch"
+          type="color"
+          @input="writeStyle(plot.id, { color: fromEvent($event) })"
+        >
+
+        <strong class="indicator-style-name">
+          <span :title="plot.title || plot.id">{{ plot.title || plot.id }}</span>
+          <em
+            v-if="!populated.has(plot.id)"
+            title="Não produz valores com os parâmetros atuais"
+          >inativa</em>
+        </strong>
+
+        <select
+          :value="styleDraft[plot.id]?.lineWidth"
+          :aria-label="`Espessura de ${plot.title || plot.id}`"
+          class="indicator-style-width"
+          title="Espessura"
+          @change="writeStyle(plot.id, { lineWidth: Number(fromEvent($event)) })"
+        >
+          <option v-for="width in [1, 2, 3, 4]" :key="width" :value="width">
+            {{ width }} px
+          </option>
+        </select>
+
+        <span class="indicator-style-opacity" title="Opacidade">
+          <input
+            :aria-label="`Opacidade de ${plot.title || plot.id}`"
+            :value="styleDraft[plot.id]?.opacity"
+            max="1"
+            min="0.1"
+            step="0.05"
+            type="range"
+            @input="writeStyle(plot.id, { opacity: Number(fromEvent($event)) })"
+          >
+          <b>{{ Math.round((styleDraft[plot.id]?.opacity ?? 1) * 100) }}%</b>
+        </span>
       </article>
     </div>
   </div>

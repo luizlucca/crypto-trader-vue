@@ -20,6 +20,7 @@ const props = defineProps<{
   inputs: IndicatorInputs
   styles: Record<string, IndicatorPlotStyle>
   populatedPlots: readonly string[]
+  calculated: boolean
 }>()
 
 const emit = defineEmits<{
@@ -83,6 +84,7 @@ onMounted(() => {
       </header>
 
       <IndicatorForm
+        :calculated="calculated"
         :definition="definition"
         :inputs="inputs"
         :populated-plots="populatedPlots"

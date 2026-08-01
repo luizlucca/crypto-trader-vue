@@ -90,3 +90,75 @@ describe('theme catalog', () => {
     expect(preset.dark.accent).toBe(definition.dark.accent)
   })
 })
+
+describe('superfície de modais (F-015)', () => {
+  const channels = (hex: string): [number, number, number] => {
+    const value = Number.parseInt(hex.replace('#', '').slice(0, 6), 16)
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255]
+  }
+  const luminance = (hex: string): number => {
+    const [r, g, b] = channels(hex).map((channel) => {
+      const scaled = channel / 255
+      return scaled <= 0.03928
+        ? scaled / 12.92
+        : ((scaled + 0.055) / 1.055) ** 2.4
+    })
+    return (0.2126 * r) + (0.7152 * g) + (0.0722 * b)
+  }
+  /** Perceived separation between two surfaces, 1 = identical. */
+  const contrast = (first: string, second: string): number => {
+    const [brighter, darker] = [luminance(first), luminance(second)]
+      .sort((left, right) => right - left)
+    return (brighter + 0.05) / (darker + 0.05)
+  }
+
+  it('define os tokens em todos os presets, nas duas luminosidades', () => {
+    for (const preset of themePresets) {
+      for (const mode of ['dark', 'light'] as const) {
+        expect(preset[mode].overlaySurface, `${preset.id}/${mode}`)
+          .toMatch(/^#[0-9a-f]{6}$/i)
+        expect(preset[mode].overlayBorder, `${preset.id}/${mode}`)
+          .toMatch(/^#[0-9a-f]{6}$/i)
+      }
+    }
+  })
+
+  it('separa a superfície do modal do painel do workspace', () => {
+    // Without a dimmed backdrop this separation is the only thing telling the
+    // user where the dialog ends, so it has to hold in every preset.
+    for (const preset of themePresets) {
+      for (const mode of ['dark', 'light'] as const) {
+        expect(
+          contrast(preset[mode].overlaySurface, preset[mode].panel),
+          `${preset.id}/${mode}`,
+        ).toBeGreaterThan(1.12)
+      }
+    }
+  })
+
+  it('eleva no escuro e adensa no claro', () => {
+    for (const preset of themePresets) {
+      expect(
+        luminance(preset.dark.overlaySurface),
+        `${preset.id}/dark`,
+      ).toBeGreaterThan(luminance(preset.dark.panel))
+      expect(
+        luminance(preset.light.overlaySurface),
+        `${preset.id}/light`,
+      ).toBeLessThan(luminance(preset.light.panel))
+    }
+  })
+
+  it('dá ao contorno do modal mais presença que a borda comum', () => {
+    for (const preset of themePresets) {
+      for (const mode of ['dark', 'light'] as const) {
+        expect(
+          contrast(preset[mode].overlayBorder, preset[mode].overlaySurface),
+          `${preset.id}/${mode}`,
+        ).toBeGreaterThan(
+          contrast(preset[mode].border, preset[mode].panel),
+        )
+      }
+    }
+  })
+})

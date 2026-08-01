@@ -15,6 +15,7 @@ decisões sem sair da plataforma.
 
 ## Comportamento esperado
 
+- `Ctrl+I` abre o seletor de indicadores do gráfico ativo.
 - Um seletor lista os indicadores por categoria, com busca por nome.
 - Escolher um indicador o desenha imediatamente e abre suas configurações no
   próprio seletor, em sanfona. Confirmar mantém; cancelar ou fechar o seletor
@@ -133,6 +134,54 @@ descartado, pelo mesmo padrão de `generation` já usado em `useWorkspaceTabs`.
 Carregar histórico anterior invalida o resultado retido e força um `setData()`,
 porque aí a série muda inteira.
 
+### Marcadores também são desenho
+
+Uma varredura pelos 457 indicadores mostrou que **93 não desenhavam nada**. A
+maior fatia — 40 deles, incluindo todos os padrões de candlestick e os fractais
+de Williams — expressa-se apenas por `markers`, um campo do resultado que a
+implementação ignorava. O indicador entrava na lista e o gráfico não mudava.
+
+Os marcadores agora vão para a série de candles via `createSeriesMarkers`, e
+são enviados pelo worker só quando o conjunto muda, pelo mesmo princípio do
+diff dos plots. As formas do catálogo (`triangleUp`/`triangleDown`) não existem
+na biblioteca e são mapeadas para setas.
+
+Restam ~50 que não produzem nada com os parâmetros padrão — alguns dependem de
+uma opção ligada, outros usam recursos ainda não suportados. Para esses o
+formulário **diz isso explicitamente**. Num app de onde se decide compra e
+venda, um indicador que silenciosamente não faz nada é pior que um que avisa.
+
+### Parâmetros agrupados por família
+
+O catálogo entrega os parâmetros na ordem de cálculo, o que intercala tipos: a
+SMA declara comprimento, fonte, deslocamento, tipo de suavização, comprimento
+da suavização e desvio. Ajustar quatro números exigia pular por cima de duas
+listas de seleção.
+
+`groupIndicatorInputs` reagrupa por família — numéricos, seleções, opções,
+cores, texto — preservando a ordem do catálogo dentro de cada grupo. O título
+do grupo só aparece quando há mais de um: com um só, ele é o formulário
+inteiro e o rótulo seria ruído.
+
+### Todas as linhas declaradas ficam listadas
+
+O painel de estilo listava apenas as linhas que estavam produzindo valores. Isso
+o tornava instável: ao abrir, o cálculo ainda não voltou e todas apareciam;
+quando o resultado chegava, as vazias sumiam. A SMA declara quatro linhas e
+desenha uma com `maType: None`, então três desapareciam sob o cursor do usuário.
+
+Quais linhas produzem dados também depende dos parâmetros, de modo que a lista
+mudaria de novo a cada edição. Agora todas ficam listadas, e as sem valores são
+marcadas — o painel para de se mexer, e é possível escolher a cor de uma linha
+antes de ligar o parâmetro que a habilita.
+
+O registro de quais linhas produzem valores é escrito no caminho por frame, e
+por isso continua sendo um `Set` comum. Torná-lo reativo devolveria o caminho
+quente ao grafo do Vue. Em vez disso, um contador reativo é incrementado apenas
+quando o conjunto **muda** — uma vez por linha, não uma vez por patch — e é ele
+que a interface observa. Sem esse sinal, a marcação ficava congelada no estado
+anterior ao primeiro cálculo e todas as linhas apareciam como inativas.
+
 ### Escolher e configurar são o mesmo passo
 
 A primeira versão separava as duas coisas: escolher fechava o seletor e abria
@@ -148,6 +197,15 @@ escolhido, para que os ajustes sejam julgados contra dados reais, mas fica
 O formulário vive em `IndicatorForm.vue` e é usado por dois hosts — a sanfona
 do seletor e a janela flutuante que edita um indicador já aplicado. Os seis
 tipos de parâmetro são mapeados uma vez só.
+
+**O seletor não escurece o fundo e pode ser movido.** Um backdrop faria sentido
+se a escolha fosse uma decisão isolada, mas aqui ela é comparativa: o usuário
+ajusta um período e observa a linha redesenhar sobre os candles. Esconder o
+gráfico esconderia justamente a informação que fundamenta a escolha.
+
+Nas duas abas os controles ficam alinhados em coluna, não empacotados dentro de
+cartões: comparar a espessura de três linhas é uma leitura vertical, e cartões
+obrigariam a procurar o mesmo controle em posições diferentes.
 
 ### Renderização
 

@@ -1,6 +1,7 @@
 import { indicatorRegistry } from 'lightweight-charts-indicators'
 import type {
   IndicatorBar,
+  IndicatorMarker,
   IndicatorBarsPayload,
   IndicatorPlotPatch,
   IndicatorRequest,
@@ -34,6 +35,7 @@ interface RegistryEntry {
   defaultInputs?: Record<string, unknown>
   calculate: (bars: unknown[], inputs: unknown) => {
     plots?: Record<string, { time: number, value: number }[]>
+    markers?: unknown[]
   }
 }
 
@@ -45,6 +47,8 @@ interface AttachedIndicator {
   definitionId: string
   inputs: IndicatorInputs
   previous: Map<string, { time: Float64Array, value: Float64Array }>
+  /** Serialised marker set, to send only when it actually changes. */
+  previousMarkers: string
 }
 
 const attached = new Map<string, AttachedIndicator>()
@@ -126,10 +130,43 @@ function firstDifference(
   return previous.time.length
 }
 
+const MARKER_POSITIONS = new Set(['aboveBar', 'belowBar', 'inBar'])
+const MARKER_SHAPES = new Set(['circle', 'square', 'arrowUp', 'arrowDown'])
+
+/** Keeps only markers the chart can render; the rest would be dropped anyway. */
+function normalizeMarkers(raw: unknown[] | undefined): IndicatorMarker[] {
+  const markers: IndicatorMarker[] = []
+  for (const entry of raw ?? []) {
+    const marker = entry as Partial<IndicatorMarker>
+    if (
+      !Number.isFinite(marker.time)
+      || !MARKER_POSITIONS.has(String(marker.position))
+      || typeof marker.color !== 'string'
+    ) {
+      continue
+    }
+    markers.push({
+      time: marker.time as number,
+      position: marker.position as IndicatorMarker['position'],
+      // The catalog uses triangleUp/triangleDown, which the chart lacks.
+      shape: MARKER_SHAPES.has(String(marker.shape))
+        ? marker.shape as IndicatorMarker['shape']
+        : String(marker.shape).toLowerCase().includes('down')
+          ? 'arrowDown'
+          : 'arrowUp',
+      color: marker.color,
+      ...(marker.size === undefined ? {} : { size: marker.size }),
+      ...(marker.text === undefined ? {} : { text: marker.text }),
+    })
+  }
+  // The chart requires markers in ascending time order.
+  return markers.sort((left, right) => left.time - right.time)
+}
+
 function computeInstance(
   indicator: AttachedIndicator,
   forceFull: boolean,
-): IndicatorPlotPatch[] {
+): { patches: IndicatorPlotPatch[], markers?: IndicatorMarker[] } {
   const entry = byId.get(indicator.definitionId)
   if (!entry) {
     throw new Error(`Indicador desconhecido: ${indicator.definitionId}`)
@@ -187,7 +224,13 @@ function computeInstance(
     })
   }
 
-  return patches
+  const markers = normalizeMarkers(result.markers)
+  const encoded = markers.length > 0 ? JSON.stringify(markers) : ''
+  if (encoded === indicator.previousMarkers && !forceFull) {
+    return { patches }
+  }
+  indicator.previousMarkers = encoded
+  return { patches, markers }
 }
 
 function post(message: IndicatorResponse, transfer: Transferable[] = []): void {
@@ -207,6 +250,7 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
       definitionId: request.definitionId,
       inputs: request.inputs,
       previous: new Map(),
+      previousMarkers: '',
     })
     return
   }
@@ -233,8 +277,8 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
 
   for (const [instanceId, indicator] of attached) {
     try {
-      const patches = computeInstance(indicator, request.full)
-      if (patches.length === 0) {
+      const { patches, markers } = computeInstance(indicator, request.full)
+      if (patches.length === 0 && markers === undefined) {
         continue
       }
       const transfer: Transferable[] = []
@@ -247,6 +291,7 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
           generation: request.generation,
           instanceId,
           patches,
+          ...(markers === undefined ? {} : { markers }),
         },
         transfer,
       )

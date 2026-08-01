@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ChevronRight, Search, TriangleAlert, X } from '@lucide/vue'
-import { computed, onMounted, ref, shallowRef, watch } from 'vue'
+import { ChevronRight, GripHorizontal, Search, TriangleAlert, X } from '@lucide/vue'
+import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
+import { useDraggableDialog } from '@/composables/useDraggableDialog'
 import type {
   IndicatorDefinition,
   IndicatorInputs,
@@ -21,6 +22,7 @@ const props = defineProps<{
    */
   preview: { instance: IndicatorInstance, definition: IndicatorDefinition } | null
   populatedPlots: readonly string[]
+  calculated: boolean
 }>()
 
 const emit = defineEmits<{
@@ -41,6 +43,8 @@ const emit = defineEmits<{
  * ported indicator could appear.
  */
 const MAX_PER_SECTION = 60
+
+const { panel, startDrag, center } = useDraggableDialog()
 
 const definitions = shallowRef<IndicatorDefinition[]>([])
 const loading = ref(false)
@@ -149,7 +153,10 @@ watch(() => props.open, (open) => {
     return
   }
   void ensureCatalog()
-  void Promise.resolve().then(() => searchInput.value?.focus())
+  void nextTick(() => {
+    center()
+    searchInput.value?.focus()
+  })
 })
 
 onMounted(() => {
@@ -161,196 +168,198 @@ onMounted(() => {
 
 <template>
   <Teleport to="body">
-    <div
+    <section
       v-if="open"
-      class="indicator-picker-layer"
-      role="presentation"
-      @click.self="emit('close')"
+      ref="panel"
+      aria-label="Escolher indicador"
+      class="indicator-picker"
+      role="dialog"
+      @keydown="handleKey"
     >
-      <section
-        aria-label="Escolher indicador"
-        class="indicator-picker"
-        role="dialog"
-        @keydown="handleKey"
+      <header
+        class="indicator-picker-header"
+        title="Arraste para mover"
+        @pointerdown="startDrag"
       >
-        <header class="indicator-picker-header">
-          <div>
-            <span>ANÁLISE TÉCNICA</span>
-            <h2>Indicadores</h2>
-          </div>
-          <button
-            aria-label="Fechar"
-            title="Fechar (Esc)"
-            type="button"
-            @click="emit('close')"
-          >
-            <X aria-hidden="true" />
-          </button>
-        </header>
-
-        <label class="indicator-search">
-          <Search aria-hidden="true" />
-          <input
-            ref="searchInput"
-            v-model="query"
-            aria-label="Buscar indicador"
-            placeholder="Buscar por nome…"
-          >
-        </label>
-
-        <div class="indicator-picker-body">
-          <nav aria-label="Categorias" class="indicator-categories">
-            <button
-              :class="{ active: activeCategory === '' }"
-              type="button"
-              @click="activeCategory = ''"
-            >
-              Todas <i>{{ definitions.length }}</i>
-            </button>
-            <button
-              v-for="[name, count] in categories"
-              :key="name"
-              :class="{ active: activeCategory === name }"
-              type="button"
-              @click="activeCategory = name"
-            >
-              {{ name }} <i>{{ count }}</i>
-            </button>
-          </nav>
-
-          <div class="indicator-results">
-            <p v-if="loading" class="indicator-empty">Carregando catálogo…</p>
-            <p
-              v-else-if="results === 0"
-              class="indicator-empty"
-            >
-              Nenhum indicador encontrado
-            </p>
-
-            <template v-else>
-              <div
-                v-for="definition in verified"
-                :key="definition.id"
-                class="indicator-entry"
-              >
-                <button
-                  :aria-expanded="preview?.definition.id === definition.id"
-                  :class="{ expanded: preview?.definition.id === definition.id }"
-                  class="indicator-option"
-                  type="button"
-                  @click="toggle(definition)"
-                >
-                  <ChevronRight aria-hidden="true" class="indicator-option-chevron" />
-                  <span class="indicator-option-body">
-                    <span class="indicator-option-title">
-                      <strong>{{ definition.name }}</strong>
-                      <small>{{ definition.overlay ? 'Sobre o preço' : 'Painel próprio' }}</small>
-                    </span>
-                    <span class="indicator-option-description">
-                      {{ definition.description }}
-                    </span>
-                  </span>
-                </button>
-
-                <!--
-                  Accordion body. The indicator is already on the chart at this
-                  point, so every change is judged against real data.
-                -->
-                <section
-                  v-if="preview?.definition.id === definition.id"
-                  class="indicator-inline-settings"
-                >
-                  <IndicatorForm
-                    :key="preview.instance.instanceId"
-                    :definition="preview.definition"
-                    :inputs="preview.instance.inputs"
-                    :populated-plots="populatedPlots"
-                    :styles="preview.instance.styles"
-                    @inputs="emit('inputs', $event)"
-                    @styles="emit('styles', $event)"
-                  />
-                  <footer class="indicator-inline-actions">
-                    <button type="button" @click="emit('discard')">
-                      Cancelar
-                    </button>
-                    <button
-                      class="indicator-apply"
-                      type="button"
-                      @click="emit('confirm')"
-                    >
-                      Aplicar
-                    </button>
-                  </footer>
-                </section>
-              </div>
-
-              <div v-if="unverified.length" class="indicator-unverified-note">
-                <TriangleAlert aria-hidden="true" />
-                <span>
-                  Portados da comunidade a partir de PineScript. Utilizáveis,
-                  mas sem garantia de equivalência com o original.
-                </span>
-              </div>
-
-              <div
-                v-for="definition in unverified"
-                :key="definition.id"
-                class="indicator-entry"
-              >
-                <button
-                  :aria-expanded="preview?.definition.id === definition.id"
-                  :class="{ expanded: preview?.definition.id === definition.id }"
-                  class="indicator-option unverified"
-                  type="button"
-                  @click="toggle(definition)"
-                >
-                  <ChevronRight aria-hidden="true" class="indicator-option-chevron" />
-                  <span class="indicator-option-body">
-                    <span class="indicator-option-title">
-                      <strong>{{ definition.name }}</strong>
-                      <small>{{ definition.overlay ? 'Sobre o preço' : 'Painel próprio' }}</small>
-                    </span>
-                    <span class="indicator-option-description">
-                      {{ definition.description }}
-                    </span>
-                  </span>
-                </button>
-
-                <!--
-                  Accordion body. The indicator is already on the chart at this
-                  point, so every change is judged against real data.
-                -->
-                <section
-                  v-if="preview?.definition.id === definition.id"
-                  class="indicator-inline-settings"
-                >
-                  <IndicatorForm
-                    :key="preview.instance.instanceId"
-                    :definition="preview.definition"
-                    :inputs="preview.instance.inputs"
-                    :populated-plots="populatedPlots"
-                    :styles="preview.instance.styles"
-                    @inputs="emit('inputs', $event)"
-                    @styles="emit('styles', $event)"
-                  />
-                  <footer class="indicator-inline-actions">
-                    <button type="button" @click="emit('discard')">
-                      Cancelar
-                    </button>
-                    <button
-                      class="indicator-apply"
-                      type="button"
-                      @click="emit('confirm')"
-                    >
-                      Aplicar
-                    </button>
-                  </footer>
-                </section>
-              </div>
-            </template>
-          </div>
+        <GripHorizontal aria-hidden="true" class="indicator-drag-grip" />
+        <div>
+          <span>ANÁLISE TÉCNICA</span>
+          <h2>Indicadores</h2>
         </div>
-      </section>
-    </div>
+        <button
+          aria-label="Fechar"
+          title="Fechar (Esc)"
+          type="button"
+          @click="emit('close')"
+        >
+          <X aria-hidden="true" />
+        </button>
+      </header>
+
+      <label class="indicator-search">
+        <Search aria-hidden="true" />
+        <input
+          ref="searchInput"
+          v-model="query"
+          aria-label="Buscar indicador"
+          placeholder="Buscar por nome…"
+        >
+      </label>
+
+      <div class="indicator-picker-body">
+        <nav aria-label="Categorias" class="indicator-categories">
+          <button
+            :class="{ active: activeCategory === '' }"
+            type="button"
+            @click="activeCategory = ''"
+          >
+            Todas <i>{{ definitions.length }}</i>
+          </button>
+          <button
+            v-for="[name, count] in categories"
+            :key="name"
+            :class="{ active: activeCategory === name }"
+            type="button"
+            @click="activeCategory = name"
+          >
+            {{ name }} <i>{{ count }}</i>
+          </button>
+        </nav>
+
+        <div class="indicator-results">
+          <p v-if="loading" class="indicator-empty">Carregando catálogo…</p>
+          <p
+            v-else-if="results === 0"
+            class="indicator-empty"
+          >
+            Nenhum indicador encontrado
+          </p>
+
+          <template v-else>
+            <div
+              v-for="definition in verified"
+              :key="definition.id"
+              class="indicator-entry"
+            >
+              <button
+                :aria-expanded="preview?.definition.id === definition.id"
+                :class="{ expanded: preview?.definition.id === definition.id }"
+                class="indicator-option"
+                type="button"
+                @click="toggle(definition)"
+              >
+                <ChevronRight aria-hidden="true" class="indicator-option-chevron" />
+                <span class="indicator-option-body">
+                  <span class="indicator-option-title">
+                    <strong>{{ definition.name }}</strong>
+                    <small>{{ definition.overlay ? 'Sobre o preço' : 'Painel próprio' }}</small>
+                  </span>
+                  <span class="indicator-option-description">
+                    {{ definition.description }}
+                  </span>
+                </span>
+              </button>
+
+              <!--
+                Accordion body. The indicator is already on the chart at this
+                point, so every change is judged against real data.
+              -->
+              <section
+                v-if="preview?.definition.id === definition.id"
+                class="indicator-inline-settings"
+              >
+                <IndicatorForm
+                  :key="preview.instance.instanceId"
+                  :calculated="calculated"
+                  :definition="preview.definition"
+                  :inputs="preview.instance.inputs"
+                  :populated-plots="populatedPlots"
+                  :styles="preview.instance.styles"
+                  @inputs="emit('inputs', $event)"
+                  @styles="emit('styles', $event)"
+                />
+                <footer class="indicator-inline-actions">
+                  <button type="button" @click="emit('discard')">
+                    Cancelar
+                  </button>
+                  <button
+                    class="indicator-apply"
+                    type="button"
+                    @click="emit('confirm')"
+                  >
+                    Aplicar
+                  </button>
+                </footer>
+              </section>
+            </div>
+
+            <div v-if="unverified.length" class="indicator-unverified-note">
+              <TriangleAlert aria-hidden="true" />
+              <span>
+                Portados da comunidade a partir de PineScript. Utilizáveis,
+                mas sem garantia de equivalência com o original.
+              </span>
+            </div>
+
+            <div
+              v-for="definition in unverified"
+              :key="definition.id"
+              class="indicator-entry"
+            >
+              <button
+                :aria-expanded="preview?.definition.id === definition.id"
+                :class="{ expanded: preview?.definition.id === definition.id }"
+                class="indicator-option unverified"
+                type="button"
+                @click="toggle(definition)"
+              >
+                <ChevronRight aria-hidden="true" class="indicator-option-chevron" />
+                <span class="indicator-option-body">
+                  <span class="indicator-option-title">
+                    <strong>{{ definition.name }}</strong>
+                    <small>{{ definition.overlay ? 'Sobre o preço' : 'Painel próprio' }}</small>
+                  </span>
+                  <span class="indicator-option-description">
+                    {{ definition.description }}
+                  </span>
+                </span>
+              </button>
+
+              <!--
+                Accordion body. The indicator is already on the chart at this
+                point, so every change is judged against real data.
+              -->
+              <section
+                v-if="preview?.definition.id === definition.id"
+                class="indicator-inline-settings"
+              >
+                <IndicatorForm
+                  :key="preview.instance.instanceId"
+                  :calculated="calculated"
+                  :definition="preview.definition"
+                  :inputs="preview.instance.inputs"
+                  :populated-plots="populatedPlots"
+                  :styles="preview.instance.styles"
+                  @inputs="emit('inputs', $event)"
+                  @styles="emit('styles', $event)"
+                />
+                <footer class="indicator-inline-actions">
+                  <button type="button" @click="emit('discard')">
+                    Cancelar
+                  </button>
+                  <button
+                    class="indicator-apply"
+                    type="button"
+                    @click="emit('confirm')"
+                  >
+                    Aplicar
+                  </button>
+                </footer>
+              </section>
+            </div>
+          </template>
+        </div>
+      </div>
+    </section>
   </Teleport>
 </template>

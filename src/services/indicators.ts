@@ -1,5 +1,6 @@
 import type {
   IndicatorBar,
+  IndicatorMarker,
   IndicatorBarsPayload,
   IndicatorPlotPatch,
   IndicatorRequest,
@@ -12,7 +13,11 @@ import type {
 import IndicatorsWorker from '@/workers/indicators.worker?worker'
 
 export interface IndicatorPatchHandler {
-  (instanceId: string, patches: IndicatorPlotPatch[]): void
+  (
+    instanceId: string,
+    patches: IndicatorPlotPatch[],
+    markers?: IndicatorMarker[],
+  ): void
 }
 
 export interface IndicatorBars {
@@ -101,7 +106,7 @@ export function createIndicatorClient(
         // A result for a superseded generation describes bars that no longer
         // exist on the chart; applying it would draw the past over the present.
         if (message.generation === generation) {
-          onPatch(message.instanceId, message.patches)
+          onPatch(message.instanceId, message.patches, message.markers)
         }
       } catch (error) {
         // A failure applying one indicator must not stop the others, nor the

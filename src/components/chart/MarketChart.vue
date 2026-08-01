@@ -22,6 +22,10 @@ import type { RoundedCandleData } from '@/plugins/roundedCandles/data'
 import type { Candle, MarketSelection } from '@shared/types/market'
 import { marketSelectionFingerprint } from '@/domain/marketSelection'
 import { useChartIndicators } from '@/composables/useChartIndicators'
+import {
+  readIndicatorLayout,
+  writeIndicatorLayout,
+} from '@/services/indicatorLayout'
 import { loadCandles, onCandle } from '@/services/marketData'
 import { publishRealtimePrice } from '@/services/realtimePrice'
 import { appThemePalette } from '@/services/theme'
@@ -79,6 +83,7 @@ let visibleLogicalRangeHandler: LogicalRangeChangeEventHandler | undefined
  */
 const indicators = useChartIndicators({
   chart: () => chart.value,
+  candleSeries: () => candleSeries.value,
   bars: () => {
     const count = displayedCandles.length
     const bars = {
@@ -121,6 +126,21 @@ const configuringId = ref<string | null>(null)
  * removes it, which is why it is tracked apart from the applied ones.
  */
 const previewId = ref<string | null>(null)
+// DIAG-TEMP
+;(window as unknown as Record<string, unknown>).__diag = {
+  ind: indicators,
+  panes: () => chart.value?.panes().map((p, i) => ({
+    i, h: Math.round(p.getHeight()), series: p.getSeries().length,
+  })) ?? [],
+  series: () => chart.value?.panes().map((p, i) => ({
+    i,
+    h: Math.round(p.getHeight()),
+    s: p.getSeries().map((s) => ({
+      n: s.data().length,
+      v: (s.options() as { visible?: boolean }).visible !== false,
+    })),
+  })) ?? [],
+}
 
 const configuring = computed(() => (
   configuringId.value
@@ -140,6 +160,34 @@ const preview = computed(() => (
 
 function syncAppliedIndicators(): void {
   appliedIndicators.value = indicators.applied()
+  // Only confirmed indicators belong to the layout; a preview is transient.
+  writeIndicatorLayout(
+    props.sessionId,
+    appliedIndicators.value
+      .filter((entry) => entry.instance.instanceId !== previewId.value)
+      .map((entry) => entry.instance),
+  )
+}
+
+/**
+ * Reapplies what the tab had before the chart was rebuilt. Changing pair or
+ * interval replaces this component, and without this the indicators would be
+ * silently dropped along with it.
+ */
+async function restoreIndicatorLayout(): Promise<void> {
+  const saved = readIndicatorLayout(props.sessionId)
+  if (saved.length === 0) {
+    return
+  }
+  const catalog = await indicators.catalog()
+  const byId = new Map(catalog.map((entry) => [entry.id, entry]))
+  for (const instance of saved) {
+    const definition = byId.get(instance.definitionId)
+    if (definition) {
+      indicators.add(definition, instance.inputs, instance)
+    }
+  }
+  syncAppliedIndicators()
 }
 
 /** Draws the indicator immediately, still unconfirmed. */
@@ -154,6 +202,8 @@ function previewIndicator(definition: IndicatorDefinition): void {
 
 function confirmPreview(): void {
   previewId.value = null
+  // The indicator only joins the saved layout once it stops being a preview.
+  syncAppliedIndicators()
 }
 
 function discardPreview(): void {
@@ -207,7 +257,13 @@ function applyIndicatorStyles(
   syncAppliedIndicators()
 }
 
-defineExpose({ indicators })
+defineExpose({
+  indicators,
+  /** Ctrl/Cmd+I, forwarded from the workspace shortcut handler. */
+  openIndicatorPicker: () => {
+    pickerOpen.value = true
+  },
+})
 
 const INITIAL_HISTORY_SIZE = 500
 const HISTORY_PAGE_SIZE = 400
@@ -720,7 +776,7 @@ onMounted(() => {
 
   // The chart owns its initial load. This avoids a parent-ref race while
   // Vue replaces keyed chart instances during tab and interval changes.
-  void loadHistory()
+  void loadHistory().then(restoreIndicatorLayout)
 })
 
 onBeforeUnmount(() => {
@@ -784,6 +840,7 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
         :key="configuring.instance.instanceId"
         :definition="configuring.definition"
         :inputs="configuring.instance.inputs"
+        :calculated="indicators.hasCalculated(configuring.instance.instanceId)"
         :populated-plots="indicators.populatedPlots(configuring.instance.instanceId)"
         :styles="configuring.instance.styles"
         @close="configuringId = null"
@@ -814,6 +871,9 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
     <IndicatorPicker
       :load="() => indicators.catalog()"
       :open="pickerOpen"
+      :calculated="preview
+        ? indicators.hasCalculated(preview.instance.instanceId)
+        : false"
       :populated-plots="preview
         ? indicators.populatedPlots(preview.instance.instanceId)
         : []"

@@ -3,6 +3,13 @@ export interface ThemePalette {
   panel: string
   panelRaised: string
   panelMuted: string
+  /**
+   * Floating panels sit on this, not on `panel`. Without a dimmed backdrop —
+   * removed so the chart stays readable while parameters change — a 1px border
+   * was the only boundary between a dialog and the chart behind it.
+   */
+  overlaySurface: string
+  overlayBorder: string
   header: string
   workspace: string
   navigation: string
@@ -570,6 +577,9 @@ function darkPalette(definition: ThemeDefinition): ThemePalette {
     panel: mix('#071a24', tint, 0.08),
     panelRaised: mix('#0a222d', tint, 0.11),
     panelMuted: mix('#071d27', tint, 0.09),
+    // Dark theme: elevating means moving towards the light.
+    overlaySurface: mix(mix('#132c38', tint, 0.10), '#ffffff', 0.04),
+    overlayBorder: mix(mix('#385c6c', tint, 0.10), accent, 0.18),
     header: mix('#051722', tint, 0.08),
     workspace: mix('#031018', tint, 0.06),
     navigation: mix('#061923', tint, 0.10),
@@ -614,6 +624,13 @@ function lightPalette(definition: ThemeDefinition): ThemePalette {
     panel: mix('#f9fcfd', tint, 0.018),
     panelRaised: mix('#edf4f6', tint, 0.045),
     panelMuted: mix('#f0f6f8', tint, 0.04),
+    /*
+     * Light theme: the workspace panels are already near-white, so elevating
+     * has to darken. A soft grey reads as "above" without shouting; reusing
+     * the dark theme's direction would make the dialog vanish.
+     */
+    overlaySurface: mix(mix('#e9eff2', tint, 0.03), '#000000', 0.012),
+    overlayBorder: mix(mix('#94a9b4', tint, 0.10), accent, 0.20),
     header: mix('#f5f9fa', tint, 0.035),
     workspace: mix('#d9e4e8', tint, 0.045),
     navigation: mix('#edf4f6', tint, 0.045),

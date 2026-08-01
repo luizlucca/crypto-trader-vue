@@ -1,31 +1,45 @@
-.indicator-picker-layer {
+/*
+ * No backdrop: the chart has to stay readable while parameters change, since
+ * judging an indicator means watching it redraw over live candles.
+ */
+.indicator-picker {
   position: fixed;
   z-index: 60;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--bg) 62%, transparent);
-}
-
-.indicator-picker {
+  top: 80px;
+  left: 60px;
   display: flex;
   flex-direction: column;
-  width: min(920px, 92vw);
-  height: min(640px, 86vh);
+  width: min(720px, 92vw);
+  height: min(560px, 82vh);
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--overlay-border);
   border-radius: 10px;
-  background: var(--panel);
-  box-shadow: 0 18px 48px color-mix(in srgb, var(--bg) 70%, transparent);
+  background: var(--overlay-surface);
+  box-shadow: 0 18px 48px color-mix(in srgb, var(--bg) 74%, transparent);
   contain: layout paint style;
+}
+
+.indicator-picker.is-dragging {
+  user-select: none;
 }
 
 .indicator-picker-header {
   display: flex;
+  gap: 8px;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px 12px;
+  padding: 12px 14px 11px;
   border-bottom: 1px solid var(--border-soft);
+  cursor: grab;
+  touch-action: none;
+}
+
+.indicator-picker.is-dragging .indicator-picker-header {
+  cursor: grabbing;
+}
+
+.indicator-picker-header > div {
+  flex: 1;
+  min-width: 0;
 }
 
 .indicator-picker-header span {
@@ -43,12 +57,17 @@
 .indicator-picker-header button {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  /* The header aligns items centrally, but the title block is two lines tall;
+     pinning the button keeps the X centred on the whole header. */
+  align-self: center;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--control-bg);
   color: var(--muted);
+  cursor: pointer;
 }
 
 .indicator-picker-header button:hover {
@@ -56,11 +75,16 @@
   color: var(--text-strong);
 }
 
+.indicator-picker-header button svg {
+  width: 15px;
+  height: 15px;
+}
+
 .indicator-search {
   display: flex;
   gap: 8px;
   align-items: center;
-  margin: 12px 16px;
+  margin: 11px 14px;
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 7px;
@@ -88,7 +112,7 @@
 
 .indicator-picker-body {
   display: grid;
-  grid-template-columns: 208px 1fr;
+  grid-template-columns: 168px 1fr;
   min-height: 0;
   flex: 1;
 }
@@ -98,7 +122,7 @@
   overflow-y: auto;
   flex-direction: column;
   gap: 1px;
-  padding: 0 8px 12px 16px;
+  padding: 0 8px 12px 14px;
   border-right: 1px solid var(--border-soft);
 }
 
@@ -258,9 +282,9 @@
 .indicator-inline-settings {
   margin: 2px 0 8px;
   padding: 12px 13px 11px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--overlay-border);
   border-radius: 8px;
-  background: var(--panel-raised);
+  background: color-mix(in srgb, var(--overlay-surface) 86%, var(--panel));
 }
 
 .indicator-inline-actions {
@@ -370,11 +394,13 @@
   /* Initial placement only; `useDraggableDialog` centres it on mount. */
   top: 90px;
   left: 50%;
-  width: 360px;
+  /* Wide enough for the longest plot names — "Upper Bollinger Band" — to sit
+     beside the width and opacity controls without truncating. */
+  width: 480px;
   padding: 0 13px 13px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--overlay-border);
   border-radius: 9px;
-  background: var(--panel-raised);
+  background: var(--overlay-surface);
   box-shadow: 0 14px 38px color-mix(in srgb, var(--bg) 66%, transparent);
   contain: layout paint style;
 }
@@ -476,78 +502,118 @@
  * three across inside the picker, one in the narrow floating dialog. Scrolling
  * is a last resort rather than the default.
  */
+/*
+ * One row per line, columns aligned across rows: the eye scans down a single
+ * column instead of hunting for the same control inside each card.
+ */
 .indicator-styles {
-  display: grid;
-  max-height: 44vh;
+  display: flex;
+  max-height: 40vh;
   overflow-x: hidden;
   overflow-y: auto;
-  gap: 9px;
-  grid-template-columns: repeat(auto-fit, minmax(228px, 1fr));
-  align-content: start;
+  flex-direction: column;
+  gap: 1px;
 }
 
+.indicator-styles-legend,
 .indicator-style-row {
-  padding: 8px 9px;
-  border: 1px solid var(--border-soft);
-  border-radius: 7px;
-  background: var(--panel);
-}
-
-.indicator-style-row > header {
-  display: flex;
+  display: grid;
+  gap: 8px;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 7px;
+  /*
+   * Every column is bounded so the name never gets squeezed to nothing. The
+   * floating dialog is much narrower than the picker, and an unbounded
+   * opacity column used to eat the space the label needed.
+   */
+  grid-template-columns: 16px 26px minmax(64px, 1fr) 68px minmax(84px, 118px);
 }
 
-.indicator-style-visible {
-  display: flex;
-  gap: 7px;
-  align-items: center;
-  overflow: hidden;
+.indicator-styles-legend {
+  padding: 0 9px 5px;
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
 }
 
-.indicator-style-visible strong {
+/* Headings must not spill into the neighbouring column. */
+.indicator-styles-legend > span {
   overflow: hidden;
-  color: var(--text-strong);
-  font-size: 11.5px;
-  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.indicator-style-row input[type="color"] {
-  width: 34px;
-  height: 22px;
+.indicator-style-row {
+  padding: 6px 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.indicator-style-row:hover {
+  border-color: var(--border-soft);
+  background: var(--hover-bg);
+}
+
+/* A hidden line stays listed but reads as inactive. */
+.indicator-style-row.hidden {
+  opacity: .48;
+}
+
+/* Declared but producing nothing under the current parameters. */
+.indicator-style-row.idle .indicator-style-name {
+  color: var(--muted);
+}
+
+.indicator-style-name em {
   flex-shrink: 0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--control-bg);
+  color: var(--muted);
+  font-size: 8.5px;
+  font-style: normal;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+.indicator-style-toggle {
+  display: grid;
+  place-items: center;
+}
+
+.indicator-style-toggle input {
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+
+.indicator-style-swatch {
+  width: 28px;
+  height: 20px;
   padding: 1px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--input-bg);
+  cursor: pointer;
 }
 
-.indicator-style-controls {
-  display: flex;
-  /* Wrap instead of overflowing: no horizontal scrollbar in a narrow host. */
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  align-items: center;
-}
-
-.indicator-style-opacity {
-  flex: 1;
-  min-width: 132px;
-}
-
-.indicator-style-controls label {
+.indicator-style-name {
   display: flex;
   gap: 6px;
   align-items: center;
-  color: var(--muted);
-  font-size: 10.5px;
+  min-width: 0;
+  color: var(--text-strong);
+  font-size: 11.5px;
+  font-weight: 500;
 }
 
-.indicator-style-controls select {
+/* The label truncates; the badge never does. */
+.indicator-style-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.indicator-style-width {
   height: 24px;
   padding: 0 5px;
   border: 1px solid var(--border);
@@ -558,36 +624,71 @@
   font-size: 11px;
 }
 
-.indicator-style-controls input[type="range"] {
-  min-width: 60px;
+.indicator-style-opacity {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.indicator-style-opacity input[type="range"] {
+  min-width: 0;
   flex: 1;
   accent-color: var(--blue);
 }
 
-.indicator-style-controls b {
-  min-width: 30px;
-  color: var(--text);
+.indicator-style-opacity b {
+  min-width: 32px;
+  color: var(--muted);
   font-family: var(--font-data);
   font-size: 10.5px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
+/* Outer container stacks the groups; each group grids its own fields. */
 .indicator-fields {
-  display: grid;
-  max-height: 44vh;
+  display: flex;
+  max-height: 40vh;
   overflow-x: hidden;
   overflow-y: auto;
-  gap: 8px 18px;
-  grid-template-columns: repeat(auto-fit, minmax(236px, 1fr));
+  flex-direction: column;
+  gap: 4px;
+}
+
+.indicator-group-title {
+  margin: 8px 0 2px;
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.indicator-group-title:first-child {
+  margin-top: 0;
+}
+
+.indicator-group-fields {
+  display: grid;
+  gap: 3px 24px;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   align-content: start;
 }
 
 .indicator-field {
-  display: flex;
+  display: grid;
   gap: 10px;
   align-items: center;
-  justify-content: space-between;
+  /* Controls line up in a column, whatever the label length. */
+  grid-template-columns: minmax(0, 1fr) 118px;
+  padding: 4px 6px;
+  border-radius: 5px;
+}
+
+.indicator-field:hover {
+  background: var(--hover-bg);
 }
 
 .indicator-field > span {
@@ -598,12 +699,15 @@
   white-space: nowrap;
 }
 
+.indicator-field > input[type="checkbox"] {
+  justify-self: start;
+}
+
 .indicator-field input[type="number"],
 .indicator-field input[type="text"],
 .indicator-field select {
-  width: 108px;
-  height: 27px;
-  flex-shrink: 0;
+  width: 100%;
+  height: 26px;
   padding: 0 7px;
   border: 1px solid var(--border);
   border-radius: 5px;
@@ -626,6 +730,17 @@
 .indicator-field input[type="checkbox"] {
   flex-shrink: 0;
   accent-color: var(--blue);
+}
+
+.indicator-draws-nothing {
+  margin: 0;
+  padding: 10px 11px;
+  border: 1px solid color-mix(in srgb, var(--warning) 34%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--warning) 9%, var(--overlay-surface));
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .indicator-no-inputs {
