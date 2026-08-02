@@ -21,6 +21,11 @@ import type {
   IndicatorMarker,
   IndicatorPlotPatch,
 } from '@/domain/indicatorProtocol'
+import { BAR_COLOR_PLOT } from '@/domain/indicatorProtocol'
+import { RoundedCandleSeries } from '@/plugins/roundedCandles/RoundedCandleSeries'
+import { hasDrawings } from '@/domain/indicatorDrawings'
+import type { IndicatorDrawings } from '@/domain/indicatorDrawings'
+import { IndicatorDrawingsPrimitive } from '@/plugins/indicatorDrawings/IndicatorDrawingsPrimitive'
 import type {
   IndicatorDefinition,
   IndicatorInputs,
@@ -39,6 +44,7 @@ import {
   type IndicatorBars,
   type IndicatorClient,
   type IndicatorPatchHandler,
+  type IndicatorResultParts,
 } from '@/services/indicators'
 
 interface MountedIndicator {
@@ -64,6 +70,14 @@ interface MountedIndicator {
    * indicators, every candlestick pattern among them, draw nothing else.
    */
   markers?: ISeriesMarkersPluginApi<Time>
+  /**
+   * Free-form shapes, drawn by a primitive attached to a host series. The host
+   * is recorded because detaching needs the same series that received it.
+   */
+  drawings?: {
+    primitive: IndicatorDrawingsPrimitive
+    host: ISeriesApi<SeriesType>
+  }
 }
 
 export interface ChartIndicatorsOptions {
@@ -217,19 +231,64 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     }
   }
 
+  /**
+   * Attaches the drawing primitive on first use and hands it the shapes.
+   *
+   * The host is the indicator's own first series when it has one, and the
+   * candle series otherwise: an overlay like the Zig Zag declares no plot at
+   * all, and its shapes are anchored to prices, which is the scale the candles
+   * own. An oscillator without a series of its own has no price scale to
+   * anchor to, and saying so is better than drawing against the wrong prices.
+   *
+   * Bands are the exception: they span the full height of the pane and read
+   * only the time scale, so they need no price scale to be correct — a session
+   * marked on the clock applies to the whole chart, whatever the indicator's
+   * own pane would have shown.
+   */
+  function applyDrawings(
+    entry: MountedIndicator,
+    drawings: IndicatorDrawings,
+  ): void {
+    if (!entry.drawings) {
+      const own = entry.series.values().next().value
+      const needsPriceScale = drawings.lines.length > 0
+        || drawings.boxes.length > 0
+        || drawings.labels.length > 0
+      const host = own ?? (
+        entry.definition.overlay || !needsPriceScale
+          ? options.candleSeries()
+          : null
+      )
+      if (!host) {
+        throw new Error(
+          `Sem série para ancorar os desenhos de ${entry.definition.name}`,
+        )
+      }
+      const primitive = new IndicatorDrawingsPrimitive()
+      host.attachPrimitive(primitive)
+      entry.drawings = { primitive, host }
+    }
+    entry.drawings.primitive.setDrawings(drawings)
+  }
+
   function applyPatches(
     instanceId: string,
-    patches: IndicatorPlotPatch[],
-    markers?: IndicatorMarker[],
-    candles?: IndicatorCandlePatch[],
+    result: IndicatorResultParts,
   ): void {
     const entry = mounted.get(instanceId)
     if (!entry) {
       return
     }
-    const createdNow = ensureChartObjects(entry, patches, candles)
+    const { patches, markers, candles, drawings } = result
+    const createdNow = ensureChartObjects(entry, patches, candles, drawings)
     const newlyPopulated: string[] = []
     try {
+      if (drawings) {
+        applyDrawings(entry, drawings)
+        if (hasDrawings(drawings) && !entry.populated.has('__drawings')) {
+          newlyPopulated.push('__drawings')
+        }
+      }
       if (markers) {
         applyMarkers(entry, markers)
         if (markers.length > 0 && !entry.populated.has('__markers')) {
@@ -374,6 +433,32 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
   }
 
   /**
+   * Repainted market bars keep the chart's own candle shape: they cover the
+   * real candles, and a different silhouette would read as a second series
+   * rather than as the same bars in another colour. Two indicators repainting
+   * at once is resolved by the chart itself — the last one mounted draws on
+   * top, which is also the last one the operator applied.
+   */
+  function createCandleSeries(
+    chart: IChartApi,
+    pane: IPaneApi<Time> | undefined,
+    plotId: string,
+  ): ISeriesApi<SeriesType> {
+    if (plotId === BAR_COLOR_PLOT) {
+      return chart.addCustomSeries(new RoundedCandleSeries(), {
+        ...CANDLE_OPTIONS,
+        wickVisible: true,
+        radius: (barSpacing: number) => (
+          barSpacing < 4 ? 0 : Math.min(4, barSpacing / 3)
+        ),
+      }, 0) as unknown as ISeriesApi<SeriesType>
+    }
+    return pane
+      ? pane.addSeries(CandlestickSeries, CANDLE_OPTIONS)
+      : chart.addSeries(CandlestickSeries, CANDLE_OPTIONS, 0)
+  }
+
+  /**
    * Reference levels declared by the indicator: the RSI 30/70 band, the MACD
    * zero line, the stochastic 20/80. Without them an oscillator is a shape with
    * no scale to read it against, which is precisely what the pane is for.
@@ -418,10 +503,12 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     entry: MountedIndicator,
     patches: IndicatorPlotPatch[],
     candles?: IndicatorCandlePatch[],
+    drawings?: IndicatorDrawings,
   ): boolean {
     const hasData = patches.some((patch) => patch.time.length > 0)
       || (candles?.length ?? 0) > 0
-    if (entry.series.size > 0 || !hasData) {
+      || hasDrawings(drawings)
+    if (entry.series.size > 0 || entry.drawings || !hasData) {
       return false
     }
     const chart = options.chart()
@@ -429,8 +516,19 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       throw new Error(`Gráfico indisponível ao montar ${entry.definition.name}`)
     }
 
+    /*
+     * A pane is created only for what will actually live in it. An indicator
+     * declared as "own pane" that turns out to draw only vertical bands hosts
+     * them on the price pane — its own pane would stay empty, and an empty
+     * strip below the chart reads as something broken.
+     */
+    const ownPaneContent = patches.some((patch) => patch.time.length > 0)
+      || (candles ?? []).some((patch) => patch.plotId !== BAR_COLOR_PLOT)
+
     try {
-      entry.pane = entry.definition.overlay ? undefined : chart.addPane(true)
+      entry.pane = entry.definition.overlay || !ownPaneContent
+        ? undefined
+        : chart.addPane(true)
       createSeries(
         chart,
         entry.definition,
@@ -445,10 +543,10 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
        * exclusively this way.
        */
       for (const patch of candles ?? []) {
-        const id = candleSeriesId(patch.plotId)
-        entry.series.set(id, entry.pane
-          ? entry.pane.addSeries(CandlestickSeries, CANDLE_OPTIONS)
-          : chart.addSeries(CandlestickSeries, CANDLE_OPTIONS, 0))
+        entry.series.set(
+          candleSeriesId(patch.plotId),
+          createCandleSeries(chart, entry.pane, patch.plotId),
+        )
       }
       createHLines(entry.definition, entry.series.values().next().value)
       return true
@@ -471,6 +569,19 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       )
     }
     entry.markers = undefined
+
+    if (entry.drawings) {
+      try {
+        // Detached from the same series that received it: the primitive may be
+        // hosted on the candle series, which outlives the indicator.
+        entry.drawings.host.detachPrimitive(entry.drawings.primitive)
+      } catch (error) {
+        failures.push(
+          `desenhos: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+      entry.drawings = undefined
+    }
 
     entry.series.forEach((series, plotId) => {
       try {

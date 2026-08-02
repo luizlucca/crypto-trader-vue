@@ -1,5 +1,13 @@
 import { indicatorRegistry } from 'lightweight-charts-indicators'
 import type {
+  IndicatorBand,
+  IndicatorBox,
+  IndicatorDrawings,
+  IndicatorLabel,
+  IndicatorLine,
+} from '@/domain/indicatorDrawings'
+import { BAR_COLOR_PLOT } from '@/domain/indicatorProtocol'
+import type {
   IndicatorBar,
   IndicatorCandlePatch,
   IndicatorMarker,
@@ -38,6 +46,11 @@ interface RegistryEntry {
     plots?: Record<string, { time: number, value: number }[]>
     plotCandles?: Record<string, LibraryCandle[]>
     markers?: unknown[]
+    lines?: unknown[]
+    boxes?: unknown[]
+    labels?: unknown[]
+    bgColors?: unknown[]
+    barColors?: unknown[]
   }
 }
 
@@ -66,6 +79,8 @@ interface AttachedIndicator {
   previousCandles: Map<string, LibraryCandle[]>
   /** Serialised marker set, to send only when it actually changes. */
   previousMarkers: string
+  /** Same idea for the free-form shapes, which are also recomputed whole. */
+  previousDrawings: string
 }
 
 const attached = new Map<string, AttachedIndicator>()
@@ -297,6 +312,172 @@ function candlePatch(
   }
 }
 
+const DRAWING_STYLES = new Set(['solid', 'dashed', 'dotted'])
+const LABEL_STYLES = new Set([
+  'label_up', 'label_down', 'label_left', 'label_right', 'label_center',
+])
+
+function lineStyle(value: unknown): IndicatorLine['style'] {
+  return DRAWING_STYLES.has(String(value))
+    ? value as IndicatorLine['style']
+    : 'solid'
+}
+
+function anchored(...values: unknown[]): boolean {
+  return values.every((value) => Number.isFinite(value))
+}
+
+/**
+ * Walks the retained bars alongside an ascending list of per-bar entries.
+ *
+ * Both the catalog and the chart are ordered by time, so a single moving cursor
+ * resolves every entry without building a lookup table per calculation.
+ */
+function eachBar<T extends { time?: number }>(
+  entries: readonly unknown[] | undefined,
+  visit: (bar: IndicatorBar, index: number, entry: T) => void,
+): void {
+  let cursor = 0
+  for (const raw of entries ?? []) {
+    const entry = raw as T
+    if (!Number.isFinite(entry?.time)) {
+      continue
+    }
+    while (cursor < bars.length && bars[cursor].time < (entry.time as number)) {
+      cursor += 1
+    }
+    const bar = bars[cursor]
+    if (bar && bar.time === entry.time) {
+      visit(bar, cursor, entry)
+    }
+  }
+}
+
+/**
+ * Merges per-bar colours into runs. Adjacency is decided by bar index, not by
+ * colour alone: two separate sessions painted the same colour must stay two
+ * bands, or the gap between them would be filled in.
+ */
+function normalizeBands(raw: unknown[] | undefined): IndicatorBand[] {
+  const bands: IndicatorBand[] = []
+  let current: IndicatorBand | undefined
+  let lastIndex = -2
+  eachBar<{ time?: number, color?: string }>(raw, (bar, index, entry) => {
+    if (typeof entry.color !== 'string') {
+      return
+    }
+    if (current && current.color === entry.color && index === lastIndex + 1) {
+      current.time2 = bar.time
+    } else {
+      current = { time1: bar.time, time2: bar.time, color: entry.color }
+      bands.push(current)
+    }
+    lastIndex = index
+  })
+  return bands
+}
+
+/**
+ * The market's own bars, wearing the colours the indicator assigned. Only the
+ * bars it actually painted are included, so the untouched ones keep showing the
+ * chart's candles underneath.
+ */
+function repaintedBars(raw: unknown[] | undefined): LibraryCandle[] {
+  const painted: LibraryCandle[] = []
+  eachBar<{ time?: number, color?: string }>(raw, (bar, _index, entry) => {
+    if (typeof entry.color !== 'string') {
+      return
+    }
+    painted.push({
+      time: bar.time,
+      open: bar.open,
+      high: bar.high,
+      low: bar.low,
+      close: bar.close,
+      color: entry.color,
+      borderColor: entry.color,
+      wickColor: entry.color,
+    })
+  })
+  return painted
+}
+
+/**
+ * Keeps only the shapes the renderer can place. A shape without a finite time
+ * or price has no position on the chart, and drawing it would be inventing one.
+ */
+function normalizeDrawings(result: {
+  lines?: unknown[]
+  boxes?: unknown[]
+  labels?: unknown[]
+  bgColors?: unknown[]
+}): IndicatorDrawings {
+  const lines: IndicatorLine[] = []
+  for (const raw of result.lines ?? []) {
+    const line = raw as Partial<IndicatorLine>
+    if (!anchored(line.time1, line.price1, line.time2, line.price2)) {
+      continue
+    }
+    lines.push({
+      time1: line.time1 as number,
+      price1: line.price1 as number,
+      time2: line.time2 as number,
+      price2: line.price2 as number,
+      color: typeof line.color === 'string' ? line.color : '#787B86',
+      width: Number.isFinite(line.width) ? line.width as number : 1,
+      style: lineStyle(line.style),
+      ...(line.extend === undefined ? {} : { extend: line.extend }),
+    })
+  }
+
+  const boxes: IndicatorBox[] = []
+  for (const raw of result.boxes ?? []) {
+    const box = raw as Partial<IndicatorBox>
+    if (!anchored(box.time1, box.price1, box.time2, box.price2)) {
+      continue
+    }
+    boxes.push({
+      time1: box.time1 as number,
+      price1: box.price1 as number,
+      time2: box.time2 as number,
+      price2: box.price2 as number,
+      bgColor: typeof box.bgColor === 'string'
+        ? box.bgColor
+        : 'rgba(120,123,134,0.30)',
+      ...(box.borderColor === undefined ? {} : { borderColor: box.borderColor }),
+      ...(box.borderWidth === undefined ? {} : { borderWidth: box.borderWidth }),
+      ...(box.borderStyle === undefined
+        ? {}
+        : { borderStyle: lineStyle(box.borderStyle) }),
+      ...(box.text === undefined ? {} : { text: String(box.text) }),
+      ...(box.textColor === undefined ? {} : { textColor: box.textColor }),
+    })
+  }
+
+  const labels: IndicatorLabel[] = []
+  for (const raw of result.labels ?? []) {
+    const label = raw as Partial<IndicatorLabel>
+    if (!anchored(label.time, label.price) || label.text === undefined) {
+      continue
+    }
+    labels.push({
+      time: label.time as number,
+      price: label.price as number,
+      text: String(label.text),
+      ...(label.color === undefined ? {} : { color: label.color }),
+      textColor: typeof label.textColor === 'string'
+        ? label.textColor
+        : '#FFFFFF',
+      style: LABEL_STYLES.has(String(label.style))
+        ? label.style as IndicatorLabel['style']
+        : 'label_up',
+      ...(label.size === undefined ? {} : { size: label.size }),
+    })
+  }
+
+  return { lines, boxes, labels, bands: normalizeBands(result.bgColors) }
+}
+
 const MARKER_POSITIONS = new Set(['aboveBar', 'belowBar', 'inBar'])
 const MARKER_SHAPES = new Set(['circle', 'square', 'arrowUp', 'arrowDown'])
 
@@ -331,18 +512,12 @@ function normalizeMarkers(raw: unknown[] | undefined): IndicatorMarker[] {
 }
 
 /**
- * Output kinds the chart pipeline cannot draw. The library expresses part of
- * its catalog as boxes, free lines, labels or background bands, none of which
- * map onto the series/marker protocol. Detecting them is what separates "still
+ * Output kinds the chart pipeline cannot draw. Only raw pivot metadata remains,
+ * and no catalog entry expresses itself through it alone. Detecting them is what separates "still
  * warming up" from "this one will never draw anything here" — the difference
  * between waiting and removing the indicator.
  */
 const UNSUPPORTED_OUTPUTS = [
-  'lines',
-  'boxes',
-  'labels',
-  'bgColors',
-  'barColors',
   'pivots',
 ] as const
 
@@ -367,6 +542,7 @@ function computeInstance(
 ): {
   patches: IndicatorPlotPatch[]
   candles: IndicatorCandlePatch[]
+  drawings?: IndicatorDrawings
   markers?: IndicatorMarker[]
   /** Present when a complete round drew nothing; may be an empty list. */
   undrawn?: string[]
@@ -434,6 +610,30 @@ function computeInstance(
     }
   }
 
+  const repainted = repaintedBars(result.barColors)
+  if (repainted.length > 0) {
+    const patch = candlePatch(
+      BAR_COLOR_PLOT,
+      repainted,
+      indicator.previousCandles.get(BAR_COLOR_PLOT),
+      forceFull,
+    )
+    indicator.previousCandles.set(BAR_COLOR_PLOT, repainted)
+    if (patch) {
+      candles.push(patch)
+    }
+  }
+
+  const shapes = normalizeDrawings(result)
+  const shapeCount = shapes.lines.length + shapes.boxes.length
+    + shapes.labels.length + shapes.bands.length
+  const encodedShapes = shapeCount > 0 ? JSON.stringify(shapes) : ''
+  const shapesChanged = encodedShapes !== indicator.previousDrawings
+  indicator.previousDrawings = encodedShapes
+  const drawings = shapesChanged || (forceFull && shapeCount > 0)
+    ? shapes
+    : undefined
+
   const markers = normalizeMarkers(result.markers)
 
   /*
@@ -445,6 +645,7 @@ function computeInstance(
     forceFull
     && markers.length === 0
     && candles.length === 0
+    && shapeCount === 0
     && !patches.some((patch) => patch.time.length > 0)
   ) {
     return {
@@ -456,10 +657,10 @@ function computeInstance(
 
   const encoded = markers.length > 0 ? JSON.stringify(markers) : ''
   if (encoded === indicator.previousMarkers && !forceFull) {
-    return { patches, candles }
+    return { patches, candles, drawings }
   }
   indicator.previousMarkers = encoded
-  return { patches, candles, markers }
+  return { patches, candles, drawings, markers }
 }
 
 function post(message: IndicatorResponse, transfer: Transferable[] = []): void {
@@ -486,6 +687,7 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
       previous: new Map(),
       previousCandles: new Map(),
       previousMarkers: '',
+      previousDrawings: '',
     })
     return
   }
@@ -519,7 +721,7 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
 
   for (const [instanceId, indicator] of attached) {
     try {
-      const { patches, candles, markers, undrawn } = computeInstance(
+      const { patches, candles, drawings, markers, undrawn } = computeInstance(
         indicator,
         request.full,
       )
@@ -534,7 +736,12 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
         })
         continue
       }
-      if (patches.length === 0 && candles.length === 0 && markers === undefined) {
+      if (
+        patches.length === 0
+        && candles.length === 0
+        && markers === undefined
+        && drawings === undefined
+      ) {
         continue
       }
       const transfer: Transferable[] = []
@@ -560,6 +767,7 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
           instanceRevision: indicator.instanceRevision,
           patches,
           ...(candles.length === 0 ? {} : { candles }),
+          ...(drawings === undefined ? {} : { drawings }),
           ...(markers === undefined ? {} : { markers }),
         },
         transfer,

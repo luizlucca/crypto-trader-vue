@@ -276,13 +276,65 @@ barra — uma série usa duas ou três cores distintas, e mandar a string por ba
 seria a maior parte da mensagem no caminho quente. O diff é o mesmo das linhas:
 num tick comum só a cauda viaja.
 
+### Desenho livre sobre o gráfico
+
+Onze entradas não devolvem série nem velas: devolvem geometria. O Zig Zag é uma
+cadeia de segmentos entre pivôs, o Price & Volume Profile é uma coluna de
+caixas, o Auto Key Levels são linhas horizontais com o preço etiquetado. Nada
+disso passa por `setData`.
+
+Entram por uma primitiva de série (`attachPrimitive`) que guarda as formas em
+**coordenadas de gráfico** — tempo e preço — e converte para pixels a cada
+frame. É o que faz zoom e pan funcionarem sem consultar o Worker.
+
+**A primitiva desenha no mesmo passe de pintura dos candles**, o que a coloca
+sob o [ADR-0003](../adr/0003-renderizacao-imperativa-do-grafico.md). Três
+regras decorrem disso: nada é alocado por frame além das chamadas de canvas, as
+formas fora da área visível são descartadas antes de qualquer conversão, e a
+largura do texto de cada rótulo é medida uma vez por conjunto, não uma vez por
+frame.
+
+A âncora é a série do próprio indicador quando existe, e a série de candles
+quando não existe — o Zig Zag não declara plot algum, e suas formas são
+ancoradas em preço, que é a escala dos candles. Um oscilador sem série própria
+não teria escala a que se ancorar, e nesse caso a interface diz isso em vez de
+desenhar contra os preços errados.
+
+As formas são recalculadas inteiras pela biblioteca e chegam inteiras, sem
+diff: são dezenas de itens, e comparar custaria mais que substituir.
+
+### Faixas de fundo e repintura das velas
+
+Duas formas restantes do catálogo não são desenho do indicador sobre o gráfico,
+e sim intervenção no próprio gráfico.
+
+**Faixas de fundo** (`bgColors`) marcam sessões e horários: uma cor por barra,
+centenas de entradas. O worker funde barras contíguas de mesma cor em faixas
+antes de enviar, e a adjacência é decidida por índice de barra, não por cor —
+duas sessões distintas pintadas da mesma cor precisam continuar duas faixas, ou
+o intervalo entre elas seria preenchido. O renderer desenha meia dúzia de
+retângulos de altura total, em `zOrder: 'bottom'`, atrás dos candles.
+
+Uma faixa vertical não lê escala de preço, só a de tempo. Por isso ela é a
+exceção à regra de âncora: mesmo um indicador de painel próprio tem suas faixas
+hospedadas no painel do preço — e, não tendo mais nada a desenhar, não ganha
+painel algum. Um painel vazio abaixo do gráfico se lê como defeito.
+
+**Repintura das velas** (`barColors`) recolore as barras do mercado. Viaja como
+patch de velas, porque é exatamente isso: o mesmo OHLC com outra paleta. Só as
+barras que o indicador de fato pintou entram, de modo que as demais continuam
+mostrando os candles do gráfico por baixo. A série usa a mesma forma
+arredondada do gráfico: silhueta diferente se leria como uma segunda série, não
+como as mesmas barras noutra cor.
+
+Dois indicadores repintando ao mesmo tempo é resolvido pelo próprio gráfico —
+o último montado desenha por cima, que é o último que o operador aplicou.
+
 ### Um painel em branco sempre tem explicação
 
-O que resta sem desenho são **11 entradas** que se expressam por `lines`,
-`boxes`, `labels`, `bgColors`, `barColors` ou `pivots` — Zig Zag, Price &
-Volume Profile, Liquidity Levels, Auto Key Levels — formas que exigem
-primitivas de desenho, não séries. Outras declaram plots e devolvem apenas
-`NaN` com os parâmetros padrão, por período maior que o histórico.
+Todas as formas do catálogo têm desenho. O que ainda produz painel vazio são os
+indicadores que declaram plots e devolvem apenas `NaN` com os parâmetros
+padrão, por período maior que o histórico carregado.
 
 Nos dois casos o resultado era o mesmo para quem opera: um painel vazio,
 indistinguível de falha. Quando uma rodada completa não produz nada, o Worker
@@ -301,7 +353,8 @@ Medido sobre 600 barras de caminhada aleatória, com os parâmetros padrão:
 | --- | --- |
 | Desenham por linhas, histogramas, áreas ou marcadores | 402 |
 | Desenham pelas próprias velas | 7 |
-| Dependem de primitivas ainda não implementadas | 11 |
+| Desenham por segmentos, caixas e rótulos | 8 |
+| Desenham por faixas de fundo ou repintura das velas | 3 |
 | Padrões de candlestick — desenham quando o padrão ocorre | 30 |
 | Não produzem valores com os parâmetros padrão | 7 |
 
@@ -324,9 +377,7 @@ Os indicadores aplicados pertencem à aba, junto com seleção e período, e sã
 salvos no `localStorage` por aba. Reabrir o app restaura o que estava aplicado.
 
 **Fora de escopo:** editor de indicadores próprios, alertas sobre valores de
-indicador, indicadores que dependem de outro indicador como fonte, e o desenho
-por caixas, linhas livres e rótulos — as 11 entradas que dependem disso são
-identificadas em tempo de cálculo e explicadas ao operador, não desenhadas.
+indicador e indicadores que dependem de outro indicador como fonte.
 
 ## Testes
 
@@ -371,6 +422,10 @@ Além disso:
 - [ ] Os indicadores da comunidade aparecem no seletor, sinalizados.
 - [x] Os níveis declarados pelo indicador são desenhados no painel próprio.
 - [x] Indicadores de saída OHLC desenham como velas, com as cores da biblioteca.
+- [x] Segmentos, caixas e rótulos são desenhados por primitiva, sem alocação
+      por frame.
+- [x] Faixas de fundo ficam atrás dos candles e não criam painel vazio.
+- [x] A repintura preserva as barras que o indicador não pintou.
 - [x] Um painel que fica em branco produz uma explicação, não silêncio.
 - [x] Abrir o seletor não recarrega o catálogo nem cria Worker.
 - [x] Cada linha tem cor, espessura, opacidade e visibilidade próprias.

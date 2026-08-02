@@ -1,3 +1,4 @@
+import type { IndicatorDrawings } from './indicatorDrawings'
 import type { IndicatorDefinition, IndicatorInputs } from './indicators'
 
 /**
@@ -87,6 +88,13 @@ export interface IndicatorPlotPatch {
  * two or three distinct colours, so sending the string per bar would be the
  * largest part of the message on the hot path.
  */
+/**
+ * Reserved candle output: the market's own bars, repainted with the colours an
+ * indicator assigns per bar. It travels as a candle patch because that is
+ * exactly what it is — the same OHLC, a different palette.
+ */
+export const BAR_COLOR_PLOT = '__bars'
+
 export interface IndicatorCandlePatch {
   plotId: string
   full: boolean
@@ -135,6 +143,12 @@ export type IndicatorResponse
       markers?: IndicatorMarker[]
       /** Present only for indicators that draw their own candles. */
       candles?: IndicatorCandlePatch[]
+      /**
+       * Segments, boxes and labels. Sent whole and only when they change: the
+       * library recomputes them from scratch, and they are counted in tens,
+       * not thousands, so a diff would cost more than the replacement.
+       */
+      drawings?: IndicatorDrawings
     }
     | {
       kind: 'error'

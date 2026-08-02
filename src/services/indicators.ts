@@ -7,19 +7,22 @@ import type {
   IndicatorRequest,
   IndicatorResponse,
 } from '@/domain/indicatorProtocol'
+import type { IndicatorDrawings } from '@/domain/indicatorDrawings'
 import type {
   IndicatorDefinition,
   IndicatorInputs,
 } from '@/domain/indicators'
 import IndicatorsWorker from '@/workers/indicators.worker?worker'
 
+export interface IndicatorResultParts {
+  patches: IndicatorPlotPatch[]
+  markers?: IndicatorMarker[]
+  candles?: IndicatorCandlePatch[]
+  drawings?: IndicatorDrawings
+}
+
 export interface IndicatorPatchHandler {
-  (
-    instanceId: string,
-    patches: IndicatorPlotPatch[],
-    markers?: IndicatorMarker[],
-    candles?: IndicatorCandlePatch[],
-  ): void
+  (instanceId: string, result: IndicatorResultParts): void
 }
 
 export interface IndicatorBars {
@@ -294,12 +297,12 @@ export function createIndicatorClient(
       return
     }
     try {
-      onPatch(
-        message.instanceId,
-        message.patches,
-        message.markers,
-        message.candles,
-      )
+      onPatch(message.instanceId, {
+        patches: message.patches,
+        markers: message.markers,
+        candles: message.candles,
+        drawings: message.drawings,
+      })
       round.received?.add(message.instanceId)
       applicationRetries.delete(message.instanceId)
       instanceRecoveries.delete(message.instanceId)

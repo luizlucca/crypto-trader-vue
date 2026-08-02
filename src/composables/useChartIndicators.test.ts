@@ -36,6 +36,16 @@ const definition: IndicatorDefinition = {
 class FakeSeries {
   points: unknown[] = []
   readonly priceLines: { price: number, lineStyle: number }[] = []
+  readonly primitives: unknown[] = []
+
+  attachPrimitive(primitive: unknown): void {
+    this.primitives.push(primitive)
+  }
+
+  detachPrimitive(primitive: unknown): void {
+    const index = this.primitives.indexOf(primitive)
+    if (index >= 0) this.primitives.splice(index, 1)
+  }
 
   createPriceLine(options: { price: number, lineStyle: number }): unknown {
     this.priceLines.push(options)
@@ -162,7 +172,7 @@ describe('chart indicator visual lifecycle', () => {
     expect(api.addPane).not.toHaveBeenCalled()
     expect(panes).toHaveLength(2)
 
-    apply(instance!.instanceId, patches())
+    apply(instance!.instanceId, { patches: patches() })
 
     expect(api.addPane).toHaveBeenCalledOnce()
     expect(panes).toHaveLength(3)
@@ -199,7 +209,7 @@ describe('chart indicator visual lifecycle', () => {
       ],
     }
     const instance = indicators.add(withLevels)
-    apply(instance!.instanceId, patches())
+    apply(instance!.instanceId, { patches: patches() })
 
     // Anchored on one series: three levels, not one set per plot.
     const drawn = priceLines()
@@ -232,7 +242,7 @@ describe('chart indicator visual lifecycle', () => {
       hlines: [{ id: 'zero', price: 0 }],
     }
     const instance = indicators.add(overlay)
-    apply(instance!.instanceId, patches())
+    apply(instance!.instanceId, { patches: patches() })
 
     expect(priceLines()).toHaveLength(0)
   })
@@ -260,7 +270,7 @@ describe('chart indicator visual lifecycle', () => {
       plots: [],
     }
     const instance = indicators.add(cvd)
-    apply(instance!.instanceId, [], undefined, [{
+    apply(instance!.instanceId, { patches: [], candles: [{
       plotId: 'cvd',
       full: true,
       from: 0,
@@ -274,7 +284,7 @@ describe('chart indicator visual lifecycle', () => {
         { color: '#26A69A', borderColor: '#26A69A', wickColor: '#26A69A' },
         { color: '#EF5350', borderColor: '#EF5350', wickColor: '#EF5350' },
       ],
-    }])
+    }] })
 
     expect(api.addPane).toHaveBeenCalledOnce()
     expect(panes[2].series).toHaveLength(1)
@@ -286,6 +296,56 @@ describe('chart indicator visual lifecycle', () => {
 
     indicators.remove(instance!.instanceId)
     expect(api.removePane).toHaveBeenCalledWith(2)
+  })
+
+  it('anchors free-form drawings on the candle series for an overlay', () => {
+    const { chart, api } = chartHarness()
+    const candles = new FakeSeries()
+    let apply!: IndicatorPatchHandler
+    const indicators = useChartIndicators({
+      chart: () => chart,
+      candleSeries: () => candles as unknown as ISeriesApi<SeriesType>,
+      bars: () => ({
+        time: [], open: [], high: [], low: [], close: [], volume: [],
+      }),
+      createClient: (handler) => {
+        apply = handler
+        return stubClient()
+      },
+    })
+
+    // The Zig Zag declares neither plots nor a pane: only shapes.
+    const zigzag: IndicatorDefinition = {
+      ...definition,
+      id: 'zigzag',
+      name: 'Zig Zag',
+      overlay: true,
+      plots: [],
+    }
+    const instance = indicators.add(zigzag)
+    apply(instance!.instanceId, {
+      patches: [],
+      drawings: {
+        lines: [{
+          time1: 1, price1: 10, time2: 2, price2: 20,
+          color: '#2962FF', width: 2, style: 'solid',
+        }],
+        boxes: [],
+        labels: [{
+          time: 2, price: 20, text: '20.00',
+          textColor: '#FFFFFF', style: 'label_up',
+        }],
+        bands: [],
+      },
+    })
+
+    // No pane and no series of its own: the shapes ride on the price scale.
+    expect(api.addPane).not.toHaveBeenCalled()
+    expect(candles.primitives).toHaveLength(1)
+    expect(indicators.hasCalculated(instance!.instanceId)).toBe(true)
+
+    indicators.remove(instance!.instanceId)
+    expect(candles.primitives).toHaveLength(0)
   })
 
   it('reports an indicator whose output kind the chart cannot draw', () => {
