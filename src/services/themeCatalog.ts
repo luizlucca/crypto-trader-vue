@@ -44,10 +44,36 @@ export interface ThemePalette {
   volumeDown: string
 }
 
+/**
+ * How the chrome ramp is retuned for a theme.
+ *
+ * The forty surface colours are written once, in the cool blue the app was
+ * born with. A theme that wants another character does not restate them: it
+ * declares a tone, and every surface is neutralised to the grey of the same
+ * perceived lightness and then shifted towards the given hue. Lightness is
+ * preserved, so the whole ramp — background, panels, borders, text — keeps the
+ * contrast relationships that were tuned once.
+ *
+ * Omitting `hue` leaves pure greys, which is what a neutral theme is.
+ */
+interface SurfaceTone {
+  hue?: string
+  /** How far towards the hue's own chroma, 0 to 1. */
+  amount?: number
+  /**
+   * Lightens (positive) or deepens (negative) the whole ramp, proportionally
+   * to the room each surface still has. It is what separates three greys from
+   * one: near-black, charcoal and slate are the same ramp at three depths.
+   */
+  lift?: number
+}
+
 interface ThemeDefinition {
   id: string
   name: string
   description: string
+  /** Absent keeps the original cool ramp, untouched. */
+  surface?: SurfaceTone
   accentDark: string
   accentLight: string
   upDark: string
@@ -61,6 +87,139 @@ interface ThemeDefinition {
 }
 
 const DEFINITIONS = [
+  /*
+   * Neutral first: three depths of the same greyscale ramp, no hue anywhere in
+   * the chrome. Candles keep their green and red — up and down are data, not
+   * decoration, and a monochrome candle costs the reading it exists for.
+   */
+  {
+    id: 'onyx',
+    name: 'Ônix',
+    description: 'Preto neutro, sem matiz',
+    surface: { lift: -0.34 },
+    accentDark: '#e4e4e4',
+    accentLight: '#3d3d3d',
+    upDark: '#63b37f',
+    upLight: '#2c7d52',
+    downDark: '#d4676f',
+    downLight: '#bb3b46',
+    secondaryDark: '#a8a8a8',
+    secondaryLight: '#5c5c5c',
+    tintDark: '#0a0a0a',
+    tintLight: '#8f8f8f',
+  },
+  {
+    id: 'carbon',
+    name: 'Carbono',
+    description: 'Cinza-chumbo neutro, contraste médio',
+    surface: {},
+    accentDark: '#d6d6d6',
+    accentLight: '#454545',
+    upDark: '#63b37f',
+    upLight: '#2c7d52',
+    downDark: '#d4676f',
+    downLight: '#bb3b46',
+    secondaryDark: '#9c9c9c',
+    secondaryLight: '#616161',
+    tintDark: '#343434',
+    tintLight: '#a3a3a3',
+  },
+  {
+    id: 'ash',
+    name: 'Cinza',
+    description: 'Cinza médio neutro, luz suave',
+    surface: { lift: 0.17 },
+    accentDark: '#c4c4c4',
+    accentLight: '#4f4f4f',
+    upDark: '#63b37f',
+    upLight: '#2c7d52',
+    downDark: '#d4676f',
+    downLight: '#bb3b46',
+    secondaryDark: '#949494',
+    secondaryLight: '#6b6b6b',
+    tintDark: '#5a5a5a',
+    tintLight: '#b5b5b5',
+  },
+  {
+    id: 'tradingview',
+    name: 'TradingView',
+    description: 'O padrão da TradingView, claro e escuro',
+    surface: { hue: '#3f4c6b', amount: 0.42, lift: 0.05 },
+    accentDark: '#2962ff',
+    accentLight: '#2962ff',
+    upDark: '#26a69a',
+    upLight: '#26a69a',
+    downDark: '#ef5350',
+    downLight: '#ef5350',
+    secondaryDark: '#7e57c2',
+    secondaryLight: '#673ab7',
+    tintDark: '#2a3245',
+    tintLight: '#8c9bbd',
+  },
+  {
+    id: 'paper',
+    name: 'Papel',
+    description: 'Branco quente de baixo ofuscamento',
+    surface: { hue: '#a8763c', amount: 0.30 },
+    accentDark: '#c99a5b',
+    accentLight: '#2b6cb0',
+    upDark: '#4fae7e',
+    upLight: '#25794f',
+    downDark: '#e0796d',
+    downLight: '#bf3d34',
+    secondaryDark: '#c0a080',
+    secondaryLight: '#8a5a2b',
+    tintDark: '#5a4426',
+    tintLight: '#c9a978',
+  },
+  {
+    id: 'mist',
+    name: 'Névoa',
+    description: 'Cinza-azulado claro, leitura nítida',
+    surface: { hue: '#5b7a99', amount: 0.24 },
+    accentDark: '#7aa7d9',
+    accentLight: '#2563eb',
+    upDark: '#4fb286',
+    upLight: '#1f7a52',
+    downDark: '#e07a83',
+    downLight: '#c23b4a',
+    secondaryDark: '#9db4cc',
+    secondaryLight: '#4c6b8a',
+    tintDark: '#33495e',
+    tintLight: '#9db4cc',
+  },
+  {
+    id: 'high-contrast',
+    name: 'Alto Contraste',
+    description: 'Máxima legibilidade em ambiente claro',
+    surface: { hue: '#6b7280', amount: 0.10, lift: 0.06 },
+    accentDark: '#7fb3ff',
+    accentLight: '#0b4fc4',
+    upDark: '#3fd18b',
+    upLight: '#00713d',
+    downDark: '#ff7b7b',
+    downLight: '#c00000',
+    secondaryDark: '#c4b5fd',
+    secondaryLight: '#4c2f9e',
+    tintDark: '#1c1c1c',
+    tintLight: '#dcdcdc',
+  },
+  {
+    id: 'sepia',
+    name: 'Sépia',
+    description: 'Âmbar suave para sessões longas',
+    surface: { hue: '#8a5a2b', amount: 0.42, lift: 0.02 },
+    accentDark: '#d8a15a',
+    accentLight: '#8a5a2b',
+    upDark: '#7fa86a',
+    upLight: '#4d6f2f',
+    downDark: '#cf7060',
+    downLight: '#a63a28',
+    secondaryDark: '#b99b7a',
+    secondaryLight: '#6f4a2a',
+    tintDark: '#4a3520',
+    tintLight: '#cbb08a',
+  },
   {
     id: 'cryptopro',
     name: 'CryptoPro',
@@ -537,6 +696,64 @@ function channelHex(value: number): string {
     .padStart(2, '0')
 }
 
+/** sRGB channel to linear light, for luminance that matches perception. */
+function toLinear(channel: number): number {
+  const scaled = channel / 255
+  return scaled <= 0.04045
+    ? scaled / 12.92
+    : ((scaled + 0.055) / 1.055) ** 2.4
+}
+
+function fromLinear(value: number): number {
+  const scaled = value <= 0.0031308
+    ? value * 12.92
+    : (1.055 * (value ** (1 / 2.4))) - 0.055
+  return scaled * 255
+}
+
+/** The grey a colour would be if its hue were removed but its lightness kept. */
+function grayValue(hex: string): number {
+  const [red, green, blue] = hexChannels(hex)
+  return fromLinear(
+    (0.2126 * toLinear(red))
+    + (0.7152 * toLinear(green))
+    + (0.0722 * toLinear(blue)),
+  )
+}
+
+/**
+ * Retunes one surface colour: strip the hue, then add back the hue offsets of
+ * the tone. Adding offsets rather than mixing towards a colour is what keeps
+ * the ramp usable at both ends — mixing a near-white towards a dark blue would
+ * darken it, and the light theme would lose its light surfaces.
+ */
+function toned(hex: string, tone: SurfaceTone | undefined): string {
+  if (!tone) {
+    return hex
+  }
+  const plain = grayValue(hex)
+  const lift = tone.lift ?? 0
+  const gray = lift === 0
+    ? plain
+    : plain + (lift * (lift > 0 ? 255 - plain : plain))
+  if (!tone.hue) {
+    const channel = channelHex(gray)
+    return `#${channel}${channel}${channel}`
+  }
+  /*
+   * The same chroma offset reads mildly on a mid grey and garishly on a near
+   * black, where it is most of the colour. Attenuating at the dark end keeps a
+   * warm theme warm without turning its deepest surfaces brown.
+   */
+  const attenuated = Math.min(1, Math.max(0.5, gray / 48))
+  const amount = (tone.amount ?? 0.4) * attenuated
+  const [hueR, hueG, hueB] = hexChannels(tone.hue)
+  const hueGray = grayValue(tone.hue)
+  return `#${channelHex(gray + ((hueR - hueGray) * amount))}${
+    channelHex(gray + ((hueG - hueGray) * amount))
+  }${channelHex(gray + ((hueB - hueGray) * amount))}`
+}
+
 function mix(base: string, overlay: string, amount: number): string {
   const [baseR, baseG, baseB] = hexChannels(base)
   const [overlayR, overlayG, overlayB] = hexChannels(overlay)
@@ -569,29 +786,30 @@ function accentContrast(accent: string): string {
 }
 
 function darkPalette(definition: ThemeDefinition): ThemePalette {
-  const tint = definition.tintDark ?? definition.accentDark
+  const surface = (hex: string): string => toned(hex, definition.surface)
+  const tint = surface(definition.tintDark ?? definition.accentDark)
   const accent = definition.accentDark
-  const text = mix('#c9d5db', tint, 0.025)
+  const text = mix(surface('#c9d5db'), tint, 0.025)
   return {
-    background: mix('#030e15', tint, 0.08),
-    panel: mix('#071a24', tint, 0.08),
-    panelRaised: mix('#0a222d', tint, 0.11),
-    panelMuted: mix('#071d27', tint, 0.09),
+    background: mix(surface('#030e15'), tint, 0.08),
+    panel: mix(surface('#071a24'), tint, 0.08),
+    panelRaised: mix(surface('#0a222d'), tint, 0.11),
+    panelMuted: mix(surface('#071d27'), tint, 0.09),
     // Dark theme: elevating means moving towards the light.
-    overlaySurface: mix(mix('#132c38', tint, 0.10), '#ffffff', 0.04),
-    overlayBorder: mix(mix('#385c6c', tint, 0.10), accent, 0.18),
-    header: mix('#051722', tint, 0.08),
-    workspace: mix('#031018', tint, 0.06),
-    navigation: mix('#061923', tint, 0.10),
-    control: mix('#081d28', tint, 0.11),
-    input: mix('#061923', tint, 0.08),
-    hover: mix('#0d2834', accent, 0.18),
-    selected: mix('#0a3041', accent, 0.25),
-    border: mix('#123440', accent, 0.12),
-    borderSoft: mix('#0e2b36', accent, 0.10),
+    overlaySurface: mix(mix(surface('#132c38'), tint, 0.10), '#ffffff', 0.04),
+    overlayBorder: mix(mix(surface('#385c6c'), tint, 0.10), accent, 0.18),
+    header: mix(surface('#051722'), tint, 0.08),
+    workspace: mix(surface('#031018'), tint, 0.06),
+    navigation: mix(surface('#061923'), tint, 0.10),
+    control: mix(surface('#081d28'), tint, 0.11),
+    input: mix(surface('#061923'), tint, 0.08),
+    hover: mix(surface('#0d2834'), accent, 0.18),
+    selected: mix(surface('#0a3041'), accent, 0.25),
+    border: mix(surface('#123440'), accent, 0.12),
+    borderSoft: mix(surface('#0e2b36'), accent, 0.10),
     text,
-    textStrong: mix('#edf5f8', tint, 0.02),
-    muted: mix('#728793', tint, 0.035),
+    textStrong: mix(surface('#edf5f8'), tint, 0.02),
+    muted: mix(surface('#728793'), tint, 0.035),
     accent,
     accentHover: mix(accent, '#ffffff', 0.18),
     accentSoft: rgba(accent, 0.13),
@@ -600,12 +818,12 @@ function darkPalette(definition: ThemeDefinition): ThemePalette {
     negative: definition.downDark,
     secondary: definition.secondaryDark,
     warning: '#f4b740',
-    chartBackground: mix('#061821', tint, 0.075),
-    chartGrid: mix('#12303b', tint, 0.10),
-    chartBorder: mix('#173744', accent, 0.10),
-    chartText: mix('#8195a3', tint, 0.035),
-    chartCrosshair: mix('#5b7280', accent, 0.08),
-    chartCrosshairLabel: mix('#24414e', accent, 0.14),
+    chartBackground: mix(surface('#061821'), tint, 0.075),
+    chartGrid: mix(surface('#12303b'), tint, 0.10),
+    chartBorder: mix(surface('#173744'), accent, 0.10),
+    chartText: mix(surface('#8195a3'), tint, 0.035),
+    chartCrosshair: mix(surface('#5b7280'), accent, 0.08),
+    chartCrosshairLabel: mix(surface('#24414e'), accent, 0.14),
     watermarkPrimary: rgba(text, 0.10),
     watermarkSecondary: rgba(text, 0.072),
     candleUp: definition.upDark,
@@ -616,33 +834,34 @@ function darkPalette(definition: ThemeDefinition): ThemePalette {
 }
 
 function lightPalette(definition: ThemeDefinition): ThemePalette {
-  const tint = definition.tintLight ?? definition.accentLight
+  const surface = (hex: string): string => toned(hex, definition.surface)
+  const tint = surface(definition.tintLight ?? definition.accentLight)
   const accent = definition.accentLight
-  const text = mix('#263d48', tint, 0.025)
+  const text = mix(surface('#263d48'), tint, 0.025)
   return {
-    background: mix('#e7eef1', tint, 0.035),
-    panel: mix('#f9fcfd', tint, 0.018),
-    panelRaised: mix('#edf4f6', tint, 0.045),
-    panelMuted: mix('#f0f6f8', tint, 0.04),
+    background: mix(surface('#e7eef1'), tint, 0.035),
+    panel: mix(surface('#f9fcfd'), tint, 0.018),
+    panelRaised: mix(surface('#edf4f6'), tint, 0.045),
+    panelMuted: mix(surface('#f0f6f8'), tint, 0.04),
     /*
      * Light theme: the workspace panels are already near-white, so elevating
      * has to darken. A soft grey reads as "above" without shouting; reusing
      * the dark theme's direction would make the dialog vanish.
      */
-    overlaySurface: mix(mix('#e9eff2', tint, 0.03), '#000000', 0.012),
-    overlayBorder: mix(mix('#94a9b4', tint, 0.10), accent, 0.20),
-    header: mix('#f5f9fa', tint, 0.035),
-    workspace: mix('#d9e4e8', tint, 0.045),
-    navigation: mix('#edf4f6', tint, 0.045),
-    control: mix('#ffffff', tint, 0.025),
-    input: mix('#ffffff', tint, 0.018),
-    hover: mix('#dfecef', accent, 0.10),
-    selected: mix('#d6eaf2', accent, 0.16),
-    border: mix('#bfd0d7', accent, 0.08),
-    borderSoft: mix('#d8e3e7', accent, 0.07),
+    overlaySurface: mix(mix(surface('#e9eff2'), tint, 0.03), '#000000', 0.012),
+    overlayBorder: mix(mix(surface('#94a9b4'), tint, 0.10), accent, 0.20),
+    header: mix(surface('#f5f9fa'), tint, 0.035),
+    workspace: mix(surface('#d9e4e8'), tint, 0.045),
+    navigation: mix(surface('#edf4f6'), tint, 0.045),
+    control: mix(surface('#ffffff'), tint, 0.025),
+    input: mix(surface('#ffffff'), tint, 0.018),
+    hover: mix(surface('#dfecef'), accent, 0.10),
+    selected: mix(surface('#d6eaf2'), accent, 0.16),
+    border: mix(surface('#bfd0d7'), accent, 0.08),
+    borderSoft: mix(surface('#d8e3e7'), accent, 0.07),
     text,
-    textStrong: mix('#203844', tint, 0.02),
-    muted: mix('#657984', tint, 0.025),
+    textStrong: mix(surface('#203844'), tint, 0.02),
+    muted: mix(surface('#657984'), tint, 0.025),
     accent,
     accentHover: mix(accent, '#000000', 0.12),
     accentSoft: rgba(accent, 0.10),
@@ -651,12 +870,12 @@ function lightPalette(definition: ThemeDefinition): ThemePalette {
     negative: definition.downLight,
     secondary: definition.secondaryLight,
     warning: '#a96b00',
-    chartBackground: mix('#f8fbfc', tint, 0.022),
-    chartGrid: mix('#dce7eb', tint, 0.045),
-    chartBorder: mix('#bfd0d7', accent, 0.07),
-    chartText: mix('#526975', tint, 0.025),
-    chartCrosshair: mix('#718995', accent, 0.06),
-    chartCrosshairLabel: mix('#526975', accent, 0.10),
+    chartBackground: mix(surface('#f8fbfc'), tint, 0.022),
+    chartGrid: mix(surface('#dce7eb'), tint, 0.045),
+    chartBorder: mix(surface('#bfd0d7'), accent, 0.07),
+    chartText: mix(surface('#526975'), tint, 0.025),
+    chartCrosshair: mix(surface('#718995'), accent, 0.06),
+    chartCrosshairLabel: mix(surface('#526975'), accent, 0.10),
     watermarkPrimary: rgba(text, 0.085),
     watermarkSecondary: rgba(text, 0.062),
     candleUp: definition.upLight,

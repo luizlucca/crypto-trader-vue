@@ -122,11 +122,14 @@ const appliedIndicators = shallowRef<
 const pickerOpen = ref(false)
 const configuringId = ref<string | null>(null)
 /**
- * An indicator drawn but not confirmed. It exists on the chart so the user can
- * judge the settings against real data; closing the picker or cancelling
- * removes it, which is why it is tracked apart from the applied ones.
+ * The instance whose settings are expanded inside the picker.
+ *
+ * It is already on the chart: choosing an indicator applies it. Collapsing the
+ * accordion or closing the panel keeps it, because the chart has been showing
+ * it since the click — and a gesture as ordinary as closing a panel must never
+ * be what destroys it.
  */
-const previewId = ref<string | null>(null)
+const editingId = ref<string | null>(null)
 if (import.meta.env.DEV) {
   ;(window as unknown as Record<string, unknown>).__diag = {
     ind: indicators,
@@ -152,22 +155,19 @@ const configuring = computed(() => (
     : undefined
 ))
 
-const preview = computed(() => (
-  previewId.value
+const editing = computed(() => (
+  editingId.value
     ? appliedIndicators.value.find(
-      (entry) => entry.instance.instanceId === previewId.value,
+      (entry) => entry.instance.instanceId === editingId.value,
     ) ?? null
     : null
 ))
 
 function syncAppliedIndicators(): void {
   appliedIndicators.value = indicators.applied()
-  // Only confirmed indicators belong to the layout; a preview is transient.
   writeIndicatorLayout(
     props.sessionId,
-    appliedIndicators.value
-      .filter((entry) => entry.instance.instanceId !== previewId.value)
-      .map((entry) => entry.instance),
+    appliedIndicators.value.map((entry) => entry.instance),
   )
 }
 
@@ -192,46 +192,40 @@ async function restoreIndicatorLayout(): Promise<void> {
   syncAppliedIndicators()
 }
 
-/** Draws the indicator immediately, still unconfirmed. */
-function previewIndicator(definition: IndicatorDefinition): void {
-  discardPreview()
+/** Puts the indicator on the chart and expands its settings. */
+function addIndicator(definition: IndicatorDefinition): void {
   const instance = indicators.add(definition)
   if (instance) {
-    previewId.value = instance.instanceId
+    editingId.value = instance.instanceId
     syncAppliedIndicators()
   }
 }
 
-function confirmPreview(): void {
-  previewId.value = null
-  // The indicator only joins the saved layout once it stops being a preview.
-  syncAppliedIndicators()
+/** Collapses the settings. The indicator stays exactly as it is. */
+function collapseEditing(): void {
+  editingId.value = null
 }
 
-function discardPreview(): void {
-  if (!previewId.value) {
-    return
+function removeEditing(): void {
+  if (editingId.value) {
+    removeIndicator(editingId.value)
   }
-  indicators.remove(previewId.value)
-  previewId.value = null
-  syncAppliedIndicators()
 }
 
-/** Closing the picker with an unconfirmed indicator discards it. */
 function closePicker(): void {
-  discardPreview()
+  editingId.value = null
   pickerOpen.value = false
 }
 
-function previewInputs(inputs: IndicatorInputs): void {
-  if (previewId.value) {
-    applyIndicatorInputs(previewId.value, inputs)
+function editingInputs(inputs: IndicatorInputs): void {
+  if (editingId.value) {
+    applyIndicatorInputs(editingId.value, inputs)
   }
 }
 
-function previewStyles(styles: Record<string, IndicatorPlotStyle>): void {
-  if (previewId.value) {
-    applyIndicatorStyles(previewId.value, styles)
+function editingStyles(styles: Record<string, IndicatorPlotStyle>): void {
+  if (editingId.value) {
+    applyIndicatorStyles(editingId.value, styles)
   }
 }
 
@@ -240,8 +234,8 @@ function removeIndicator(instanceId: string): void {
   if (configuringId.value === instanceId) {
     configuringId.value = null
   }
-  if (previewId.value === instanceId) {
-    previewId.value = null
+  if (editingId.value === instanceId) {
+    editingId.value = null
   }
   syncAppliedIndicators()
 }
@@ -879,21 +873,22 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
       <small>O gráfico será liberado assim que o histórico estiver pronto.</small>
     </div>
     <IndicatorPicker
+      :applied="appliedIndicators"
       :load="() => indicators.catalog()"
       :open="pickerOpen"
-      :calculated="preview
-        ? indicators.hasCalculated(preview.instance.instanceId)
+      :calculated="editing
+        ? indicators.hasCalculated(editing.instance.instanceId)
         : false"
-      :populated-plots="preview
-        ? indicators.populatedPlots(preview.instance.instanceId)
+      :populated-plots="editing
+        ? indicators.populatedPlots(editing.instance.instanceId)
         : []"
-      :preview="preview"
+      :editing="editing"
+      @apply="addIndicator"
       @close="closePicker"
-      @confirm="confirmPreview"
-      @discard="discardPreview"
-      @inputs="previewInputs"
-      @preview="previewIndicator"
-      @styles="previewStyles"
+      @collapse="collapseEditing"
+      @inputs="editingInputs"
+      @remove="removeEditing"
+      @styles="editingStyles"
     />
   </section>
 </template>

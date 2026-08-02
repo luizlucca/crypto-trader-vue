@@ -4,6 +4,7 @@ import {
   customizeThemePalette,
   defaultThemeCustomization,
   getThemePalette,
+  getThemePreset,
   isCustomThemeDefinition,
   isThemePresetId,
   themePresets,
@@ -31,9 +32,9 @@ function contrast(first: string, second: string): number {
 }
 
 describe('theme catalog', () => {
-  it('offers 30 unique presets with readable light and dark variants', () => {
-    expect(themePresets).toHaveLength(30)
-    expect(new Set(themePresets.map(({ id }) => id)).size).toBe(30)
+  it('offers 38 unique presets with readable light and dark variants', () => {
+    expect(themePresets).toHaveLength(38)
+    expect(new Set(themePresets.map(({ id }) => id)).size).toBe(38)
 
     themePresets.forEach((preset) => {
       expect(isThemePresetId(preset.id)).toBe(true)
@@ -88,6 +89,54 @@ describe('theme catalog', () => {
     const preset = createCustomThemePreset(definition)
     expect(preset.id).toBe(definition.id)
     expect(preset.dark.accent).toBe(definition.dark.accent)
+  })
+})
+
+function channels(hex: string): [number, number, number] {
+  const value = Number.parseInt(hex.replace('#', '').slice(0, 6), 16)
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255]
+}
+
+describe('temas neutros e o padrão TradingView', () => {
+  const NEUTRAL = ['onyx', 'carbon', 'ash'] as const
+  /** Chrome that must carry no hue at all in a neutral theme. */
+  const SURFACES = [
+    'background', 'panel', 'panelRaised', 'panelMuted', 'overlaySurface',
+    'header', 'workspace', 'navigation', 'control', 'input', 'border',
+    'text', 'textStrong', 'muted', 'chartBackground', 'chartGrid',
+  ] as const
+
+  it('mantém os neutros em escala de cinza nas duas luminosidades', () => {
+    NEUTRAL.forEach((id) => {
+      const preset = getThemePreset(id)
+      ;(['dark', 'light'] as const).forEach((mode) => {
+        SURFACES.forEach((token) => {
+          const [red, green, blue] = channels(preset[mode][token])
+          // One step of rounding is tolerated; a hue is not.
+          expect(Math.max(red, green, blue) - Math.min(red, green, blue))
+            .toBeLessThanOrEqual(1)
+        })
+      })
+    })
+  })
+
+  it('separa os três neutros por profundidade, não por matiz', () => {
+    const depths = NEUTRAL.map(
+      (id) => channels(getThemePreset(id).dark.background)[0],
+    )
+    expect(depths[0]).toBeLessThan(depths[1])
+    expect(depths[1]).toBeLessThan(depths[2])
+  })
+
+  it('reproduz as cores oficiais da TradingView', () => {
+    const preset = getThemePreset('tradingview')
+    expect(preset.dark.candleUp).toBe('#26a69a')
+    expect(preset.dark.candleDown).toBe('#ef5350')
+    expect(preset.dark.accent).toBe('#2962ff')
+    // O fundo escuro fica na vizinhança de #131722, o gráfico da plataforma.
+    const [red, green, blue] = channels(preset.dark.chartBackground)
+    expect(blue).toBeGreaterThan(red)
+    expect(red + green + blue).toBeLessThan(120)
   })
 })
 

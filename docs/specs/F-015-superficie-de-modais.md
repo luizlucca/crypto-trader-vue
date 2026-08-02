@@ -16,7 +16,7 @@ Os modais usam `--panel`, a mesma superfície dos painéis fixos do workspace, e
 `--chart-bg` é próximo dela. Sem um fundo escurecido atrás — removido de
 propósito na F-014, para que o gráfico continue visível enquanto os parâmetros
 mudam — a borda de 1px passou a ser o único limite entre o diálogo e o gráfico.
-Em vários dos 30 presets isso quase desaparece.
+Em vários dos presets isso quase desaparece.
 
 Plataformas de referência resolvem por elevação de superfície: a TradingView
 usa cinza-escuro sobre fundo preto, e não um contorno.
@@ -34,10 +34,10 @@ usa cinza-escuro sobre fundo preto, e não um contorno.
 
 ### Novos tokens derivados, não escritos por preset
 
-Os 30 presets declaram apenas as cores-semente — accent, alta, baixa,
+Os presets declaram apenas as cores-semente — accent, alta, baixa,
 secundária e tinta — e a `ThemePalette` inteira é derivada em `darkPalette` e
 `lightPalette`. Portanto a elevação entra como **dois tokens novos derivados**,
-e os 30 presets a recebem sem edição:
+e todos os presets a recebem sem edição:
 
 | Token | Papel |
 | --- | --- |
@@ -52,10 +52,34 @@ painel que some no claro — o erro que a F-012 já registrou ao converter cores
 A separação é reforçada por sombra projetada, que não depende de contraste de
 cor e por isso sobrevive a qualquer preset.
 
+### A elevação vale para dentro do painel, não só para a borda
+
+Aplicar `--overlay-surface` na raiz do painel não bastou. As áreas internas —
+faixa de cabeçalho, coluna de navegação, blocos recuados — continuavam lendo os
+tokens do workspace, a mesma família do gráfico atrás delas. Metade do diálogo
+estava elevada e metade não, e os três painéis flutuantes discordavam entre si
+sobre qual metade.
+
+A correção é uma religação de tokens no escopo do painel: dentro de um painel
+flutuante, `--panel`, `--panel-raised`, `--panel-muted`, `--header-bg`,
+`--navigation-bg` e as bordas passam a ser derivados de `--overlay-surface`.
+Toda regra já escrita contra as superfícies comuns passa a cair na família
+elevada sem ser reescrita.
+
+Cada degrau interno é misturado em direção a `--overlay-border`, que pertence à
+mesma família e fica entre a superfície e a tinta. A direção fica correta nas
+duas luminosidades — clareia no escuro, adensa no claro — que é a mesma regra
+que os tokens da F-015 já seguem.
+
+A janela de busca de símbolos nunca tinha seguido a spec: usava
+`--control-bg` e cinco cores fixas em hexadecimal. Passou para os mesmos
+tokens, e o arquivo ficou sem nenhum hex literal.
+
 ### Onde se aplica
 
 Seletor de indicadores, configurações de indicador, janela de configurações
-gerais, editor de temas e a janela de busca de símbolos. Painéis fixos do
+gerais, editor de temas e a janela de busca de símbolos — os quatro seletores
+estão listados em um único bloco em `tokens.css`. Painéis fixos do
 workspace continuam em `--panel`: a distinção entre fixo e flutuante é
 justamente o que se quer preservar.
 
@@ -75,11 +99,12 @@ trata-se apenas de superfície, contorno e sombra.
 
 ## Critérios de aceite
 
-- [ ] `--overlay-surface` e `--overlay-border` existem nos 30 presets, em ambas
+- [ ] `--overlay-surface` e `--overlay-border` existem em todos os presets, em ambas
       as luminosidades.
 - [ ] O contraste entre a superfície do modal e `--panel` supera o limiar em
       todos eles, medido em teste.
-- [ ] Os modais listados usam os novos tokens.
+- [x] Os modais listados usam os novos tokens, inclusive nas áreas internas.
+- [x] Os painéis flutuantes têm a mesma superfície entre si, em qualquer preset.
 - [ ] Nenhum painel fixo do workspace muda de aparência.
 
 ## Evolução

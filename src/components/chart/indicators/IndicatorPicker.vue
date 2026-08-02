@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { ChevronRight, GripHorizontal, Search, TriangleAlert, X } from '@lucide/vue'
+import {
+  Check,
+  ChevronRight,
+  GripHorizontal,
+  Search,
+  TriangleAlert,
+  X,
+} from '@lucide/vue'
 import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
 import { useDraggableDialog } from '@/composables/useDraggableDialog'
 import type {
@@ -16,23 +23,30 @@ const props = defineProps<{
   /** Resolved lazily: loading the catalog spins up the worker. */
   load: () => Promise<IndicatorDefinition[]>
   /**
-   * The indicator currently drawn as a preview, if any. Choosing one applies
-   * it to the chart straight away so the settings can be judged against real
-   * data; confirming keeps it and cancelling removes it.
+   * The instance whose settings are expanded, if any. Choosing an indicator
+   * applies it to the chart and opens it here — the accordion edits something
+   * that already exists, it does not propose something that might.
    */
-  preview: { instance: IndicatorInstance, definition: IndicatorDefinition } | null
+  editing:
+    | { instance: IndicatorInstance, definition: IndicatorDefinition }
+    | null
+  /** Everything currently on the chart, so a row can show its own state. */
+  applied: readonly {
+    instance: IndicatorInstance
+    definition: IndicatorDefinition
+  }[]
   populatedPlots: readonly string[]
   calculated: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
-  /** Draw this indicator now, unconfirmed. */
-  preview: [definition: IndicatorDefinition]
-  /** Keep the previewed indicator. */
-  confirm: []
-  /** Remove the previewed indicator. */
-  discard: []
+  /** Put this indicator on the chart now and expand its settings. */
+  apply: [definition: IndicatorDefinition]
+  /** Collapse the settings, keeping the indicator. */
+  collapse: []
+  /** Take the expanded indicator off the chart. */
+  remove: []
   inputs: [inputs: IndicatorInputs]
   styles: [styles: Record<string, IndicatorPlotStyle>]
 }>()
@@ -44,6 +58,9 @@ const emit = defineEmits<{
  */
 const MAX_PER_SECTION = 60
 
+/** Pseudo-category: what is on the chart, listed with the rows already known. */
+const APPLIED_FILTER = '@applied'
+
 const { panel, startDrag, center } = useDraggableDialog()
 
 const definitions = shallowRef<IndicatorDefinition[]>([])
@@ -51,6 +68,18 @@ const loading = ref(false)
 const query = ref('')
 const activeCategory = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
+
+/** How many instances of each definition are on the chart. */
+const appliedCounts = computed(() => {
+  const counts = new Map<string, number>()
+  for (const entry of props.applied) {
+    counts.set(
+      entry.definition.id,
+      (counts.get(entry.definition.id) ?? 0) + 1,
+    )
+  }
+  return counts
+})
 
 const categories = computed(() => {
   const counts = new Map<string, number>()
@@ -83,7 +112,11 @@ function matches(
   term: string,
   category: string,
 ): boolean {
-  if (category && definition.category !== category) {
+  if (category === APPLIED_FILTER) {
+    if (!appliedCounts.value.has(definition.id)) {
+      return false
+    }
+  } else if (category && definition.category !== category) {
     return false
   }
   if (!term) {
@@ -120,6 +153,12 @@ const results = computed(
   () => verified.value.length + unverified.value.length,
 )
 
+/** The two lists share one row template; only the warning separates them. */
+const sections = computed(() => [
+  { community: false, items: verified.value },
+  { community: true, items: unverified.value },
+])
+
 async function ensureCatalog(): Promise<void> {
   if (definitions.value.length > 0 || loading.value) {
     return
@@ -139,13 +178,22 @@ function handleKey(event: KeyboardEvent): void {
   }
 }
 
-/** Clicking a row previews it; clicking the open one collapses and discards. */
-function toggle(definition: IndicatorDefinition): void {
-  if (props.preview?.definition.id === definition.id) {
-    emit('discard')
+function expanded(definition: IndicatorDefinition): boolean {
+  return props.editing?.definition.id === definition.id
+}
+
+/**
+ * Clicking a row puts the indicator on the chart; clicking the expanded one
+ * collapses it and keeps it there. Applying twice is therefore deliberate —
+ * collapse, then choose again — which is how two moving averages with
+ * different lengths end up on the same chart.
+ */
+function choose(definition: IndicatorDefinition): void {
+  if (expanded(definition)) {
+    emit('collapse')
     return
   }
-  emit('preview', definition)
+  emit('apply', definition)
 }
 
 watch(() => props.open, (open) => {
@@ -208,6 +256,19 @@ onMounted(() => {
 
       <div class="indicator-picker-body">
         <nav aria-label="Categorias" class="indicator-categories">
+          <!--
+            What is on the chart comes first: after choosing an indicator the
+            count grows here, which is the confirmation that the click stuck.
+          -->
+          <button
+            :class="{ active: activeCategory === APPLIED_FILTER }"
+            :disabled="applied.length === 0"
+            class="indicator-category-applied"
+            type="button"
+            @click="activeCategory = APPLIED_FILTER"
+          >
+            No gráfico <i>{{ applied.length }}</i>
+          </button>
           <button
             :class="{ active: activeCategory === '' }"
             type="button"
@@ -236,127 +297,96 @@ onMounted(() => {
           </p>
 
           <template v-else>
-            <div
-              v-for="definition in verified"
-              :key="definition.id"
-              class="indicator-entry"
-            >
-              <button
-                :aria-expanded="preview?.definition.id === definition.id"
-                :class="{ expanded: preview?.definition.id === definition.id }"
-                class="indicator-option"
-                type="button"
-                @click="toggle(definition)"
+            <template v-for="group in sections" :key="String(group.community)">
+              <div
+                v-if="group.community && group.items.length"
+                class="indicator-unverified-note"
               >
-                <ChevronRight aria-hidden="true" class="indicator-option-chevron" />
-                <span class="indicator-option-body">
-                  <span class="indicator-option-title">
-                    <strong>{{ definition.name }}</strong>
-                    <small>{{ definition.overlay ? 'Sobre o preço' : 'Painel próprio' }}</small>
-                  </span>
-                  <span class="indicator-option-description">
-                    {{ definition.description }}
-                  </span>
+                <TriangleAlert aria-hidden="true" />
+                <span>
+                  Portados da comunidade a partir de PineScript. Utilizáveis,
+                  mas sem garantia de equivalência com o original.
                 </span>
-              </button>
+              </div>
 
-              <!--
-                Accordion body. The indicator is already on the chart at this
-                point, so every change is judged against real data.
-              -->
-              <section
-                v-if="preview?.definition.id === definition.id"
-                class="indicator-inline-settings"
+              <div
+                v-for="definition in group.items"
+                :key="definition.id"
+                class="indicator-entry"
               >
-                <IndicatorForm
-                  :key="preview.instance.instanceId"
-                  :calculated="calculated"
-                  :definition="preview.definition"
-                  :inputs="preview.instance.inputs"
-                  :populated-plots="populatedPlots"
-                  :styles="preview.instance.styles"
-                  @inputs="emit('inputs', $event)"
-                  @styles="emit('styles', $event)"
-                />
-                <footer class="indicator-inline-actions">
-                  <button type="button" @click="emit('discard')">
-                    Cancelar
-                  </button>
-                  <button
-                    class="indicator-apply"
-                    type="button"
-                    @click="emit('confirm')"
-                  >
-                    Aplicar
-                  </button>
-                </footer>
-              </section>
-            </div>
-
-            <div v-if="unverified.length" class="indicator-unverified-note">
-              <TriangleAlert aria-hidden="true" />
-              <span>
-                Portados da comunidade a partir de PineScript. Utilizáveis,
-                mas sem garantia de equivalência com o original.
-              </span>
-            </div>
-
-            <div
-              v-for="definition in unverified"
-              :key="definition.id"
-              class="indicator-entry"
-            >
-              <button
-                :aria-expanded="preview?.definition.id === definition.id"
-                :class="{ expanded: preview?.definition.id === definition.id }"
-                class="indicator-option unverified"
-                type="button"
-                @click="toggle(definition)"
-              >
-                <ChevronRight aria-hidden="true" class="indicator-option-chevron" />
-                <span class="indicator-option-body">
-                  <span class="indicator-option-title">
-                    <strong>{{ definition.name }}</strong>
-                    <small>{{ definition.overlay ? 'Sobre o preço' : 'Painel próprio' }}</small>
+                <button
+                  :aria-expanded="expanded(definition)"
+                  :class="{
+                    expanded: expanded(definition),
+                    unverified: group.community,
+                    'on-chart': appliedCounts.has(definition.id),
+                  }"
+                  class="indicator-option"
+                  type="button"
+                  @click="choose(definition)"
+                >
+                  <ChevronRight aria-hidden="true" class="indicator-option-chevron" />
+                  <span class="indicator-option-body">
+                    <span class="indicator-option-title">
+                      <strong>{{ definition.name }}</strong>
+                      <small>
+                        {{ definition.overlay ? 'Sobre o preço' : 'Painel próprio' }}
+                      </small>
+                    </span>
+                    <span class="indicator-option-description">
+                      {{ definition.description }}
+                    </span>
                   </span>
-                  <span class="indicator-option-description">
-                    {{ definition.description }}
-                  </span>
-                </span>
-              </button>
-
-              <!--
-                Accordion body. The indicator is already on the chart at this
-                point, so every change is judged against real data.
-              -->
-              <section
-                v-if="preview?.definition.id === definition.id"
-                class="indicator-inline-settings"
-              >
-                <IndicatorForm
-                  :key="preview.instance.instanceId"
-                  :calculated="calculated"
-                  :definition="preview.definition"
-                  :inputs="preview.instance.inputs"
-                  :populated-plots="populatedPlots"
-                  :styles="preview.instance.styles"
-                  @inputs="emit('inputs', $event)"
-                  @styles="emit('styles', $event)"
-                />
-                <footer class="indicator-inline-actions">
-                  <button type="button" @click="emit('discard')">
-                    Cancelar
-                  </button>
-                  <button
-                    class="indicator-apply"
-                    type="button"
-                    @click="emit('confirm')"
+                  <span
+                    v-if="appliedCounts.has(definition.id)"
+                    :title="`${appliedCounts.get(definition.id)} no gráfico`"
+                    class="indicator-option-applied"
                   >
-                    Aplicar
-                  </button>
-                </footer>
-              </section>
-            </div>
+                    <Check aria-hidden="true" />
+                    <i v-if="(appliedCounts.get(definition.id) ?? 0) > 1">
+                      {{ appliedCounts.get(definition.id) }}
+                    </i>
+                  </span>
+                </button>
+
+                <!--
+                  Accordion body. The indicator is already on the chart at this
+                  point, so every change is judged against real data and
+                  closing the panel cannot undo it.
+                -->
+                <section
+                  v-if="editing && expanded(definition)"
+                  class="indicator-inline-settings"
+                >
+                  <IndicatorForm
+                    :key="editing.instance.instanceId"
+                    :calculated="calculated"
+                    :definition="editing.definition"
+                    :inputs="editing.instance.inputs"
+                    :populated-plots="populatedPlots"
+                    :styles="editing.instance.styles"
+                    @inputs="emit('inputs', $event)"
+                    @styles="emit('styles', $event)"
+                  />
+                  <footer class="indicator-inline-actions">
+                    <button
+                      class="indicator-destructive"
+                      type="button"
+                      @click="emit('remove')"
+                    >
+                      Remover do gráfico
+                    </button>
+                    <button
+                      class="indicator-apply"
+                      type="button"
+                      @click="emit('collapse')"
+                    >
+                      Concluído
+                    </button>
+                  </footer>
+                </section>
+              </div>
+            </template>
           </template>
         </div>
       </div>

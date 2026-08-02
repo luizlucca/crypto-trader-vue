@@ -246,6 +246,57 @@
   color: var(--text);
 }
 
+/*
+ * The row carries its own state: choosing an indicator has a visible
+ * consequence in the list, not only on the chart behind the panel.
+ */
+.indicator-option-applied {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--positive);
+}
+
+.indicator-option-applied svg {
+  width: 13px;
+  height: 13px;
+}
+
+.indicator-option-applied i {
+  font-size: 10px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.indicator-option.on-chart {
+  border-color: color-mix(in srgb, var(--positive) 26%, transparent);
+}
+
+.indicator-option.on-chart .indicator-option-title strong {
+  color: var(--text-strong);
+}
+
+.indicator-categories .indicator-category-applied {
+  margin-bottom: 4px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--border-soft);
+  border-radius: 6px 6px 0 0;
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.indicator-categories .indicator-category-applied:disabled {
+  color: var(--muted);
+  font-weight: 400;
+  cursor: default;
+}
+
+.indicator-categories .indicator-category-applied:disabled:hover {
+  background: none;
+}
+
 .indicator-unverified-note {
   display: flex;
   gap: 8px;
@@ -287,13 +338,42 @@
   background: color-mix(in srgb, var(--overlay-surface) 86%, var(--panel));
 }
 
+/*
+ * Sticky on purpose. The actions used to sit after the fields, and an
+ * indicator with fifteen parameters pushed them below the fold — the panel was
+ * closed without them ever being seen.
+ */
 .indicator-inline-actions {
+  position: sticky;
+  z-index: 1;
+  bottom: -11px;
   display: flex;
   gap: 8px;
-  justify-content: flex-end;
-  margin-top: 12px;
-  padding-top: 11px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px -13px -11px;
+  padding: 11px 13px;
   border-top: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--overlay-surface) 94%, var(--panel));
+  border-radius: 0 0 8px 8px;
+}
+
+/*
+ * Removing is named, never implied by closing a panel — so it has to be read
+ * at a glance. It stays quieter than the primary action through colour, not
+ * through opacity: a destructive action that is hard to see is a trap.
+ */
+.indicator-inline-actions .indicator-destructive {
+  border-color: color-mix(in srgb, var(--negative) 42%, var(--border));
+  background: color-mix(in srgb, var(--negative) 10%, var(--control-bg));
+  color: color-mix(in srgb, var(--negative) 78%, var(--text-strong));
+  font-weight: 500;
+}
+
+.indicator-inline-actions .indicator-destructive:hover {
+  border-color: var(--negative);
+  background: color-mix(in srgb, var(--negative) 20%, var(--control-bg));
+  color: var(--negative);
 }
 
 .indicator-inline-actions button,
@@ -693,10 +773,16 @@
 
 .indicator-field > span {
   overflow: hidden;
-  color: var(--text);
+  /* The control is what the eye is looking for while calibrating; the label
+     only has to be readable. */
+  color: var(--muted);
   font-size: 11.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.indicator-field:hover > span {
+  color: var(--text);
 }
 
 .indicator-field > input[type="checkbox"] {

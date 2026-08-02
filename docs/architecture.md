@@ -171,7 +171,7 @@ resolver para branco-sobre-branco no claro.
 
 O tema fica em um serviço compartilhado e persistido no `localStorage`.
 Luminosidade (`dark`/`light`) e paleta são estados independentes. O catálogo
-possui 30 presets fixos, cada um com variantes clara e escura e cores
+possui 38 presets fixos, cada um com variantes clara e escura e cores
 semânticas próprias para alta, baixa, volume, superfícies, texto e destaque.
 A raiz recebe `data-theme`, `data-theme-preset` e custom properties semânticas.
 A janela de pesquisa usa a mesma origem/storage e inicializa diretamente na
@@ -208,7 +208,7 @@ altura e reflow do conteúdo são aplicados uma única vez ao soltar. Geometria,
 posição e tamanho ficam no `localStorage`.
 
 Temas personalizados são definições pequenas e validadas, limitadas a 12 por
-dispositivo. Cada definição parte de um dos 30 presets e guarda cores e
+dispositivo. Cada definição parte de um dos presets e guarda cores e
 opacidades separadas para claro e escuro. O editor não altera o chart enquanto
 o usuário experimenta: sua miniatura é local. Ao salvar, candles e fundo podem
 usar RGBA; preços e textos mantêm versões sólidas para preservar contraste.

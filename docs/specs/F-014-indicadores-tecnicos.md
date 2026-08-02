@@ -190,9 +190,38 @@ real — fechar a janela sem confirmar deixava o indicador aplicado, porque não
 havia diferença entre "estou avaliando" e "quero manter".
 
 O seletor passou a expandir as configurações do indicador escolhido em sanfona,
-usando a própria área do modal. O indicador é desenhado no gráfico assim que é
-escolhido, para que os ajustes sejam julgados contra dados reais, mas fica
-**não confirmado**: cancelar, escolher outro ou fechar o seletor o remove.
+usando a própria área do modal.
+
+### Escolher já é aplicar
+
+A primeira versão da sanfona desenhava o indicador como **não confirmado**:
+fechar o seletor sem clicar em Aplicar o removia. Isso produzia perda de
+trabalho silenciosa, e por um motivo que nenhuma posição de botão resolve — o
+gráfico já estava mostrando o indicador. A interface afirmava "aplicado" e o
+sistema considerava "provisório"; entre as duas versões, quem opera acredita na
+que está vendo. Pior: o desfecho destrutivo era o padrão do gesto mais comum,
+fechar o painel, e ficava mais provável quanto mais parâmetros o indicador
+tinha, porque o Aplicar descia para fora da área visível.
+
+**Escolher um indicador o aplica.** A sanfona passou a editar algo que existe,
+não a propor algo que talvez exista. Fechar o painel, apertar Esc ou colapsar a
+sanfona preservam o que está no gráfico; remover é uma ação nomeada,
+`Remover do gráfico`, nunca a consequência implícita de fechar algo.
+
+Três apoios sustentam o modelo:
+
+- O rodapé de ações é **sticky no pé da sanfona**. Um indicador com quinze
+  parâmetros não pode empurrar a ação primária para fora da vista.
+- A linha do catálogo carrega o próprio estado — um check, e a contagem quando
+  há mais de uma instância. O clique tem consequência visível na lista, não
+  apenas no gráfico atrás do painel.
+- A navegação lateral abre com **No gráfico**, que filtra o catálogo pelo que
+  está aplicado. É onde a contagem cresce a cada escolha, e é o antídoto para o
+  empilhamento: quem explorou cinco indicadores vê os cinco e remove dali.
+
+Aplicar o mesmo indicador duas vezes continua possível e passou a ser
+deliberado: colapsar a sanfona e escolher de novo. É assim que duas médias de
+períodos diferentes convivem no mesmo gráfico.
 
 O formulário vive em `IndicatorForm.vue` e é usado por dois hosts — a sanfona
 do seletor e a janela flutuante que edita um indicador já aplicado. Os seis
@@ -222,7 +251,7 @@ Esses objetos visuais são criados somente quando o primeiro resultado contém
 pontos válidos. Latência ou falha no cálculo não pode mais ser representada por
 um pane vazio permanente.
 As cores vêm de `plotConfig`, mas
-passam pelo tema: um indicador precisa continuar legível nos 30 presets
+passam pelo tema: um indicador precisa continuar legível nos presets
 (F-009), então a cor declarada é o padrão, e o usuário pode sobrescrevê-la.
 
 `setData()` é usado no resultado completo — é a operação correta aqui, já que a
@@ -430,6 +459,9 @@ Além disso:
 - [x] Abrir o seletor não recarrega o catálogo nem cria Worker.
 - [x] Cada linha tem cor, espessura, opacidade e visibilidade próprias.
 - [x] O diálogo de configuração abre centrado e pode ser movido.
+- [x] Fechar o seletor nunca remove um indicador do gráfico.
+- [x] A ação primária da sanfona é visível independentemente do número de
+      parâmetros do indicador.
 - [x] O tipo de desenho de cada plot respeita o catálogo.
 - [ ] A legenda mostra os valores no ponto do cursor sem agendar render do Vue.
 - [ ] Os 10 indicadores listados têm teste contra valores de referência.
