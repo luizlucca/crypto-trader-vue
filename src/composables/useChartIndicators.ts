@@ -1,9 +1,11 @@
 import { shallowRef } from 'vue'
 import {
   AreaSeries,
+  CandlestickSeries,
   createSeriesMarkers,
   HistogramSeries,
   LineSeries,
+  LineStyle,
   type IChartApi,
   type IPaneApi,
   type ISeriesApi,
@@ -15,6 +17,7 @@ import {
 } from 'lightweight-charts'
 import type {
   IndicatorBar,
+  IndicatorCandlePatch,
   IndicatorMarker,
   IndicatorPlotPatch,
 } from '@/domain/indicatorProtocol'
@@ -79,6 +82,78 @@ export interface ChartIndicatorsOptions {
 }
 
 /**
+ * Candle outputs share the series map with the plots, so their keys are
+ * prefixed: the catalog is free to name a candle output `plot0` too.
+ */
+function candleSeriesId(plotId: string): string {
+  return `candles:${plotId}`
+}
+
+/** The indicator paints each bar itself; the series must not impose a colour. */
+const CANDLE_OPTIONS = {
+  priceLineVisible: false,
+  lastValueVisible: false,
+} as const
+
+function applyCandlePatch(
+  series: ISeriesApi<SeriesType>,
+  patch: IndicatorCandlePatch,
+): void {
+  const colored = patch.palette.length > 0
+  const point = (index: number) => {
+    const shade = colored ? patch.palette[patch.colorIndex[index]] : undefined
+    return {
+      time: patch.time[index] as UTCTimestamp,
+      open: patch.open[index],
+      high: patch.high[index],
+      low: patch.low[index],
+      close: patch.close[index],
+      ...(shade === undefined ? {} : shade),
+    }
+  }
+  if (patch.full) {
+    const points = new Array(patch.time.length)
+    for (let i = 0; i < patch.time.length; i += 1) {
+      points[i] = point(i)
+    }
+    series.setData(points)
+    return
+  }
+  for (let i = 0; i < patch.time.length; i += 1) {
+    series.update(point(i))
+  }
+}
+
+/** Names the worker's raw output keys in the language of the interface. */
+const OUTPUT_LABELS: Record<string, string> = {
+  lines: 'linhas livres',
+  boxes: 'caixas',
+  labels: 'rótulos',
+  bgColors: 'faixas de fundo',
+  barColors: 'coloração das barras',
+  pivots: 'pivôs',
+}
+
+/**
+ * Turns a blank result into a reason. An indicator that draws nothing is either
+ * asking for a kind of drawing this chart has no counterpart for, or genuinely
+ * has no points to show — and the operator needs to tell those apart before
+ * trusting an empty pane.
+ */
+function explainBlankResult(name: string, outputs: readonly string[]): string {
+  if (outputs.length === 0) {
+    return `${name} não produziu valores com os parâmetros atuais e o `
+      + 'histórico carregado.'
+  }
+  const named = outputs.map((output) => OUTPUT_LABELS[output] ?? output)
+  const listed = named.length === 1
+    ? named[0]
+    : `${named.slice(0, -1).join(', ')} e ${named[named.length - 1]}`
+  return `${name} desenha por ${listed}, um recurso que o gráfico ainda não `
+    + 'suporta.'
+}
+
+/**
  * Owns the chart-side lifecycle of applied indicators.
  *
  * Nothing here is reactive. Applying a patch writes straight into
@@ -106,6 +181,12 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     if (options.onError) {
       created.setErrorHandler(options.onError)
     }
+    created.setNoOutputHandler((instanceId, outputs) => {
+      const entry = mounted.get(instanceId)
+      if (entry) {
+        options.onError?.(explainBlankResult(entry.definition.name, outputs))
+      }
+    })
     client = created
     return created
   }
@@ -140,12 +221,13 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     instanceId: string,
     patches: IndicatorPlotPatch[],
     markers?: IndicatorMarker[],
+    candles?: IndicatorCandlePatch[],
   ): void {
     const entry = mounted.get(instanceId)
     if (!entry) {
       return
     }
-    const createdNow = ensureChartObjects(entry, patches)
+    const createdNow = ensureChartObjects(entry, patches, candles)
     const newlyPopulated: string[] = []
     try {
       if (markers) {
@@ -153,6 +235,19 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         if (markers.length > 0 && !entry.populated.has('__markers')) {
           newlyPopulated.push('__markers')
         }
+      }
+      for (const patch of candles ?? []) {
+        const series = entry.series.get(candleSeriesId(patch.plotId))
+        if (!series) {
+          throw new Error(
+            `Série de velas ${patch.plotId} não está montada em `
+            + entry.definition.name,
+          )
+        }
+        if (!entry.populated.has(patch.plotId)) {
+          newlyPopulated.push(patch.plotId)
+        }
+        applyCandlePatch(series, patch)
       }
       for (const patch of patches) {
         const series = entry.series.get(patch.plotId)
@@ -279,6 +374,42 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
   }
 
   /**
+   * Reference levels declared by the indicator: the RSI 30/70 band, the MACD
+   * zero line, the stochastic 20/80. Without them an oscillator is a shape with
+   * no scale to read it against, which is precisely what the pane is for.
+   *
+   * Price lines belong to the series and are disposed with it, so they need no
+   * bookkeeping of their own. Only oscillators declare levels — a fixed price
+   * drawn across the candle pane would be meaningless — and the guard keeps it
+   * that way if the catalog ever changes.
+   */
+  function createHLines(
+    definition: IndicatorDefinition,
+    anchor: ISeriesApi<SeriesType> | undefined,
+  ): void {
+    if (!anchor || definition.overlay) {
+      return
+    }
+    for (const hline of definition.hlines) {
+      if (!Number.isFinite(hline.price)) {
+        continue
+      }
+      anchor.createPriceLine({
+        price: hline.price,
+        color: hline.color ?? '#787B86',
+        lineWidth: 1,
+        lineStyle: hline.linestyle === 'dashed'
+          ? LineStyle.Dashed
+          : hline.linestyle === 'dotted' ? LineStyle.Dotted : LineStyle.Solid,
+        // The pane's own price scale already shows the values; a label per
+        // level would cover a third of a 120px pane.
+        axisLabelVisible: false,
+        title: '',
+      })
+    }
+  }
+
+  /**
    * Mounts visual objects only once the worker has produced drawable data.
    * A slow or failed calculation therefore cannot expose a permanent empty
    * pane, and the ordinary realtime path pays only the `series.size` check.
@@ -286,11 +417,11 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
   function ensureChartObjects(
     entry: MountedIndicator,
     patches: IndicatorPlotPatch[],
+    candles?: IndicatorCandlePatch[],
   ): boolean {
-    if (
-      entry.series.size > 0
-      || !patches.some((patch) => patch.time.length > 0)
-    ) {
+    const hasData = patches.some((patch) => patch.time.length > 0)
+      || (candles?.length ?? 0) > 0
+    if (entry.series.size > 0 || !hasData) {
       return false
     }
     const chart = options.chart()
@@ -307,6 +438,19 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         entry.pane,
         entry.series,
       )
+      /*
+       * Candle outputs are not declared in `plotConfig` — the catalog describes
+       * them only through the result — so the first result is what says they
+       * exist. The CVD, the volume delta and the Heikin-Ashi variants draw
+       * exclusively this way.
+       */
+      for (const patch of candles ?? []) {
+        const id = candleSeriesId(patch.plotId)
+        entry.series.set(id, entry.pane
+          ? entry.pane.addSeries(CandlestickSeries, CANDLE_OPTIONS)
+          : chart.addSeries(CandlestickSeries, CANDLE_OPTIONS, 0))
+      }
+      createHLines(entry.definition, entry.series.values().next().value)
       return true
     } catch (error) {
       removeChartObjects(chart, entry)

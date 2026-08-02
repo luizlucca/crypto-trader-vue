@@ -59,6 +59,9 @@ export interface IndicatorHLineSpec {
   id: string
   price: number
   color?: string
+  /** Only oscillators declare these; the catalog uses these three names. */
+  linestyle?: 'solid' | 'dashed' | 'dotted'
+  title?: string
 }
 
 /**

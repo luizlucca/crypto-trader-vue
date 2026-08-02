@@ -146,10 +146,10 @@ são enviados pelo worker só quando o conjunto muda, pelo mesmo princípio do
 diff dos plots. As formas do catálogo (`triangleUp`/`triangleDown`) não existem
 na biblioteca e são mapeadas para setas.
 
-Restam ~50 que não produzem nada com os parâmetros padrão — alguns dependem de
-uma opção ligada, outros usam recursos ainda não suportados. Para esses o
-formulário **diz isso explicitamente**. Num app de onde se decide compra e
-venda, um indicador que silenciosamente não faz nada é pior que um que avisa.
+Restam os que não produzem nada com os parâmetros padrão — alguns dependem de
+uma opção ligada, outros usam recursos ainda não suportados. Esses são
+identificados em tempo de cálculo e explicados ao operador, como descrito em
+[um painel em branco sempre tem explicação](#um-painel-em-branco-sempre-tem-explicação).
 
 ### Parâmetros agrupados por família
 
@@ -248,6 +248,70 @@ src/components/chart/indicators/
 Vue, serviço ou módulo de domínio a referencia. Trocar de biblioteca depois
 significa reescrever esse arquivo, não a feature.
 
+### Níveis de referência do oscilador
+
+35 indicadores declaram `hlineConfig`: a banda 30/70 do RSI, o zero do MACD, o
+20/80 do estocástico. São eles que dão escala ao painel — sem eles o oscilador
+é uma forma sem régua, e a leitura de sobrecompra e sobrevenda deixa de existir.
+
+Entram como `createPriceLine` na primeira série do indicador, com a cor e o
+estilo declarados pelo catálogo. Price lines pertencem à série e morrem com
+ela, então não exigem controle próprio na remoção. Nenhum indicador de overlay
+declara níveis — um preço fixo cruzando o painel de candles não teria
+significado — e a montagem só ocorre em painel próprio, por garantia.
+
+### Indicadores que desenham as próprias velas
+
+Sete entradas não devolvem linhas: devolvem OHLC. O CVD, o Volume Delta, as
+variantes de Heikin-Ashi, o RSI Candles e o Bollinger Bars são definidos assim
+na biblioteca — e é assim que aparecem na TradingView. Eles não declaram nada
+em `plotConfig`; a existência da saída só é conhecida pelo resultado.
+
+Por isso a montagem é dirigida pelo resultado, e não pela definição: chegou um
+`IndicatorCandlePatch`, cria-se uma `CandlestickSeries` no painel do indicador.
+Encaixa no mesmo desenho de montagem tardia já usado para as linhas.
+
+As cores vêm da biblioteca, por barra. Trafegam como paleta mais um índice por
+barra — uma série usa duas ou três cores distintas, e mandar a string por barra
+seria a maior parte da mensagem no caminho quente. O diff é o mesmo das linhas:
+num tick comum só a cauda viaja.
+
+### Um painel em branco sempre tem explicação
+
+O que resta sem desenho são **11 entradas** que se expressam por `lines`,
+`boxes`, `labels`, `bgColors`, `barColors` ou `pivots` — Zig Zag, Price &
+Volume Profile, Liquidity Levels, Auto Key Levels — formas que exigem
+primitivas de desenho, não séries. Outras declaram plots e devolvem apenas
+`NaN` com os parâmetros padrão, por período maior que o histórico.
+
+Nos dois casos o resultado era o mesmo para quem opera: um painel vazio,
+indistinguível de falha. Quando uma rodada completa não produz nada, o Worker
+responde `no-output` em vez de um resultado vazio, com as chaves que ele de
+fato preencheu, e a interface diz qual dos dois casos aconteceu. A mensagem
+existe porque decidir por um indicador em branco é pior do que não usá-lo.
+
+`no-output` conclui a rodada para aquela instância: recalcular não muda o tipo
+de saída, então a recuperação automática não é acionada.
+
+### Mapa do catálogo
+
+Medido sobre 600 barras de caminhada aleatória, com os parâmetros padrão:
+
+| Situação | Entradas |
+| --- | --- |
+| Desenham por linhas, histogramas, áreas ou marcadores | 402 |
+| Desenham pelas próprias velas | 7 |
+| Dependem de primitivas ainda não implementadas | 11 |
+| Padrões de candlestick — desenham quando o padrão ocorre | 30 |
+| Não produzem valores com os parâmetros padrão | 7 |
+
+### O catálogo é lido uma vez por processo
+
+As 457 definições são dados estáticos da biblioteca. Ficam em cache no módulo
+de serviço, e não por cliente: abrir o seletor deixa de custar uma ida ao
+Worker e uma cópia estruturada do registro inteiro, e um gráfico sem indicador
+aplicado nunca cria um Worker apenas para listar.
+
 ### Valores no cursor
 
 `subscribeCrosshairMove` entrega `param.seriesData`. A legenda lê dali e escreve
@@ -260,9 +324,9 @@ Os indicadores aplicados pertencem à aba, junto com seleção e período, e sã
 salvos no `localStorage` por aba. Reabrir o app restaura o que estava aplicado.
 
 **Fora de escopo:** editor de indicadores próprios, alertas sobre valores de
-indicador, indicadores que dependem de outro indicador como fonte, e os 58
-padrões de candle — eles produzem `markers`, não `plots`, e merecem tratamento
-visual próprio.
+indicador, indicadores que dependem de outro indicador como fonte, e o desenho
+por caixas, linhas livres e rótulos — as 11 entradas que dependem disso são
+identificadas em tempo de cálculo e explicadas ao operador, não desenhadas.
 
 ## Testes
 
@@ -305,6 +369,10 @@ Além disso:
       de 50 ms, e o custo por frame do gráfico não regride além de 20% do
       baseline sem indicadores.
 - [ ] Os indicadores da comunidade aparecem no seletor, sinalizados.
+- [x] Os níveis declarados pelo indicador são desenhados no painel próprio.
+- [x] Indicadores de saída OHLC desenham como velas, com as cores da biblioteca.
+- [x] Um painel que fica em branco produz uma explicação, não silêncio.
+- [x] Abrir o seletor não recarrega o catálogo nem cria Worker.
 - [x] Cada linha tem cor, espessura, opacidade e visibilidade próprias.
 - [x] O diálogo de configuração abre centrado e pode ser movido.
 - [x] O tipo de desenho de cada plot respeita o catálogo.

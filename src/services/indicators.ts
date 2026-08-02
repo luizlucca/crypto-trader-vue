@@ -1,5 +1,6 @@
 import type {
   IndicatorBar,
+  IndicatorCandlePatch,
   IndicatorMarker,
   IndicatorBarsPayload,
   IndicatorPlotPatch,
@@ -17,6 +18,7 @@ export interface IndicatorPatchHandler {
     instanceId: string,
     patches: IndicatorPlotPatch[],
     markers?: IndicatorMarker[],
+    candles?: IndicatorCandlePatch[],
   ): void
 }
 
@@ -58,6 +60,17 @@ const MAX_WORKER_RECOVERIES = 2
 const MAX_INSTANCE_RECOVERIES = 2
 
 /**
+ * The catalog is static library data — 457 definitions that cannot change while
+ * the process runs. Holding it here means opening the picker costs no worker
+ * round trip and no structured clone of the whole registry, and that a chart
+ * with no indicators applied never spins a worker just to list them.
+ *
+ * Module scope on purpose: every chart and every tab reads the same catalog.
+ */
+let catalogCache: IndicatorDefinition[] | undefined
+let catalogInFlight: Promise<IndicatorDefinition[]> | undefined
+
+/**
  * Client for the indicator worker.
  *
  * Created on demand and terminated when the last indicator is removed, so a
@@ -87,6 +100,7 @@ export function createIndicatorClient(
   let activeRound: ActiveRound | undefined
   let pending: { full: boolean } | undefined
   let onError: ((message: string) => void) | undefined
+  let onNoOutput: ((instanceId: string, outputs: string[]) => void) | undefined
   let catalogWaiters: CatalogWaiter[] = []
   let workerRecoveries = 0
   let disposed = false
@@ -234,6 +248,15 @@ export function createIndicatorClient(
       settle(message.generation, message.roundId)
       return
     }
+    if (message.kind === 'no-output') {
+      if (matchesActiveRound(message)) {
+        // Accounted for as handled: the round did complete for this instance,
+        // and repeating it would produce the same empty result.
+        activeRound?.failed?.add(message.instanceId)
+        onNoOutput?.(message.instanceId, message.outputs)
+      }
+      return
+    }
     if (message.kind === 'error') {
       if (matchesActiveRound(message)) {
         onError?.(message.message)
@@ -271,7 +294,12 @@ export function createIndicatorClient(
       return
     }
     try {
-      onPatch(message.instanceId, message.patches, message.markers)
+      onPatch(
+        message.instanceId,
+        message.patches,
+        message.markers,
+        message.candles,
+      )
       round.received?.add(message.instanceId)
       applicationRetries.delete(message.instanceId)
       instanceRecoveries.delete(message.instanceId)
@@ -427,10 +455,29 @@ export function createIndicatorClient(
 
   return {
     catalog(): Promise<IndicatorDefinition[]> {
-      return new Promise((resolve, reject) => {
+      if (catalogCache) {
+        return Promise.resolve(catalogCache)
+      }
+      if (catalogInFlight) {
+        return catalogInFlight
+      }
+      const request = new Promise<IndicatorDefinition[]>((resolve, reject) => {
         catalogWaiters.push({ resolve, reject })
         send({ kind: 'catalog' })
-      })
+      }).then(
+        (definitions) => {
+          catalogCache = definitions
+          catalogInFlight = undefined
+          return definitions
+        },
+        (error: unknown) => {
+          // A failed fetch must not be cached: the next open tries again.
+          catalogInFlight = undefined
+          throw error
+        },
+      )
+      catalogInFlight = request
+      return request
     },
 
     /** Resends the full history after it changed underneath the worker. */
@@ -530,6 +577,13 @@ export function createIndicatorClient(
 
     setErrorHandler(handler: (message: string) => void): void {
       onError = handler
+    },
+
+    /** Reports a complete calculation that produced nothing to draw. */
+    setNoOutputHandler(
+      handler: (instanceId: string, outputs: string[]) => void,
+    ): void {
+      onNoOutput = handler
     },
 
     dispose,

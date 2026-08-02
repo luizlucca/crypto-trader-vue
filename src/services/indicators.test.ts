@@ -294,4 +294,51 @@ describe('indicator worker client', () => {
     ).toHaveLength(100)
     client.dispose()
   })
+
+  it('reports an undrawable output without trying to repair it', () => {
+    const workers: FakeWorker[] = []
+    const unsupported = vi.fn()
+    const client = createIndicatorClient(vi.fn(), () => bars, workerFactory(workers))
+    client.setNoOutputHandler(unsupported)
+
+    client.attach('cvd-one', 'cvd', {})
+    client.compute(true)
+    const worker = workers[0]
+    const round = worker.computes()[0]
+    const attachesBefore = worker.attaches().length
+
+    worker.emit({
+      kind: 'no-output',
+      generation: round.generation,
+      roundId: round.roundId,
+      instanceId: 'cvd-one',
+      instanceRevision: 1,
+      outputs: ['plotCandles'],
+    })
+    worker.emit(computed(round))
+
+    expect(unsupported).toHaveBeenCalledWith('cvd-one', ['plotCandles'])
+    // Recalculating cannot change an unsupported output kind: no repair round,
+    // no new revision, no compute loop.
+    expect(worker.attaches()).toHaveLength(attachesBefore)
+    expect(worker.computes()).toHaveLength(1)
+    client.dispose()
+  })
+
+  it('serves the catalog from cache instead of asking the worker again', async () => {
+    const workers: FakeWorker[] = []
+    const client = createIndicatorClient(vi.fn(), () => bars, workerFactory(workers))
+
+    const first = client.catalog()
+    const definitions = [{ id: 'sma' }] as never
+    workers[0].emit({ kind: 'catalog', definitions })
+    expect(await first).toBe(definitions)
+
+    client.dispose()
+    // A disposed client would have no worker to ask; the cache still answers.
+    const later = createIndicatorClient(vi.fn(), () => bars, workerFactory(workers))
+    expect(await later.catalog()).toBe(definitions)
+    expect(workers).toHaveLength(1)
+    later.dispose()
+  })
 })

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { LineStyle } from 'lightweight-charts'
 import type {
   IChartApi,
   IPaneApi,
@@ -34,6 +35,12 @@ const definition: IndicatorDefinition = {
 
 class FakeSeries {
   points: unknown[] = []
+  readonly priceLines: { price: number, lineStyle: number }[] = []
+
+  createPriceLine(options: { price: number, lineStyle: number }): unknown {
+    this.priceLines.push(options)
+    return {}
+  }
 
   setData(points: unknown[]): void {
     this.points = points
@@ -81,7 +88,12 @@ function chartHarness() {
       panes.push(pane)
       return pane as unknown as IPaneApi<Time>
     }),
-    addSeries: vi.fn(),
+    // Overlays go straight to the chart with an explicit pane index.
+    addSeries: vi.fn((
+      _type: unknown,
+      _options: unknown,
+      paneIndex = 0,
+    ) => panes[paneIndex].addSeries()),
     removeSeries: vi.fn((target: ISeriesApi<SeriesType>) => {
       for (const pane of panes) {
         const index = pane.series.indexOf(target as unknown as FakeSeries)
@@ -96,7 +108,26 @@ function chartHarness() {
       })
     }),
   }
-  return { chart: chart as unknown as IChartApi, panes, api: chart }
+  return {
+    chart: chart as unknown as IChartApi,
+    panes,
+    api: chart,
+    /** Every reference level drawn, in creation order. */
+    priceLines: () => panes.flatMap((pane) => (
+      pane.series.flatMap((series) => series.priceLines)
+    )),
+  }
+}
+
+function stubClient(): IndicatorClient {
+  return {
+    attach: vi.fn(),
+    compute: vi.fn(),
+    detach: vi.fn(),
+    setErrorHandler: vi.fn(),
+    setNoOutputHandler: vi.fn(),
+    dispose: vi.fn(),
+  } as unknown as IndicatorClient
 }
 
 function patches(): IndicatorPlotPatch[] {
@@ -113,13 +144,7 @@ describe('chart indicator visual lifecycle', () => {
   it('creates an oscillator pane only after data arrives and removes it cleanly', () => {
     const { chart, panes, api } = chartHarness()
     let apply!: IndicatorPatchHandler
-    const client = {
-      attach: vi.fn(),
-      compute: vi.fn(),
-      detach: vi.fn(),
-      setErrorHandler: vi.fn(),
-      dispose: vi.fn(),
-    } as unknown as IndicatorClient
+    const client = stubClient()
     const indicators = useChartIndicators({
       chart: () => chart,
       candleSeries: () => null,
@@ -148,5 +173,149 @@ describe('chart indicator visual lifecycle', () => {
     expect(api.removeSeries).toHaveBeenCalledTimes(4)
     expect(api.removePane).toHaveBeenCalledWith(2)
     expect(panes).toHaveLength(2)
+  })
+
+  it('draws the declared reference levels on the oscillator pane', () => {
+    const { chart, priceLines } = chartHarness()
+    let apply!: IndicatorPatchHandler
+    const indicators = useChartIndicators({
+      chart: () => chart,
+      candleSeries: () => null,
+      bars: () => ({
+        time: [], open: [], high: [], low: [], close: [], volume: [],
+      }),
+      createClient: (handler) => {
+        apply = handler
+        return stubClient()
+      },
+    })
+
+    const withLevels: IndicatorDefinition = {
+      ...definition,
+      hlines: [
+        { id: 'upper', price: 70, color: '#787B86', linestyle: 'dashed' },
+        { id: 'mid', price: 50 },
+        { id: 'lower', price: 30, linestyle: 'dotted' },
+      ],
+    }
+    const instance = indicators.add(withLevels)
+    apply(instance!.instanceId, patches())
+
+    // Anchored on one series: three levels, not one set per plot.
+    const drawn = priceLines()
+    expect(drawn.map((line) => line.price)).toEqual([70, 50, 30])
+    expect(drawn.map((line) => line.lineStyle)).toEqual([
+      LineStyle.Dashed,
+      LineStyle.Solid,
+      LineStyle.Dotted,
+    ])
+  })
+
+  it('keeps reference levels off the candle pane for overlays', () => {
+    const { chart, priceLines } = chartHarness()
+    let apply!: IndicatorPatchHandler
+    const indicators = useChartIndicators({
+      chart: () => chart,
+      candleSeries: () => null,
+      bars: () => ({
+        time: [], open: [], high: [], low: [], close: [], volume: [],
+      }),
+      createClient: (handler) => {
+        apply = handler
+        return stubClient()
+      },
+    })
+
+    const overlay: IndicatorDefinition = {
+      ...definition,
+      overlay: true,
+      hlines: [{ id: 'zero', price: 0 }],
+    }
+    const instance = indicators.add(overlay)
+    apply(instance!.instanceId, patches())
+
+    expect(priceLines()).toHaveLength(0)
+  })
+
+  it('mounts a candlestick series for an indicator that draws its own candles', () => {
+    const { chart, panes, api } = chartHarness()
+    let apply!: IndicatorPatchHandler
+    const indicators = useChartIndicators({
+      chart: () => chart,
+      candleSeries: () => null,
+      bars: () => ({
+        time: [], open: [], high: [], low: [], close: [], volume: [],
+      }),
+      createClient: (handler) => {
+        apply = handler
+        return stubClient()
+      },
+    })
+
+    // The CVD declares no plots at all: the result is what says it draws.
+    const cvd: IndicatorDefinition = {
+      ...definition,
+      id: 'cvd',
+      name: 'Cumulative Volume Delta',
+      plots: [],
+    }
+    const instance = indicators.add(cvd)
+    apply(instance!.instanceId, [], undefined, [{
+      plotId: 'cvd',
+      full: true,
+      from: 0,
+      time: Float64Array.from([1, 2, 3]),
+      open: Float64Array.from([0, 0, 0]),
+      high: Float64Array.from([10, 12, 14]),
+      low: Float64Array.from([-2, -1, 0]),
+      close: Float64Array.from([8, 11, 13]),
+      colorIndex: Uint8Array.from([0, 0, 1]),
+      palette: [
+        { color: '#26A69A', borderColor: '#26A69A', wickColor: '#26A69A' },
+        { color: '#EF5350', borderColor: '#EF5350', wickColor: '#EF5350' },
+      ],
+    }])
+
+    expect(api.addPane).toHaveBeenCalledOnce()
+    expect(panes[2].series).toHaveLength(1)
+    expect(panes[2].series[0].points).toEqual([
+      { time: 1, open: 0, high: 10, low: -2, close: 8, color: '#26A69A', borderColor: '#26A69A', wickColor: '#26A69A' },
+      { time: 2, open: 0, high: 12, low: -1, close: 11, color: '#26A69A', borderColor: '#26A69A', wickColor: '#26A69A' },
+      { time: 3, open: 0, high: 14, low: 0, close: 13, color: '#EF5350', borderColor: '#EF5350', wickColor: '#EF5350' },
+    ])
+
+    indicators.remove(instance!.instanceId)
+    expect(api.removePane).toHaveBeenCalledWith(2)
+  })
+
+  it('reports an indicator whose output kind the chart cannot draw', () => {
+    const { chart } = chartHarness()
+    let notify!: (instanceId: string, outputs: string[]) => void
+    const onError = vi.fn()
+    const indicators = useChartIndicators({
+      chart: () => chart,
+      candleSeries: () => null,
+      bars: () => ({
+        time: [], open: [], high: [], low: [], close: [], volume: [],
+      }),
+      onError,
+      createClient: () => ({
+        ...stubClient(),
+        setNoOutputHandler: (handler: typeof notify) => {
+          notify = handler
+        },
+      } as unknown as IndicatorClient),
+    })
+
+    const instance = indicators.add(definition)
+    notify(instance!.instanceId, [])
+    expect(onError.mock.calls[0][0]).toContain('não produziu valores')
+    onError.mockClear()
+
+    notify(instance!.instanceId, ['lines', 'boxes'])
+
+    expect(onError).toHaveBeenCalledOnce()
+    expect(onError.mock.calls[0][0]).toContain('MFI/RSI Bollinger Bands')
+    expect(onError.mock.calls[0][0]).toContain('linhas livres e caixas')
   })
 })

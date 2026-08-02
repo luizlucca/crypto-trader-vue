@@ -1,6 +1,7 @@
 import { indicatorRegistry } from 'lightweight-charts-indicators'
 import type {
   IndicatorBar,
+  IndicatorCandlePatch,
   IndicatorMarker,
   IndicatorBarsPayload,
   IndicatorPlotPatch,
@@ -35,6 +36,7 @@ interface RegistryEntry {
   defaultInputs?: Record<string, unknown>
   calculate: (bars: unknown[], inputs: unknown) => {
     plots?: Record<string, { time: number, value: number }[]>
+    plotCandles?: Record<string, LibraryCandle[]>
     markers?: unknown[]
   }
 }
@@ -42,12 +44,26 @@ interface RegistryEntry {
 const registry = indicatorRegistry as unknown as RegistryEntry[]
 const byId = new Map(registry.map((entry) => [entry.id, entry]))
 
+/** A candle output of the indicator, as the library hands it over. */
+interface LibraryCandle {
+  time: number
+  open: number
+  high: number
+  low: number
+  close: number
+  color?: string
+  borderColor?: string
+  wickColor?: string
+}
+
 /** Retained per instance so a tick can be answered with a diff. */
 interface AttachedIndicator {
   definitionId: string
   instanceRevision: number
   inputs: IndicatorInputs
   previous: Map<string, { time: Float64Array, value: Float64Array }>
+  /** Same role as `previous`, for indicators that draw their own candles. */
+  previousCandles: Map<string, LibraryCandle[]>
   /** Serialised marker set, to send only when it actually changes. */
   previousMarkers: string
 }
@@ -187,6 +203,100 @@ function normalizePlotPoints(
   }
 }
 
+/** True when the two candles would draw identically. */
+function sameCandle(left: LibraryCandle, right: LibraryCandle): boolean {
+  return left.time === right.time
+    && left.open === right.open
+    && left.high === right.high
+    && left.low === right.low
+    && left.close === right.close
+    && left.color === right.color
+}
+
+/**
+ * Builds the candle patch for one output, on the same terms as the plot patch:
+ * only the tail travels on an ordinary tick, and anything that moved earlier
+ * forces a complete replacement because `update()` refuses to go back in time.
+ */
+function candlePatch(
+  plotId: string,
+  raw: LibraryCandle[],
+  previous: LibraryCandle[] | undefined,
+  forceFull: boolean,
+): IndicatorCandlePatch | undefined {
+  const points = raw.filter((candle) => (
+    Number.isFinite(candle?.time)
+    && Number.isFinite(candle?.open)
+    && Number.isFinite(candle?.high)
+    && Number.isFinite(candle?.low)
+    && Number.isFinite(candle?.close)
+  ))
+  if (points.length === 0) {
+    return undefined
+  }
+
+  let from = 0
+  if (!forceFull && previous && previous.length > 0 && previous.length <= points.length) {
+    while (from < previous.length && sameCandle(previous[from], points[from])) {
+      from += 1
+    }
+  }
+  const tailOnly = !forceFull && from >= (previous?.length ?? 0) - 1 && from > 0
+  if (!forceFull && tailOnly && from >= points.length) {
+    return undefined // Nothing moved.
+  }
+  const start = tailOnly ? from : 0
+  const count = points.length - start
+
+  const time = new Float64Array(count)
+  const open = new Float64Array(count)
+  const high = new Float64Array(count)
+  const low = new Float64Array(count)
+  const close = new Float64Array(count)
+  const colorIndex = new Uint8Array(count)
+  const palette: IndicatorCandlePatch['palette'] = []
+  const paletteIndex = new Map<string, number>()
+
+  for (let i = 0; i < count; i += 1) {
+    const candle = points[start + i]
+    time[i] = candle.time
+    open[i] = candle.open
+    high[i] = candle.high
+    low[i] = candle.low
+    close[i] = candle.close
+    if (candle.color === undefined) {
+      continue
+    }
+    const key = `${candle.color}|${candle.borderColor ?? ''}|${candle.wickColor ?? ''}`
+    let index = paletteIndex.get(key)
+    if (index === undefined) {
+      // 255 distinct colours in one indicator would mean a per-bar gradient,
+      // which no catalog entry does; the surplus reuses the first colour.
+      index = palette.length < 256 ? palette.length : 0
+      paletteIndex.set(key, index)
+      palette[index] = {
+        color: candle.color,
+        borderColor: candle.borderColor ?? candle.color,
+        wickColor: candle.wickColor ?? candle.color,
+      }
+    }
+    colorIndex[i] = index
+  }
+
+  return {
+    plotId,
+    full: !tailOnly,
+    from: start,
+    time,
+    open,
+    high,
+    low,
+    close,
+    colorIndex: palette.length > 0 ? colorIndex : new Uint8Array(0),
+    palette,
+  }
+}
+
 const MARKER_POSITIONS = new Set(['aboveBar', 'belowBar', 'inBar'])
 const MARKER_SHAPES = new Set(['circle', 'square', 'arrowUp', 'arrowDown'])
 
@@ -220,10 +330,47 @@ function normalizeMarkers(raw: unknown[] | undefined): IndicatorMarker[] {
   return markers.sort((left, right) => left.time - right.time)
 }
 
+/**
+ * Output kinds the chart pipeline cannot draw. The library expresses part of
+ * its catalog as boxes, free lines, labels or background bands, none of which
+ * map onto the series/marker protocol. Detecting them is what separates "still
+ * warming up" from "this one will never draw anything here" — the difference
+ * between waiting and removing the indicator.
+ */
+const UNSUPPORTED_OUTPUTS = [
+  'lines',
+  'boxes',
+  'labels',
+  'bgColors',
+  'barColors',
+  'pivots',
+] as const
+
+function unsupportedOutputs(result: Record<string, unknown>): string[] {
+  const found: string[] = []
+  for (const key of UNSUPPORTED_OUTPUTS) {
+    const value = result[key]
+    const filled = Array.isArray(value)
+      ? value.length > 0
+      : typeof value === 'object' && value !== null
+        && Object.keys(value).length > 0
+    if (filled) {
+      found.push(key)
+    }
+  }
+  return found
+}
+
 function computeInstance(
   indicator: AttachedIndicator,
   forceFull: boolean,
-): { patches: IndicatorPlotPatch[], markers?: IndicatorMarker[] } {
+): {
+  patches: IndicatorPlotPatch[]
+  candles: IndicatorCandlePatch[]
+  markers?: IndicatorMarker[]
+  /** Present when a complete round drew nothing; may be an empty list. */
+  undrawn?: string[]
+} {
   const entry = byId.get(indicator.definitionId)
   if (!entry) {
     throw new Error(`Indicador desconhecido: ${indicator.definitionId}`)
@@ -273,13 +420,46 @@ function computeInstance(
     })
   }
 
+  const candles: IndicatorCandlePatch[] = []
+  for (const [plotId, points] of Object.entries(result.plotCandles ?? {})) {
+    const patch = candlePatch(
+      plotId,
+      points,
+      indicator.previousCandles.get(plotId),
+      forceFull,
+    )
+    indicator.previousCandles.set(plotId, points)
+    if (patch) {
+      candles.push(patch)
+    }
+  }
+
   const markers = normalizeMarkers(result.markers)
+
+  /*
+   * Only a complete round can conclude anything: on a diff round an untouched
+   * plot is legitimately absent from `patches`, so "nothing here" would be a
+   * false alarm every tick.
+   */
+  if (
+    forceFull
+    && markers.length === 0
+    && candles.length === 0
+    && !patches.some((patch) => patch.time.length > 0)
+  ) {
+    return {
+      patches: [],
+      candles: [],
+      undrawn: unsupportedOutputs(result as unknown as Record<string, unknown>),
+    }
+  }
+
   const encoded = markers.length > 0 ? JSON.stringify(markers) : ''
   if (encoded === indicator.previousMarkers && !forceFull) {
-    return { patches }
+    return { patches, candles }
   }
   indicator.previousMarkers = encoded
-  return { patches, markers }
+  return { patches, candles, markers }
 }
 
 function post(message: IndicatorResponse, transfer: Transferable[] = []): void {
@@ -304,6 +484,7 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
       instanceRevision: request.instanceRevision,
       inputs: request.inputs,
       previous: new Map(),
+      previousCandles: new Map(),
       previousMarkers: '',
     })
     return
@@ -338,13 +519,37 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
 
   for (const [instanceId, indicator] of attached) {
     try {
-      const { patches, markers } = computeInstance(indicator, request.full)
-      if (patches.length === 0 && markers === undefined) {
+      const { patches, candles, markers, undrawn } = computeInstance(
+        indicator,
+        request.full,
+      )
+      if (undrawn) {
+        post({
+          kind: 'no-output',
+          generation: request.generation,
+          roundId: request.roundId,
+          instanceId,
+          instanceRevision: indicator.instanceRevision,
+          outputs: undrawn,
+        })
+        continue
+      }
+      if (patches.length === 0 && candles.length === 0 && markers === undefined) {
         continue
       }
       const transfer: Transferable[] = []
       for (const patch of patches) {
         transfer.push(patch.time.buffer, patch.value.buffer)
+      }
+      for (const patch of candles) {
+        transfer.push(
+          patch.time.buffer,
+          patch.open.buffer,
+          patch.high.buffer,
+          patch.low.buffer,
+          patch.close.buffer,
+          patch.colorIndex.buffer,
+        )
       }
       post(
         {
@@ -354,6 +559,7 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
           instanceId,
           instanceRevision: indicator.instanceRevision,
           patches,
+          ...(candles.length === 0 ? {} : { candles }),
           ...(markers === undefined ? {} : { markers }),
         },
         transfer,

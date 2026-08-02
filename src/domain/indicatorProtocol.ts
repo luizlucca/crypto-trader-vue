@@ -76,6 +76,32 @@ export interface IndicatorPlotPatch {
 }
 
 /**
+ * An OHLC output of the indicator itself, not of the market.
+ *
+ * Part of the catalog is defined as candles rather than lines — the CVD, the
+ * volume delta, the Heikin-Ashi variants — exactly as they appear on
+ * TradingView. They are a separate patch because a candle carries four values
+ * and its own colours, which the single-value plot patch cannot express.
+ *
+ * Colours travel as a palette plus one index per bar: a series is painted with
+ * two or three distinct colours, so sending the string per bar would be the
+ * largest part of the message on the hot path.
+ */
+export interface IndicatorCandlePatch {
+  plotId: string
+  full: boolean
+  from: number
+  time: Float64Array
+  open: Float64Array
+  high: Float64Array
+  low: Float64Array
+  close: Float64Array
+  /** One entry per point; empty when the indicator sent no colours. */
+  colorIndex: Uint8Array
+  palette: { color: string, borderColor: string, wickColor: string }[]
+}
+
+/**
  * A marker drawn on the candle series. Forty indicators — every candlestick
  * pattern, the fractals — express themselves only this way and drew nothing
  * while markers were ignored.
@@ -107,6 +133,8 @@ export type IndicatorResponse
       patches: IndicatorPlotPatch[]
       /** Present only when the marker set changed. */
       markers?: IndicatorMarker[]
+      /** Present only for indicators that draw their own candles. */
+      candles?: IndicatorCandlePatch[]
     }
     | {
       kind: 'error'
@@ -115,4 +143,21 @@ export type IndicatorResponse
       instanceId?: string
       instanceRevision?: number
       message: string
+    }
+  /**
+   * A complete calculation that produced nothing drawable. Sent instead of an
+   * empty result so the interface can explain the blank pane instead of
+   * leaving it looking like a failure.
+   *
+   * `outputs` carries the raw keys the library did fill and this pipeline does
+   * not draw — `plotCandles`, `boxes`, `lines`. Empty means the indicator
+   * simply returned no points: usually a period longer than the history.
+   */
+    | {
+      kind: 'no-output'
+      generation: number
+      roundId: number
+      instanceId: string
+      instanceRevision: number
+      outputs: string[]
     }
