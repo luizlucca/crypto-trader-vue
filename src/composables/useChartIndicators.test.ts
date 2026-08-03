@@ -13,6 +13,7 @@ import type {
   IndicatorClient,
   IndicatorPatchHandler,
 } from '@/services/indicators'
+import { peekIndicatorReadout } from '@/services/indicatorReadout'
 import { useChartIndicators } from './useChartIndicators'
 
 const definition: IndicatorDefinition = {
@@ -151,6 +152,54 @@ function patches(): IndicatorPlotPatch[] {
 }
 
 describe('chart indicator visual lifecycle', () => {
+  it('reads only the indicator series currently under the pointer', () => {
+    const { chart, panes } = chartHarness()
+    let apply!: IndicatorPatchHandler
+    const indicators = useChartIndicators({
+      chart: () => chart,
+      candleSeries: () => null,
+      bars: () => ({
+        time: [], open: [], high: [], low: [], close: [], volume: [],
+      }),
+      createClient: (handler) => {
+        apply = handler
+        return stubClient()
+      },
+    })
+
+    const first = indicators.add(definition)!
+    const second = indicators.add(definition)!
+    apply(first.instanceId, { patches: patches() })
+    apply(second.instanceId, { patches: patches() })
+
+    const firstSeries = panes[2].series[0] as unknown as ISeriesApi<SeriesType>
+    const secondSeries = panes[3].series[0] as unknown as ISeriesApi<SeriesType>
+    const restingFirst = peekIndicatorReadout(first.instanceId, 'plot0')
+    const restingSecond = peekIndicatorReadout(second.instanceId, 'plot0')
+    const cursorData = new Map<ISeriesApi<SeriesType>, unknown>([
+      [firstSeries, { value: 12 }],
+      [secondSeries, { value: 34 }],
+    ])
+
+    expect(indicators.readCursor(cursorData, firstSeries)).toBe(
+      first.instanceId,
+    )
+    expect(peekIndicatorReadout(first.instanceId, 'plot0')).toBe('12.00')
+    expect(peekIndicatorReadout(second.instanceId, 'plot0'))
+      .toBe(restingSecond)
+
+    expect(indicators.readCursor(cursorData, secondSeries)).toBe(
+      second.instanceId,
+    )
+    expect(peekIndicatorReadout(first.instanceId, 'plot0'))
+      .toBe(restingFirst)
+    expect(peekIndicatorReadout(second.instanceId, 'plot0')).toBe('34.00')
+
+    expect(indicators.readCursor(cursorData)).toBeUndefined()
+    expect(peekIndicatorReadout(second.instanceId, 'plot0'))
+      .toBe(restingSecond)
+  })
+
   it('creates an oscillator pane only after data arrives and removes it cleanly', () => {
     const { chart, panes, api } = chartHarness()
     let apply!: IndicatorPatchHandler

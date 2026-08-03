@@ -263,6 +263,13 @@ function explainBlankResult(name: string, outputs: readonly string[]): string {
  */
 export function useChartIndicators(options: ChartIndicatorsOptions) {
   const mounted = new Map<string, MountedIndicator>()
+  /**
+   * Constant-time ownership lookup for Lightweight Charts hover events.
+   *
+   * A WeakMap avoids retaining a removed series and, more importantly, avoids
+   * scanning every applied indicator on each pointer pixel.
+   */
+  const seriesOwners = new WeakMap<ISeriesApi<SeriesType>, string>()
   let client: IndicatorClient | undefined
   /**
    * Bumped only when the set of plots producing data changes — once per plot,
@@ -270,11 +277,8 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
    * would put the per-frame indicator path back into Vue's dependency graph.
    */
   const populatedRevision = shallowRef(0)
-  /**
-   * True while the pointer is over the chart. It decides who owns the legend:
-   * the cursor while it is reading a bar, the newest tick otherwise.
-   */
-  let cursorActive = false
+  /** Indicator whose chart series currently owns the contextual readout. */
+  let hoveredInstanceId: string | undefined
 
   function ensureClient(): IndicatorClient {
     if (client) {
@@ -297,12 +301,11 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     return created
   }
 
-  /** Builds the legend line for one indicator, at the cursor or at rest. */
-  function readoutFor(
+  /** Publishes one value per visible plot, at the cursor or at rest. */
+  function publishReadout(
     entry: MountedIndicator,
     seriesData?: Map<ISeriesApi<SeriesType>, unknown>,
-  ): string {
-    let text = ''
+  ): void {
     for (const plot of entry.definition.plots) {
       const series = entry.series.get(plot.id)
       if (!series || !entry.instance.styles[plot.id]?.visible) {
@@ -320,10 +323,12 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       if (value === undefined) {
         continue
       }
-      text += text ? '  ' : ''
-      text += `${plot.title ?? plot.id} ${formatValue(value)}`
+      publishIndicatorReadout(
+        entry.instance.instanceId,
+        plot.id,
+        formatValue(value),
+      )
     }
-    return text
   }
 
   function applyMarkers(
@@ -532,10 +537,10 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       // If one setData/update throws, the client requests a complete retry and
       // this instance never advertises a half-applied result as calculated.
       commitPresentation(entry, newlyPopulated)
-      if (!cursorActive) {
-        // The cursor owns the legend while it is over the chart; otherwise the
-        // newest bar does.
-        publishIndicatorReadout(instanceId, readoutFor(entry))
+      if (hoveredInstanceId !== instanceId) {
+        // A hovered series keeps the value under the cursor. Every other
+        // indicator keeps its cached resting value current for chip hover.
+        publishReadout(entry)
       }
     } catch (error) {
       if (createdNow) {
@@ -589,16 +594,18 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
 
   function createSeries(
     chart: IChartApi,
-    definition: IndicatorDefinition,
-    styles: Record<string, IndicatorPlotStyle>,
-    pane: IPaneApi<Time> | undefined,
-    series: Map<string, ISeriesApi<SeriesType>>,
+    entry: MountedIndicator,
   ): void {
+    const { definition, pane } = entry
     for (const plot of definition.plots) {
       // The catalog says how each plot is meant to be drawn; a MACD histogram
       // rendered as a line misreads the indicator.
       const kind = plotStyleKind(plot)
-      const options = seriesOptions(styles[plot.id], kind, plot.color)
+      const options = seriesOptions(
+        entry.instance.styles[plot.id],
+        kind,
+        plot.color,
+      )
       let created: ISeriesApi<SeriesType>
       if (kind === 'histogram') {
         created = pane
@@ -613,7 +620,8 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
           ? pane.addSeries(LineSeries, options)
           : chart.addSeries(LineSeries, options, 0)
       }
-      series.set(plot.id, created)
+      entry.series.set(plot.id, created)
+      seriesOwners.set(created, entry.instance.instanceId)
     }
   }
 
@@ -716,13 +724,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       entry.pane = entry.definition.overlay || !ownPaneContent
         ? undefined
         : chart.addPane(true)
-      createSeries(
-        chart,
-        entry.definition,
-        entry.instance.styles,
-        entry.pane,
-        entry.series,
-      )
+      createSeries(chart, entry)
       /*
        * Candle outputs are not declared in `plotConfig` — the catalog describes
        * them only through the result — so the first result is what says they
@@ -730,10 +732,9 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
        * exclusively this way.
        */
       for (const patch of candles ?? []) {
-        entry.series.set(
-          candleSeriesId(patch.plotId),
-          createCandleSeries(chart, entry.pane, patch.plotId),
-        )
+        const series = createCandleSeries(chart, entry.pane, patch.plotId)
+        entry.series.set(candleSeriesId(patch.plotId), series)
+        seriesOwners.set(series, entry.instance.instanceId)
       }
       createHLines(entry.definition, entry.series.values().next().value)
       return true
@@ -873,6 +874,9 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
        * bookkeeping corrupts every later calculation.
        */
       mounted.delete(instanceId)
+      if (hoveredInstanceId === instanceId) {
+        hoveredInstanceId = undefined
+      }
       resetIndicatorReadout(instanceId)
       client?.detach(instanceId)
       if (mounted.size === 0) {
@@ -896,6 +900,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       entry.populated.clear()
       entry.lastValues.clear()
       entry.calculated = false
+      resetIndicatorReadout(instanceId)
       populatedRevision.value += 1
       client.reconfigure(instanceId, entry.definition.id, entry.instance.inputs)
       client.compute(true)
@@ -914,6 +919,8 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       }
       entry.instance.styles = resolvePlotStyles(entry.definition, styles)
       applyStyles(entry)
+      resetIndicatorReadout(instanceId)
+      publishReadout(entry)
     },
 
     /** True once a result arrived for this instance. */
@@ -944,15 +951,46 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     },
 
     /**
-     * Values under the crosshair, written straight to the legend nodes.
+     * Publishes values only for the indicator series under the pointer.
      *
-     * Runs on every pointer move, so it allocates one string per indicator and
-     * nothing else — no array of points, no reactive write, no render pass.
+     * Lightweight Charts supplies `hoveredInfo.series`; the WeakMap resolves
+     * its owner in constant time. The hot path formats one indicator and never
+     * schedules Vue work.
      */
-    readCursor(seriesData: Map<ISeriesApi<SeriesType>, unknown>): void {
-      cursorActive = seriesData.size > 0
-      for (const [instanceId, entry] of mounted) {
-        publishIndicatorReadout(instanceId, readoutFor(entry, seriesData))
+    readCursor(
+      seriesData: Map<ISeriesApi<SeriesType>, unknown>,
+      hoveredSeries?: ISeriesApi<SeriesType>,
+    ): string | undefined {
+      const candidateId = hoveredSeries
+        ? seriesOwners.get(hoveredSeries)
+        : undefined
+      const nextId = candidateId && mounted.has(candidateId)
+        ? candidateId
+        : undefined
+
+      if (hoveredInstanceId !== nextId) {
+        const previous = hoveredInstanceId
+          ? mounted.get(hoveredInstanceId)
+          : undefined
+        hoveredInstanceId = nextId
+        if (previous) {
+          publishReadout(previous)
+        }
+      }
+
+      if (!nextId) {
+        return undefined
+      }
+      const entry = mounted.get(nextId)!
+      publishReadout(entry, seriesData)
+      return nextId
+    },
+
+    /** Makes a chip show the indicator's latest computed values. */
+    previewReadout(instanceId: string): void {
+      const entry = mounted.get(instanceId)
+      if (entry) {
+        publishReadout(entry)
       }
     },
 
@@ -1006,6 +1044,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         }
       }
       mounted.clear()
+      hoveredInstanceId = undefined
       client?.dispose()
       client = undefined
     },

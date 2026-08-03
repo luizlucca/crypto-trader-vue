@@ -46,6 +46,7 @@ import type {
   IndicatorPlotStyle,
   AppliedIndicator,
 } from '@/domain/indicators'
+import type { PresentedIndicator } from '@/domain/indicatorLegend'
 import ChartToolbar from './ChartToolbar.vue'
 import DrawingToolbar from './DrawingToolbar.vue'
 import AppliedIndicators from './indicators/AppliedIndicators.vue'
@@ -132,6 +133,26 @@ const indicators = useChartIndicators({
  * not when values update.
  */
 const appliedIndicators = shallowRef<AppliedIndicator[]>([])
+/**
+ * Low-frequency presentation metadata. `populatedRevision` inside the
+ * composable invalidates this only when a plot produces its first data, never
+ * for realtime values or crosshair movement.
+ */
+const presentedIndicators = computed<PresentedIndicator[]>(() => (
+  appliedIndicators.value.map((entry) => {
+    const instanceId = entry.instance.instanceId
+    return {
+      ...entry,
+      calculated: indicators.hasCalculated(instanceId),
+      populatedPlots: indicators.populatedPlots(instanceId),
+    }
+  })
+))
+/**
+ * Changes only when the pointer enters or leaves an indicator series. Values
+ * themselves bypass Vue through the imperative readout channel.
+ */
+const hoveredIndicatorId = shallowRef<string>()
 const pickerOpen = ref(false)
 const configuringId = ref<string | null>(null)
 /**
@@ -280,6 +301,9 @@ function editingStyles(styles: Record<string, IndicatorPlotStyle>): void {
 
 function removeIndicator(instanceId: string): void {
   indicators.remove(instanceId)
+  if (hoveredIndicatorId.value === instanceId) {
+    hoveredIndicatorId.value = undefined
+  }
   if (configuringId.value === instanceId) {
     configuringId.value = null
   }
@@ -287,6 +311,10 @@ function removeIndicator(instanceId: string): void {
     editingId.value = null
   }
   syncAppliedIndicators()
+}
+
+function previewIndicatorReadout(instanceId: string): void {
+  indicators.previewReadout(instanceId)
 }
 
 function applyIndicatorInputs(
@@ -807,15 +835,18 @@ onMounted(() => {
   )
 
   /*
-   * Indicator values under the cursor. The handler fires on every pointer
-   * move: it hands the series map straight to the indicators, which write the
-   * formatted numbers into their own legend nodes. Nothing reactive is touched
-   * on this path (ADR-0003).
+   * The WeakMap inside `indicators` resolves the hovered series in O(1) and
+   * writes its values directly to the readout node. Vue is touched only when
+   * the pointer changes from one indicator to another, never per mouse pixel.
    */
   crosshairHandler = (param: Parameters<MouseEventHandler<Time>>[0]) => {
-    indicators.readCursor(
+    const nextIndicatorId = indicators.readCursor(
       param.seriesData as unknown as Map<ISeriesApi<SeriesType>, unknown>,
+      param.hoveredInfo?.series as ISeriesApi<SeriesType> | undefined,
     )
+    if (hoveredIndicatorId.value !== nextIndicatorId) {
+      hoveredIndicatorId.value = nextIndicatorId
+    }
   }
   chartApi.subscribeCrosshairMove(crosshairHandler)
 
@@ -904,6 +935,13 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
         <span>C <b ref="legendClose">—</b></span>
         <i>LIVE</i>
       </div>
+      <AppliedIndicators
+        :active-instance-id="hoveredIndicatorId"
+        :applied="presentedIndicators"
+        @configure="configuringId = $event"
+        @preview="previewIndicatorReadout"
+        @remove="removeIndicator"
+      />
       <div v-if="errorMessage" class="chart-message error">
         {{ errorMessage }}
       </div>
@@ -925,11 +963,6 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
           Dispensar
         </button>
       </div>
-      <AppliedIndicators
-        :applied="appliedIndicators"
-        @configure="configuringId = $event"
-        @remove="removeIndicator"
-      />
       <IndicatorSettings
         v-if="configuring"
         :key="configuring.instance.instanceId"

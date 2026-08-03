@@ -402,92 +402,276 @@
   border-top: 1px solid var(--border-soft);
 }
 
-/* Applied list, floating over the chart */
+/* Applied indicator HUD: vertical, contextual and outside Vue's hot path. */
 
 .applied-indicators {
+  --indicator-dock-width: 214px;
+  --indicator-row-step: 30px;
   position: absolute;
   z-index: 4;
-  top: 60px;
-  left: 52px;
+  top: 34px;
+  right: 78px;
+  left: 50px;
+  min-width: 0;
+  pointer-events: none;
+  contain: layout style;
+}
+
+.applied-indicator-dock {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  align-items: flex-start;
+  gap: 4px;
+  width: var(--indicator-dock-width);
   pointer-events: none;
 }
 
 .applied-indicator {
   display: flex;
-  gap: 7px;
+  gap: 6px;
   align-items: center;
-  padding: 3px 7px;
+  width: 100%;
+  height: 26px;
+  padding: 0 3px 0 7px;
   border: 1px solid var(--border-soft);
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-raised) 91%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--bg) 24%, transparent);
   pointer-events: auto;
+  transition: border-color 100ms ease, background-color 100ms ease;
+}
+
+.applied-indicator:hover,
+.applied-indicator.active {
+  border-color: color-mix(in srgb, var(--blue) 52%, var(--border));
+  background: color-mix(in srgb, var(--selected-bg) 64%, var(--panel));
 }
 
 .applied-indicator strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-strong);
   font-family: var(--font-data);
-  font-size: 10.5px;
-  font-weight: 500;
-}
-
-/*
- * Values under the cursor. Written straight into this node by
- * `IndicatorReadout`, so it must never be sized by its own content: the chip
- * would resize on every pointer move and drag the whole row with it.
- */
-.applied-indicator-readout {
-  min-width: 0;
-  /* An indicator with seven plots would otherwise stretch its row across the
-     whole chart; the first plots are the ones that carry the reading. */
-  max-width: 420px;
-  overflow: hidden;
-  color: var(--accent);
-  font-family: var(--font-data);
-  font-size: 10.5px;
-  font-style: normal;
-  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.applied-indicator-readout:empty {
+.applied-indicator-swatches {
+  display: flex;
+  flex: 0 0 20px;
+  gap: 1px;
+  align-items: center;
+  width: 20px;
+  height: 5px;
+  overflow: hidden;
+}
+
+.applied-indicator-swatches i {
+  flex: 1 1 1px;
+  min-width: 1px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.applied-indicator-overflow-toggle {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 26px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--blue) 38%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-raised) 94%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--bg) 24%, transparent);
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+}
+
+.applied-indicator-overflow-toggle:hover,
+.applied-indicator-overflow-toggle[aria-expanded="true"] {
+  border-color: var(--blue);
+  background: var(--selected-bg);
+  color: var(--text-strong);
+}
+
+.applied-indicator-overflow-toggle svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
+
+.applied-indicator-overflow-menu {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: calc(var(--indicator-dock-width) + 7px);
+  width: min(330px, calc(100% - var(--indicator-dock-width) - 7px));
+  max-height: 250px;
+  padding: 5px;
+  overflow-y: auto;
+  border: 1px solid var(--overlay-border);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel-raised) 97%, var(--chart-bg));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--bg) 58%, transparent);
+  pointer-events: auto;
+  scrollbar-color: var(--border) transparent;
+  scrollbar-width: thin;
+}
+
+.applied-indicator-overflow-row {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+  height: 31px;
+  padding: 0 3px 0 7px;
+  border-radius: 5px;
+}
+
+.applied-indicator-overflow-row:hover {
+  background: var(--hover-bg);
+}
+
+.applied-indicator-overflow-row strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-family: var(--font-data);
+  font-size: 11px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The card follows the active row, but its values never trigger layout work. */
+.applied-indicator-context {
+  position: absolute;
+  top: calc(var(--indicator-context-row, 0) * var(--indicator-row-step));
+  left: calc(var(--indicator-dock-width) + 7px);
+  width: max-content;
+  max-width: min(520px, calc(100% - var(--indicator-dock-width) - 7px));
+  padding: 6px;
+  visibility: hidden;
+  border: 1px solid var(--overlay-border);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel-raised) 96%, var(--chart-bg));
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--bg) 46%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-2px);
+  transition: opacity 80ms ease, transform 80ms ease;
+}
+
+.applied-indicator-context.visible {
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.applied-indicator-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  font-family: var(--font-data);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+}
+
+.applied-indicator-value {
+  display: inline-grid;
+  grid-template-columns: 12px auto auto;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 5px;
+  border: 1px solid color-mix(
+    in srgb,
+    var(--indicator-plot-color) 28%,
+    var(--border-soft)
+  );
+  border-radius: 4px;
+  background: color-mix(
+    in srgb,
+    var(--indicator-plot-color) 7%,
+    transparent
+  );
+  white-space: nowrap;
+}
+
+.applied-indicator-value[hidden] {
   display: none;
 }
 
-.applied-indicator-swatch {
-  width: 8px;
-  height: 2px;
-  border-radius: 1px;
+.applied-indicator-value > i {
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--indicator-plot-color);
 }
 
-.applied-indicator button {
+.applied-indicator-value > span {
+  color: var(--text);
+}
+
+.applied-indicator-value > em {
+  color: color-mix(
+    in srgb,
+    var(--indicator-plot-color) 78%,
+    var(--text-strong)
+  );
+  font-style: normal;
+  font-weight: 650;
+}
+
+.applied-indicator button,
+.applied-indicator-overflow-row button {
   display: grid;
+  flex: 0 0 20px;
   place-items: center;
-  width: 17px;
-  height: 17px;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  padding: 0;
   border: 0;
   border-radius: 4px;
   background: none;
   color: var(--muted);
-  opacity: 0;
+  line-height: 0;
+  opacity: 0.48;
 }
 
-.applied-indicator:hover button {
+.applied-indicator:hover button,
+.applied-indicator button:focus-visible,
+.applied-indicator-overflow-row button {
   opacity: 1;
 }
 
-.applied-indicator button:hover {
+.applied-indicator button:hover,
+.applied-indicator-overflow-row button:hover {
   background: var(--hover-bg);
   color: var(--text-strong);
 }
 
-.applied-indicator button svg {
-  width: 12px;
-  height: 12px;
+.applied-indicator button svg,
+.applied-indicator-overflow-row button svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  stroke-width: 1.9;
 }
 
 /* Parameters */

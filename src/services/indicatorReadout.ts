@@ -1,39 +1,84 @@
-import { createImperativeChannel } from './imperativeChannel'
+/** A plot value sink owned by the currently-mounted legend. */
+export type IndicatorReadoutSubscriber = (
+  plotId: string,
+  text: string,
+) => void
 
 /**
- * Indicator values under the cursor, keyed by instance.
+ * Indicator values under the cursor, keyed by instance and plot.
  *
- * Reading a line off the chart is guesswork; the number is what a decision is
- * made on. It travels here instead of through props for the same reason the
- * order-book latency does: the crosshair fires on every pointer move, and
- * routing that through Vue would schedule a render pass per mouse pixel —
- * the exact competition with the chart that ADR-0003 exists to prevent.
- *
- * The formatted string is produced once, where the plot definitions are known,
- * and the subscriber only writes it into the node it owns.
+ * A generic reactive payload would allocate an array of objects and schedule a
+ * Vue render for every pointer pixel. This specialised channel passes the plot
+ * id and formatted text directly to a cached DOM node instead. It also retains
+ * the last value of each plot so a legend can mount after the cursor stops.
  */
-const channel = createImperativeChannel<string>()
+const subscribers = new Map<
+  string,
+  Set<IndicatorReadoutSubscriber>
+>()
+const latest = new Map<string, Map<string, string>>()
 
 export function publishIndicatorReadout(
   instanceId: string,
+  plotId: string,
   text: string,
 ): void {
-  channel.publish(instanceId, text)
+  let instanceValues = latest.get(instanceId)
+  if (!instanceValues) {
+    instanceValues = new Map()
+    latest.set(instanceId, instanceValues)
+  }
+  if (instanceValues.get(plotId) === text) {
+    return
+  }
+  instanceValues.set(plotId, text)
+  subscribers.get(instanceId)?.forEach((subscriber) => {
+    subscriber(plotId, text)
+  })
 }
 
 export function subscribeIndicatorReadout(
   instanceId: string,
-  callback: (text: string) => void,
+  subscriber: IndicatorReadoutSubscriber,
 ): () => void {
-  return channel.subscribe(instanceId, callback)
+  let instanceSubscribers = subscribers.get(instanceId)
+  if (!instanceSubscribers) {
+    instanceSubscribers = new Set()
+    subscribers.set(instanceId, instanceSubscribers)
+  }
+  instanceSubscribers.add(subscriber)
+  latest.get(instanceId)?.forEach((text, plotId) => {
+    subscriber(plotId, text)
+  })
+
+  return () => {
+    const current = subscribers.get(instanceId)
+    current?.delete(subscriber)
+    if (current?.size === 0) {
+      subscribers.delete(instanceId)
+    }
+  }
 }
 
-/** Last value published, for a legend that mounts while the cursor is still. */
-export function peekIndicatorReadout(instanceId: string): string | undefined {
-  return channel.peek(instanceId)
+export function peekIndicatorReadout(
+  instanceId: string,
+  plotId: string,
+): string | undefined {
+  return latest.get(instanceId)?.get(plotId)
 }
 
-/** Called when an indicator leaves the chart; its readout must not linger. */
+/** Clears retained and visible values when an indicator is reset or removed. */
 export function resetIndicatorReadout(instanceId: string): void {
-  channel.reset(instanceId)
+  const instanceValues = latest.get(instanceId)
+  if (instanceValues) {
+    const instanceSubscribers = subscribers.get(instanceId)
+    if (instanceSubscribers) {
+      instanceValues.forEach((_text, plotId) => {
+        instanceSubscribers.forEach((subscriber) => {
+          subscriber(plotId, '')
+        })
+      })
+    }
+  }
+  latest.delete(instanceId)
 }
