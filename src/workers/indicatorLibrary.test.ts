@@ -45,9 +45,17 @@ describe('MFI/RSI Bollinger Bands integration', () => {
  * rule is checked against the library itself rather than against a stub.
  */
 describe('classificação de saídas do catálogo', () => {
-  const UNSUPPORTED = [
-    'lines', 'boxes', 'labels', 'bgColors', 'barColors', 'pivots',
-  ]
+  const DRAWING_OUTPUTS = ['lines', 'boxes', 'labels', 'bgColors', 'barColors']
+  const UNSUPPORTED_OUTPUTS = ['pivots']
+
+  function hasContent(value: unknown): boolean {
+    if (Array.isArray(value)) {
+      return value.length > 0
+    }
+    return typeof value === 'object'
+      && value !== null
+      && Object.keys(value).length > 0
+  }
 
   function classify(id: string): 'desenha' | 'nao-suportado' | 'sem-valores' {
     const registry = indicatorRegistry as unknown as {
@@ -70,16 +78,16 @@ describe('classificação de saídas do catálogo', () => {
     const candles = Object.values(
       (output.plotCandles ?? {}) as Record<string, { time: number }[]>,
     ).some((points) => points.length > 0)
-    if (drew || candles || ((output.markers ?? []) as unknown[]).length > 0) {
+    const drawings = DRAWING_OUTPUTS.some((key) => hasContent(output[key]))
+    if (
+      drew
+      || candles
+      || drawings
+      || ((output.markers ?? []) as unknown[]).length > 0
+    ) {
       return 'desenha'
     }
-    return UNSUPPORTED.some((key) => {
-      const value = output[key]
-      return Array.isArray(value)
-        ? value.length > 0
-        : typeof value === 'object' && value !== null
-          && Object.keys(value).length > 0
-    })
+    return UNSUPPORTED_OUTPUTS.some((key) => hasContent(output[key]))
       ? 'nao-suportado'
       : 'sem-valores'
   }
@@ -97,11 +105,10 @@ describe('classificação de saídas do catálogo', () => {
     expect(classify('cm-heikin-ashi')).toBe('desenha')
   })
 
-  it('reconhece os que dependem de recursos gráficos ausentes', () => {
-    // Caixas, linhas livres e rótulos: sem contrapartida no protocolo.
-    expect(classify('price-volume-profile')).toBe('nao-suportado')
-    expect(classify('zigzag')).toBe('nao-suportado')
-    expect(classify('auto-key-levels')).toBe('nao-suportado')
+  it('reconhece caixas, linhas, rótulos e fundos como desenhos suportados', () => {
+    expect(classify('price-volume-profile')).toBe('desenha')
+    expect(classify('zigzag')).toBe('desenha')
+    expect(classify('auto-key-levels')).toBe('desenha')
   })
 
   it('reconhece os que simplesmente não produzem valores', () => {

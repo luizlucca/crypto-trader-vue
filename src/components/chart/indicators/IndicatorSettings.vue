@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { GripHorizontal, X } from '@lucide/vue'
-import { nextTick, onMounted, ref } from 'vue'
-import type {
-  IndicatorDefinition,
-  IndicatorInputs,
-  IndicatorPlotStyle,
+import { nextTick, onMounted, shallowRef } from 'vue'
+import {
+  copyPlotStyles,
+  type IndicatorDefinition,
+  type IndicatorInputs,
+  type IndicatorPlotStyle,
 } from '@/domain/indicators'
 import { useDraggableDialog } from '@/composables/useDraggableDialog'
 import IndicatorForm from './IndicatorForm.vue'
@@ -32,14 +33,12 @@ const emit = defineEmits<{
 const { panel, startDrag, center } = useDraggableDialog()
 
 // Snapshot taken on open, so Cancel has something to restore to.
-const originalInputs = ref<IndicatorInputs>({ ...props.inputs })
-const originalStyles = ref<Record<string, IndicatorPlotStyle>>(
-  JSON.parse(JSON.stringify(props.styles)),
-)
+const originalInputs = shallowRef<IndicatorInputs>({ ...props.inputs })
+const originalStyles = shallowRef(copyPlotStyles(props.styles))
 
 function cancel(): void {
   emit('inputs', { ...originalInputs.value })
-  emit('styles', JSON.parse(JSON.stringify(originalStyles.value)))
+  emit('styles', copyPlotStyles(originalStyles.value))
   emit('close')
 }
 

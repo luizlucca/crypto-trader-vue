@@ -10,6 +10,7 @@ import {
 import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
 import { useDraggableDialog } from '@/composables/useDraggableDialog'
 import type {
+  AppliedIndicator,
   IndicatorDefinition,
   IndicatorInputs,
   IndicatorInstance,
@@ -31,10 +32,7 @@ const props = defineProps<{
     | { instance: IndicatorInstance, definition: IndicatorDefinition }
     | null
   /** Everything currently on the chart, so a row can show its own state. */
-  applied: readonly {
-    instance: IndicatorInstance
-    definition: IndicatorDefinition
-  }[]
+  applied: readonly AppliedIndicator[]
   populatedPlots: readonly string[]
   calculated: boolean
 }>()
@@ -58,13 +56,14 @@ const emit = defineEmits<{
  */
 const MAX_PER_SECTION = 60
 
-/** Pseudo-category: what is on the chart, listed with the rows already known. */
+/** Pseudo-category for the definitions already present on the chart. */
 const APPLIED_FILTER = '@applied'
 
 const { panel, startDrag, center } = useDraggableDialog()
 
 const definitions = shallowRef<IndicatorDefinition[]>([])
 const loading = ref(false)
+const loadError = ref('')
 const query = ref('')
 const activeCategory = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
@@ -164,8 +163,13 @@ async function ensureCatalog(): Promise<void> {
     return
   }
   loading.value = true
+  loadError.value = ''
   try {
     definitions.value = await props.load()
+  } catch (error) {
+    loadError.value = error instanceof Error
+      ? error.message
+      : 'Não foi possível carregar o catálogo de indicadores'
   } finally {
     loading.value = false
   }
@@ -180,6 +184,10 @@ function handleKey(event: KeyboardEvent): void {
 
 function expanded(definition: IndicatorDefinition): boolean {
   return props.editing?.definition.id === definition.id
+}
+
+function placementLabel(definition: IndicatorDefinition): string {
+  return definition.overlay ? 'Sobre o preço' : 'Painel próprio'
 }
 
 /**
@@ -289,6 +297,9 @@ onMounted(() => {
 
         <div class="indicator-results">
           <p v-if="loading" class="indicator-empty">Carregando catálogo…</p>
+          <p v-else-if="loadError" class="indicator-empty">
+            {{ loadError }}
+          </p>
           <p
             v-else-if="results === 0"
             class="indicator-empty"
@@ -325,12 +336,15 @@ onMounted(() => {
                   type="button"
                   @click="choose(definition)"
                 >
-                  <ChevronRight aria-hidden="true" class="indicator-option-chevron" />
+                  <ChevronRight
+                    aria-hidden="true"
+                    class="indicator-option-chevron"
+                  />
                   <span class="indicator-option-body">
                     <span class="indicator-option-title">
                       <strong>{{ definition.name }}</strong>
                       <small>
-                        {{ definition.overlay ? 'Sobre o preço' : 'Painel próprio' }}
+                        {{ placementLabel(definition) }}
                       </small>
                     </span>
                     <span class="indicator-option-description">

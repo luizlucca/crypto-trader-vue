@@ -18,33 +18,49 @@ export const MIN_GRAPHIC_CONTRAST = 3
 
 const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i
 
-function channels(color: string): [number, number, number] | null {
+type RgbChannels = [number, number, number]
+type HslChannels = [number, number, number]
+
+function channels(color: string): RgbChannels | null {
   const match = HEX.exec(color.trim())
   if (!match) {
     return null
   }
   const hex = match[1].length === 3
-    ? [...match[1]].map((digit) => digit + digit).join('')
+    ? `${match[1][0]}${match[1][0]}${match[1][1]}${match[1][1]}`
+    + `${match[1][2]}${match[1][2]}`
     : match[1]
   const value = Number.parseInt(hex, 16)
   return [(value >> 16) & 255, (value >> 8) & 255, value & 255]
 }
 
-function toHex([red, green, blue]: [number, number, number]): string {
-  const part = (channel: number): string => Math.round(Math.max(0, Math.min(255, channel)))
+function channelHex(channel: number): string {
+  return Math.round(Math.max(0, Math.min(255, channel)))
     .toString(16)
     .padStart(2, '0')
-  return `#${part(red)}${part(green)}${part(blue)}`
 }
 
-function relativeLuminance([red, green, blue]: [number, number, number]): number {
-  const [r, g, b] = [red, green, blue].map((channel) => {
-    const scaled = channel / 255
-    return scaled <= 0.03928
-      ? scaled / 12.92
-      : ((scaled + 0.055) / 1.055) ** 2.4
-  })
-  return (0.2126 * r) + (0.7152 * g) + (0.0722 * b)
+function toHex([red, green, blue]: RgbChannels): string {
+  return `#${channelHex(red)}${channelHex(green)}${channelHex(blue)}`
+}
+
+function linearChannel(channel: number): number {
+  const scaled = channel / 255
+  return scaled <= 0.03928
+    ? scaled / 12.92
+    : ((scaled + 0.055) / 1.055) ** 2.4
+}
+
+function relativeLuminance([red, green, blue]: RgbChannels): number {
+  return (0.2126 * linearChannel(red))
+    + (0.7152 * linearChannel(green))
+    + (0.0722 * linearChannel(blue))
+}
+
+function luminanceContrast(first: number, second: number): number {
+  const lighter = Math.max(first, second)
+  const darker = Math.min(first, second)
+  return (lighter + 0.05) / (darker + 0.05)
 }
 
 export function contrastRatio(first: string, second: string): number | null {
@@ -53,15 +69,15 @@ export function contrastRatio(first: string, second: string): number | null {
   if (!left || !right) {
     return null
   }
-  const one = relativeLuminance(left)
-  const other = relativeLuminance(right)
-  const [lighter, darker] = one > other ? [one, other] : [other, one]
-  return (lighter + 0.05) / (darker + 0.05)
+  return luminanceContrast(
+    relativeLuminance(left),
+    relativeLuminance(right),
+  )
 }
 
 function toHsl(
-  [red, green, blue]: [number, number, number],
-): [number, number, number] {
+  [red, green, blue]: RgbChannels,
+): HslChannels {
   const r = red / 255
   const g = green / 255
   const b = blue / 255
@@ -86,9 +102,21 @@ function toHsl(
   return [hue / 6, saturation, light]
 }
 
+function hueComponent(hue: number, p: number, q: number): number {
+  let normalizedHue = hue
+  if (normalizedHue < 0) normalizedHue += 1
+  if (normalizedHue > 1) normalizedHue -= 1
+  if (normalizedHue < 1 / 6) return p + ((q - p) * 6 * normalizedHue)
+  if (normalizedHue < 1 / 2) return q
+  if (normalizedHue < 2 / 3) {
+    return p + ((q - p) * ((2 / 3) - normalizedHue) * 6)
+  }
+  return p
+}
+
 function fromHsl(
-  [hue, saturation, light]: [number, number, number],
-): [number, number, number] {
+  [hue, saturation, light]: HslChannels,
+): RgbChannels {
   if (saturation === 0) {
     const channel = light * 255
     return [channel, channel, channel]
@@ -97,19 +125,10 @@ function fromHsl(
     ? light * (1 + saturation)
     : light + saturation - (light * saturation)
   const p = (2 * light) - q
-  const component = (offset: number): number => {
-    let t = hue + offset
-    if (t < 0) t += 1
-    if (t > 1) t -= 1
-    if (t < 1 / 6) return p + ((q - p) * 6 * t)
-    if (t < 1 / 2) return q
-    if (t < 2 / 3) return p + ((q - p) * ((2 / 3) - t) * 6)
-    return p
-  }
   return [
-    component(1 / 3) * 255,
-    component(0) * 255,
-    component(-1 / 3) * 255,
+    hueComponent(hue + (1 / 3), p, q) * 255,
+    hueComponent(hue, p, q) * 255,
+    hueComponent(hue - (1 / 3), p, q) * 255,
   ]
 }
 
@@ -126,10 +145,17 @@ export function readableOn(
   background: string,
   minimum: number = MIN_GRAPHIC_CONTRAST,
 ): string {
-  const current = contrastRatio(color, background)
   const source = channels(color)
   const surface = channels(background)
-  if (current === null || !source || !surface || current >= minimum) {
+  if (!source || !surface) {
+    return color
+  }
+  const surfaceLuminance = relativeLuminance(surface)
+  const current = luminanceContrast(
+    relativeLuminance(source),
+    surfaceLuminance,
+  )
+  if (current >= minimum) {
     return color
   }
 
@@ -140,8 +166,8 @@ export function readableOn(
    * around 3:1 while going towards black reaches 7:1, and choosing by
    * lightness alone would leave the line barely visible.
    */
-  const towardsWhite = (contrastRatio('#ffffff', background) ?? 0)
-    > (contrastRatio('#000000', background) ?? 0)
+  const towardsWhite = luminanceContrast(1, surfaceLuminance)
+    > luminanceContrast(0, surfaceLuminance)
   const [hue, saturation, light] = toHsl(source)
   const step = 0.03
 
@@ -153,7 +179,11 @@ export function readableOn(
         return null
       }
       const next = toHex(fromHsl([hue, saturation, candidate]))
-      if ((contrastRatio(next, background) ?? 0) >= minimum) {
+      const nextChannels = channels(next)
+      if (nextChannels && luminanceContrast(
+        relativeLuminance(nextChannels),
+        surfaceLuminance,
+      ) >= minimum) {
         return next
       }
     }

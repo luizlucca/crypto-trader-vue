@@ -1,4 +1,4 @@
-import type { IndicatorInstance } from '@/domain/indicators'
+import { copyPlotStyles, type IndicatorInstance } from '@/domain/indicators'
 
 /**
  * Indicators applied per session, held outside the chart component.
@@ -31,9 +31,7 @@ export function writeIndicatorLayout(
     instanceId: instance.instanceId,
     definitionId: instance.definitionId,
     inputs: { ...instance.inputs },
-    styles: Object.fromEntries(
-      Object.entries(instance.styles).map(([id, style]) => [id, { ...style }]),
-    ),
+    styles: copyPlotStyles(instance.styles),
   })))
 }
 

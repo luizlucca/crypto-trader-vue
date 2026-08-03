@@ -715,7 +715,7 @@ function fromLinear(value: number): number {
   return scaled * 255
 }
 
-/** The grey a colour would be if its hue were removed but its lightness kept. */
+/** Grey with the same perceived lightness as the source colour. */
 function grayValue(hex: string): number {
   const [red, green, blue] = hexChannels(hex)
   return fromLinear(
@@ -737,9 +737,12 @@ function toned(hex: string, tone: SurfaceTone | undefined): string {
   }
   const plain = grayValue(hex)
   const lift = tone.lift ?? 0
-  const gray = lift === 0
-    ? plain
-    : plain + (lift * (lift > 0 ? 255 - plain : plain))
+  let gray = plain
+  if (lift > 0) {
+    gray += lift * (255 - plain)
+  } else if (lift < 0) {
+    gray += lift * plain
+  }
   if (!tone.hue) {
     const channel = channelHex(gray)
     return `#${channel}${channel}${channel}`
@@ -772,17 +775,10 @@ function rgba(hex: string, alpha: number): string {
 }
 
 function relativeLuminance(hex: string): number {
-  const channels = hexChannels(hex).map((channel) => {
-    const normalized = channel / 255
-    return normalized <= 0.04045
-      ? normalized / 12.92
-      : ((normalized + 0.055) / 1.055) ** 2.4
-  })
-  return (
-    (0.2126 * channels[0])
-    + (0.7152 * channels[1])
-    + (0.0722 * channels[2])
-  )
+  const [red, green, blue] = hexChannels(hex)
+  return (0.2126 * toLinear(red))
+    + (0.7152 * toLinear(green))
+    + (0.0722 * toLinear(blue))
 }
 
 function accentContrast(accent: string): string {
@@ -890,15 +886,15 @@ function lightPalette(definition: ThemeDefinition): ThemePalette {
   }
 }
 
-export const themePresets: readonly ThemePreset<ThemePresetId>[] = DEFINITIONS.map(
-  (definition) => ({
+export const themePresets: readonly ThemePreset<ThemePresetId>[]
+  = DEFINITIONS.map((definition) => ({
     id: definition.id,
     name: definition.name,
     description: definition.description,
     dark: darkPalette(definition),
     light: lightPalette(definition),
   }),
-)
+  )
 
 const presetMap = new Map(
   themePresets.map((preset) => [preset.id, preset]),

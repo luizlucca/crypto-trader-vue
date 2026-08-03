@@ -95,19 +95,52 @@ export interface IndicatorPlotStyle {
   color: string
   /** Lightweight Charts accepts 1 to 4 only. */
   lineWidth: number
-  /** 0 to 1; folded into the colour, since the library has no opacity option. */
+  /** 0 to 1; folded into colour because the library has no opacity option. */
   opacity: number
   visible: boolean
 }
 
 export const DEFAULT_PLOT_COLOR = '#2f9cff'
 
+const HEX_COLOR = /^#[0-9a-fA-F]{3,8}$/
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value))
+}
+
+function finiteNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : fallback
+}
+
+function isHexColor(value: unknown): value is string {
+  return typeof value === 'string' && HEX_COLOR.test(value)
+}
+
 export function defaultPlotStyle(plot: IndicatorPlotSpec): IndicatorPlotStyle {
   return {
     color: plot.color ?? DEFAULT_PLOT_COLOR,
-    lineWidth: Math.min(4, Math.max(1, Math.round(plot.lineWidth ?? 1))),
+    lineWidth: clamp(Math.round(plot.lineWidth ?? 1), 1, 4),
     opacity: 1,
     visible: true,
+  }
+}
+
+function resolvePlotStyle(
+  plot: IndicatorPlotSpec,
+  provided: Partial<IndicatorPlotStyle> | undefined,
+): IndicatorPlotStyle {
+  const base = defaultPlotStyle(plot)
+  const lineWidth = finiteNumber(provided?.lineWidth, base.lineWidth)
+  const opacity = finiteNumber(provided?.opacity, base.opacity)
+  return {
+    color: isHexColor(provided?.color) ? provided.color : base.color,
+    lineWidth: clamp(Math.round(lineWidth), 1, 4),
+    opacity: clamp(opacity, 0, 1),
+    visible: typeof provided?.visible === 'boolean'
+      ? provided.visible
+      : base.visible,
   }
 }
 
@@ -117,22 +150,20 @@ export function resolvePlotStyles(
 ): Record<string, IndicatorPlotStyle> {
   const styles: Record<string, IndicatorPlotStyle> = {}
   for (const plot of definition.plots) {
-    const base = defaultPlotStyle(plot)
-    const given = provided[plot.id] ?? {}
-    styles[plot.id] = {
-      color: typeof given.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(given.color)
-        ? given.color
-        : base.color,
-      lineWidth: Number.isFinite(given.lineWidth)
-        ? Math.min(4, Math.max(1, Math.round(given.lineWidth as number)))
-        : base.lineWidth,
-      opacity: Number.isFinite(given.opacity)
-        ? Math.min(1, Math.max(0, given.opacity as number))
-        : base.opacity,
-      visible: typeof given.visible === 'boolean' ? given.visible : base.visible,
-    }
+    styles[plot.id] = resolvePlotStyle(plot, provided[plot.id])
   }
   return styles
+}
+
+/** Copies plot styles without relying on serialization side effects. */
+export function copyPlotStyles(
+  styles: Readonly<Record<string, IndicatorPlotStyle>>,
+): Record<string, IndicatorPlotStyle> {
+  const copy: Record<string, IndicatorPlotStyle> = {}
+  for (const [plotId, style] of Object.entries(styles)) {
+    copy[plotId] = { ...style }
+  }
+  return copy
 }
 
 /**
@@ -145,7 +176,7 @@ export function plotColor(style: IndicatorPlotStyle): string {
   }
   let hex = style.color.slice(1)
   if (hex.length === 3) {
-    hex = [...hex].map((c) => c + c).join('')
+    hex = `${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`
   }
   const value = Number.parseInt(hex.slice(0, 6), 16)
   const [r, g, b] = [(value >> 16) & 255, (value >> 8) & 255, value & 255]
@@ -160,6 +191,12 @@ export interface IndicatorInstance {
   inputs: IndicatorInputs
   /** Appearance per plot id; an indicator can draw several lines. */
   styles: Record<string, IndicatorPlotStyle>
+}
+
+/** An applied instance paired with the catalog metadata used by the UI. */
+export interface AppliedIndicator {
+  instance: IndicatorInstance
+  definition: IndicatorDefinition
 }
 
 export function createInstanceId(): string {
@@ -202,7 +239,7 @@ export function coerceInput(
     }
 
     case 'color':
-      return typeof value === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(value)
+      return isHexColor(value)
         ? value
         : String(spec.defval)
   }
@@ -296,13 +333,20 @@ export function groupIndicatorInputs(
       buckets.set(kind, [spec])
     }
   }
-  return GROUP_ORDER
-    .filter((kind) => buckets.has(kind))
-    .map((kind) => ({
+
+  const groups: IndicatorInputGroup[] = []
+  for (const kind of GROUP_ORDER) {
+    const groupedInputs = buckets.get(kind)
+    if (!groupedInputs) {
+      continue
+    }
+    groups.push({
       kind,
       label: GROUP_LABELS[kind],
-      inputs: buckets.get(kind) as IndicatorInputSpec[],
-    }))
+      inputs: groupedInputs,
+    })
+  }
+  return groups
 }
 
 /** Label shown on the chart legend, e.g. `RSI 14`. */
@@ -310,11 +354,18 @@ export function instanceLabel(
   definition: IndicatorDefinition,
   inputs: IndicatorInputs,
 ): string {
-  const numeric = definition.inputs
-    .filter((spec) => spec.type === 'int' || spec.type === 'float')
-    .map((spec) => inputs[spec.id])
-    .filter((value) => typeof value === 'number')
-  return numeric.length > 0
-    ? `${definition.shortName} ${numeric.join(' ')}`
-    : definition.shortName
+  const numericValues: number[] = []
+  for (const spec of definition.inputs) {
+    if (spec.type !== 'int' && spec.type !== 'float') {
+      continue
+    }
+    const value = inputs[spec.id]
+    if (typeof value === 'number') {
+      numericValues.push(value)
+    }
+  }
+  if (numericValues.length === 0) {
+    return definition.shortName
+  }
+  return `${definition.shortName} ${numericValues.join(' ')}`
 }

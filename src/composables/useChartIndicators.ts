@@ -15,34 +15,29 @@ import {
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts'
-import type {
-  IndicatorBar,
-  IndicatorCandlePatch,
-  IndicatorMarker,
-  IndicatorPlotPatch,
-} from '@/domain/indicatorProtocol'
-import { BAR_COLOR_PLOT } from '@/domain/indicatorProtocol'
-import { RoundedCandleSeries } from '@/plugins/roundedCandles/RoundedCandleSeries'
-import { hasDrawings } from '@/domain/indicatorDrawings'
-import { readableOnCached } from '@/domain/readableColor'
 import {
-  publishIndicatorReadout,
-  resetIndicatorReadout,
-} from '@/services/indicatorReadout'
-import type { IndicatorDrawings } from '@/domain/indicatorDrawings'
-import { IndicatorDrawingsPrimitive } from '@/plugins/indicatorDrawings/IndicatorDrawingsPrimitive'
-import type {
-  IndicatorDefinition,
-  IndicatorInputs,
-  IndicatorInstance,
-  IndicatorPlotStyle,
-} from '@/domain/indicators'
+  BAR_COLOR_PLOT,
+  type IndicatorBar,
+  type IndicatorCandlePatch,
+  type IndicatorMarker,
+  type IndicatorPlotPatch,
+} from '@/domain/indicatorProtocol'
+import {
+  hasDrawings,
+  type IndicatorDrawings,
+} from '@/domain/indicatorDrawings'
+import { readableOnCached } from '@/domain/readableColor'
 import {
   createInstanceId,
   plotColor,
   plotStyleKind,
   resolveInputs,
   resolvePlotStyles,
+  type IndicatorDefinition,
+  type IndicatorInputs,
+  type IndicatorInstance,
+  type IndicatorPlotStyle,
+  type AppliedIndicator,
 } from '@/domain/indicators'
 import {
   createIndicatorClient,
@@ -51,6 +46,16 @@ import {
   type IndicatorPatchHandler,
   type IndicatorResultParts,
 } from '@/services/indicators'
+import {
+  publishIndicatorReadout,
+  resetIndicatorReadout,
+} from '@/services/indicatorReadout'
+import {
+  IndicatorDrawingsPrimitive,
+} from '@/plugins/indicatorDrawings/IndicatorDrawingsPrimitive'
+import {
+  RoundedCandleSeries,
+} from '@/plugins/roundedCandles/RoundedCandleSeries'
 
 interface MountedIndicator {
   instance: IndicatorInstance
@@ -68,6 +73,8 @@ interface MountedIndicator {
    * and draws one — and offering those in the style panel would be noise.
    */
   populated: Set<string>
+  /** Reused transaction buffer; avoids allocating an empty array per tick. */
+  pendingPopulated: string[]
   /** A result already arrived, so an empty `populated` is meaningful. */
   calculated: boolean
   /**
@@ -116,38 +123,46 @@ function candleSeriesId(plotId: string): string {
   return `candles:${plotId}`
 }
 
-/** The indicator paints each bar itself; the series must not impose a colour. */
+/** Indicator-painted bars must not inherit a colour from their series. */
 const CANDLE_OPTIONS = {
   priceLineVisible: false,
   lastValueVisible: false,
 } as const
+
+function indicatorCandlePoint(
+  patch: IndicatorCandlePatch,
+  index: number,
+  colored: boolean,
+) {
+  const candle = {
+    time: patch.time[index] as UTCTimestamp,
+    open: patch.open[index],
+    high: patch.high[index],
+    low: patch.low[index],
+    close: patch.close[index],
+  }
+  if (!colored) {
+    return candle
+  }
+  const shade = patch.palette[patch.colorIndex[index]]
+  return shade ? Object.assign(candle, shade) : candle
+}
 
 function applyCandlePatch(
   series: ISeriesApi<SeriesType>,
   patch: IndicatorCandlePatch,
 ): void {
   const colored = patch.palette.length > 0
-  const point = (index: number) => {
-    const shade = colored ? patch.palette[patch.colorIndex[index]] : undefined
-    return {
-      time: patch.time[index] as UTCTimestamp,
-      open: patch.open[index],
-      high: patch.high[index],
-      low: patch.low[index],
-      close: patch.close[index],
-      ...(shade === undefined ? {} : shade),
-    }
-  }
   if (patch.full) {
     const points = new Array(patch.time.length)
     for (let i = 0; i < patch.time.length; i += 1) {
-      points[i] = point(i)
+      points[i] = indicatorCandlePoint(patch, i, colored)
     }
     series.setData(points)
     return
   }
   for (let i = 0; i < patch.time.length; i += 1) {
-    series.update(point(i))
+    series.update(indicatorCandlePoint(patch, i, colored))
   }
 }
 
@@ -192,6 +207,22 @@ function formatValue(value: number): string {
     return value.toFixed(2)
   }
   return value.toPrecision(3)
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function priceLineStyle(
+  style: IndicatorDefinition['hlines'][number]['linestyle'],
+): LineStyle {
+  if (style === 'dashed') {
+    return LineStyle.Dashed
+  }
+  if (style === 'dotted') {
+    return LineStyle.Dotted
+  }
+  return LineStyle.Solid
 }
 
 /** Names the worker's raw output keys in the language of the interface. */
@@ -272,10 +303,10 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     seriesData?: Map<ISeriesApi<SeriesType>, unknown>,
   ): string {
     let text = ''
-    entry.definition.plots.forEach((plot) => {
+    for (const plot of entry.definition.plots) {
       const series = entry.series.get(plot.id)
       if (!series || !entry.instance.styles[plot.id]?.visible) {
-        return
+        continue
       }
       const point = seriesData?.get(series) as { value?: number } | undefined
       /*
@@ -287,11 +318,11 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         ? point.value as number
         : entry.lastValues.get(plot.id)
       if (value === undefined) {
-        return
+        continue
       }
       text += text ? '  ' : ''
       text += `${plot.title ?? plot.id} ${formatValue(value)}`
-    })
+    }
     return text
   }
 
@@ -303,14 +334,19 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     if (!series) {
       return
     }
-    const points = markers.map((marker) => ({
-      time: marker.time as UTCTimestamp,
-      position: marker.position,
-      shape: marker.shape,
-      color: readableOnCached(marker.color, chartSurface()),
-      ...(marker.size === undefined ? {} : { size: marker.size }),
-      ...(marker.text === undefined ? {} : { text: marker.text }),
-    })) as SeriesMarker<Time>[]
+    const surface = chartSurface()
+    const points = new Array<SeriesMarker<Time>>(markers.length)
+    for (let index = 0; index < markers.length; index += 1) {
+      const marker = markers[index]
+      points[index] = {
+        time: marker.time as UTCTimestamp,
+        position: marker.position,
+        shape: marker.shape,
+        color: readableOnCached(marker.color, surface),
+        ...(marker.size === undefined ? {} : { size: marker.size }),
+        ...(marker.text === undefined ? {} : { text: marker.text }),
+      } as SeriesMarker<Time>
+    }
 
     if (entry.markers) {
       entry.markers.setMarkers(points)
@@ -344,11 +380,10 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       const needsPriceScale = drawings.lines.length > 0
         || drawings.boxes.length > 0
         || drawings.labels.length > 0
-      const host = own ?? (
-        entry.definition.overlay || !needsPriceScale
-          ? options.candleSeries()
-          : null
-      )
+      let host = own
+      if (!host && (entry.definition.overlay || !needsPriceScale)) {
+        host = options.candleSeries() ?? undefined
+      }
       if (!host) {
         throw new Error(
           `Sem série para ancorar os desenhos de ${entry.definition.name}`,
@@ -361,6 +396,108 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     entry.drawings.primitive.setDrawings(drawings)
   }
 
+  function rememberLastValue(
+    entry: MountedIndicator,
+    patch: IndicatorPlotPatch,
+  ): void {
+    const lastValue = patch.value[patch.value.length - 1]
+    if (lastValue !== undefined) {
+      entry.lastValues.set(patch.plotId, lastValue)
+    }
+  }
+
+  function applyPlotPatch(
+    entry: MountedIndicator,
+    patch: IndicatorPlotPatch,
+    newlyPopulated: string[],
+  ): void {
+    const series = entry.series.get(patch.plotId)
+    if (!series) {
+      if (patch.time.length > 0) {
+        throw new Error(
+          `Série ${patch.plotId} não está montada em ${entry.definition.name}`,
+        )
+      }
+      return
+    }
+    if (patch.time.length > 0 && !entry.populated.has(patch.plotId)) {
+      newlyPopulated.push(patch.plotId)
+    }
+
+    if (patch.full) {
+      const points = new Array(patch.time.length)
+      for (let i = 0; i < patch.time.length; i += 1) {
+        points[i] = {
+          time: patch.time[i] as UTCTimestamp,
+          value: patch.value[i],
+        }
+      }
+      series.setData(points)
+      rememberLastValue(entry, patch)
+      // `setData` is synchronous. A non-empty patch that leaves no data is
+      // not a successful commit and must enter the bounded full retry.
+      if (patch.time.length > 0 && series.data().length === 0) {
+        throw new Error(
+          'Lightweight Charts não reteve os dados de '
+          + `${entry.definition.name}/${patch.plotId}`,
+        )
+      }
+      return
+    }
+
+    // Ordinary tick: only the tail moved, so update point by point.
+    for (let i = 0; i < patch.time.length; i += 1) {
+      series.update({
+        time: patch.time[i] as UTCTimestamp,
+        value: patch.value[i],
+      })
+    }
+    rememberLastValue(entry, patch)
+  }
+
+  function applyCandlePatches(
+    entry: MountedIndicator,
+    patches: readonly IndicatorCandlePatch[] | undefined,
+    newlyPopulated: string[],
+  ): void {
+    if (!patches) {
+      return
+    }
+    for (const patch of patches) {
+      const series = entry.series.get(candleSeriesId(patch.plotId))
+      if (!series) {
+        throw new Error(
+          `Série de velas ${patch.plotId} não está montada em `
+          + entry.definition.name,
+        )
+      }
+      if (!entry.populated.has(patch.plotId)) {
+        newlyPopulated.push(patch.plotId)
+      }
+      applyCandlePatch(series, patch)
+    }
+  }
+
+  function commitPresentation(
+    entry: MountedIndicator,
+    newlyPopulated: readonly string[],
+  ): void {
+    let changed = false
+    for (const plotId of newlyPopulated) {
+      if (!entry.populated.has(plotId)) {
+        entry.populated.add(plotId)
+        changed = true
+      }
+    }
+    if (!entry.calculated) {
+      entry.calculated = true
+      changed = true
+    }
+    if (changed) {
+      populatedRevision.value += 1
+    }
+  }
+
   function applyPatches(
     instanceId: string,
     result: IndicatorResultParts,
@@ -371,7 +508,8 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     }
     const { patches, markers, candles, drawings } = result
     const createdNow = ensureChartObjects(entry, patches, candles, drawings)
-    const newlyPopulated: string[] = []
+    const newlyPopulated = entry.pendingPopulated
+    newlyPopulated.length = 0
     try {
       if (drawings) {
         applyDrawings(entry, drawings)
@@ -385,86 +523,15 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
           newlyPopulated.push('__markers')
         }
       }
-      for (const patch of candles ?? []) {
-        const series = entry.series.get(candleSeriesId(patch.plotId))
-        if (!series) {
-          throw new Error(
-            `Série de velas ${patch.plotId} não está montada em `
-            + entry.definition.name,
-          )
-        }
-        if (!entry.populated.has(patch.plotId)) {
-          newlyPopulated.push(patch.plotId)
-        }
-        applyCandlePatch(series, patch)
-      }
+      applyCandlePatches(entry, candles, newlyPopulated)
       for (const patch of patches) {
-        const series = entry.series.get(patch.plotId)
-        if (!series) {
-          if (patch.time.length > 0) {
-            throw new Error(
-              `Série ${patch.plotId} não está montada em ${entry.definition.name}`,
-            )
-          }
-          continue
-        }
-        if (patch.time.length > 0 && !entry.populated.has(patch.plotId)) {
-          newlyPopulated.push(patch.plotId)
-        }
-        if (patch.full) {
-          // Whole series replaced: first application or new history page.
-          const points = new Array(patch.time.length)
-          for (let i = 0; i < patch.time.length; i += 1) {
-            points[i] = {
-              time: patch.time[i] as UTCTimestamp,
-              value: patch.value[i],
-            }
-          }
-          series.setData(points)
-          if (patch.value.length > 0) {
-            entry.lastValues.set(
-              patch.plotId,
-              patch.value[patch.value.length - 1],
-            )
-          }
-          // `setData` is synchronous. A non-empty patch that leaves no data is
-          // not a successful commit and must enter the bounded full retry.
-          if (patch.time.length > 0 && series.data().length === 0) {
-            throw new Error(
-              `Lightweight Charts não reteve os dados de ${entry.definition.name}/${patch.plotId}`,
-            )
-          }
-          continue
-        }
-        // Ordinary tick: only the tail moved, so update point by point.
-        for (let i = 0; i < patch.time.length; i += 1) {
-          series.update({
-            time: patch.time[i] as UTCTimestamp,
-            value: patch.value[i],
-          })
-        }
-        if (patch.value.length > 0) {
-          entry.lastValues.set(patch.plotId, patch.value[patch.value.length - 1])
-        }
+        applyPlotPatch(entry, patch, newlyPopulated)
       }
 
       // Commit presentation bookkeeping only after every chart mutation worked.
       // If one setData/update throws, the client requests a complete retry and
       // this instance never advertises a half-applied result as calculated.
-      let presentationChanged = false
-      for (const plotId of newlyPopulated) {
-        if (!entry.populated.has(plotId)) {
-          entry.populated.add(plotId)
-          presentationChanged = true
-        }
-      }
-      if (!entry.calculated) {
-        entry.calculated = true
-        presentationChanged = true
-      }
-      if (presentationChanged) {
-        populatedRevision.value += 1
-      }
+      commitPresentation(entry, newlyPopulated)
       if (!cursorActive) {
         // The cursor owns the legend while it is over the chart; otherwise the
         // newest bar does.
@@ -480,6 +547,8 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         }
       }
       throw error
+    } finally {
+      newlyPopulated.length = 0
     }
   }
 
@@ -524,21 +593,28 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     styles: Record<string, IndicatorPlotStyle>,
     pane: IPaneApi<Time> | undefined,
     series: Map<string, ISeriesApi<SeriesType>>,
-  ): Map<string, ISeriesApi<SeriesType>> {
+  ): void {
     for (const plot of definition.plots) {
       // The catalog says how each plot is meant to be drawn; a MACD histogram
       // rendered as a line misreads the indicator.
       const kind = plotStyleKind(plot)
-      const type = kind === 'histogram'
-        ? HistogramSeries
-        : kind === 'area' ? AreaSeries : LineSeries
       const options = seriesOptions(styles[plot.id], kind, plot.color)
-      const created = pane
-        ? pane.addSeries(type, options)
-        : chart.addSeries(type, options, 0)
+      let created: ISeriesApi<SeriesType>
+      if (kind === 'histogram') {
+        created = pane
+          ? pane.addSeries(HistogramSeries, options)
+          : chart.addSeries(HistogramSeries, options, 0)
+      } else if (kind === 'area') {
+        created = pane
+          ? pane.addSeries(AreaSeries, options)
+          : chart.addSeries(AreaSeries, options, 0)
+      } else {
+        created = pane
+          ? pane.addSeries(LineSeries, options)
+          : chart.addSeries(LineSeries, options, 0)
+      }
       series.set(plot.id, created)
     }
-    return series
   }
 
   /**
@@ -584,17 +660,16 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     if (!anchor || definition.overlay) {
       return
     }
+    const surface = chartSurface()
     for (const hline of definition.hlines) {
       if (!Number.isFinite(hline.price)) {
         continue
       }
       anchor.createPriceLine({
         price: hline.price,
-        color: readableOnCached(hline.color ?? '#787B86', chartSurface(), 1.8),
+        color: readableOnCached(hline.color ?? '#787B86', surface, 1.8),
         lineWidth: 1,
-        lineStyle: hline.linestyle === 'dashed'
-          ? LineStyle.Dashed
-          : hline.linestyle === 'dotted' ? LineStyle.Dotted : LineStyle.Solid,
+        lineStyle: priceLineStyle(hline.linestyle),
         // The pane's own price scale already shows the values; a label per
         // level would cover a third of a 120px pane.
         axisLabelVisible: false,
@@ -614,10 +689,13 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     candles?: IndicatorCandlePatch[],
     drawings?: IndicatorDrawings,
   ): boolean {
+    if (entry.series.size > 0 || entry.drawings) {
+      return false
+    }
     const hasData = patches.some((patch) => patch.time.length > 0)
       || (candles?.length ?? 0) > 0
       || hasDrawings(drawings)
-    if (entry.series.size > 0 || entry.drawings || !hasData) {
+    if (!hasData) {
       return false
     }
     const chart = options.chart()
@@ -632,7 +710,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
      * strip below the chart reads as something broken.
      */
     const ownPaneContent = patches.some((patch) => patch.time.length > 0)
-      || (candles ?? []).some((patch) => patch.plotId !== BAR_COLOR_PLOT)
+      || (candles?.some((patch) => patch.plotId !== BAR_COLOR_PLOT) ?? false)
 
     try {
       entry.pane = entry.definition.overlay || !ownPaneContent
@@ -674,7 +752,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       entry.markers?.setMarkers([])
     } catch (error) {
       failures.push(
-        `markers: ${error instanceof Error ? error.message : String(error)}`,
+        `markers: ${errorMessage(error)}`,
       )
     }
     entry.markers = undefined
@@ -686,7 +764,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         entry.drawings.host.detachPrimitive(entry.drawings.primitive)
       } catch (error) {
         failures.push(
-          `desenhos: ${error instanceof Error ? error.message : String(error)}`,
+          `desenhos: ${errorMessage(error)}`,
         )
       }
       entry.drawings = undefined
@@ -697,7 +775,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         chart.removeSeries(series)
       } catch (error) {
         failures.push(
-          `${plotId}: ${error instanceof Error ? error.message : String(error)}`,
+          `${plotId}: ${errorMessage(error)}`,
         )
       }
     })
@@ -713,7 +791,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         entry.pane = undefined
       } catch (error) {
         failures.push(
-          `pane ${paneIndex}: ${error instanceof Error ? error.message : String(error)}`,
+          `pane ${paneIndex}: ${errorMessage(error)}`,
         )
       }
     } else if (paneIndex >= 0 && !paneIsEmpty) {
@@ -723,6 +801,16 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       options.onError?.(
         `Falha ao desmontar ${entry.definition.name}: ${failures.join('; ')}`,
       )
+    }
+  }
+
+  function applyStyles(entry: MountedIndicator): void {
+    for (const plot of entry.definition.plots) {
+      entry.series.get(plot.id)?.applyOptions(seriesOptions(
+        entry.instance.styles[plot.id],
+        plotStyleKind(plot),
+        plot.color,
+      ))
     }
   }
 
@@ -757,6 +845,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         pane: undefined,
         series,
         populated: new Set(),
+        pendingPopulated: [],
         calculated: false,
         lastValues: new Map(),
       })
@@ -824,13 +913,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         return
       }
       entry.instance.styles = resolvePlotStyles(entry.definition, styles)
-      entry.definition.plots.forEach((plot) => {
-        entry.series.get(plot.id)?.applyOptions(seriesOptions(
-          entry.instance.styles[plot.id],
-          plotStyleKind(plot),
-          plot.color,
-        ))
-      })
+      applyStyles(entry)
     },
 
     /** True once a result arrived for this instance. */
@@ -852,11 +935,12 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
      * compute is coalesced inside the client.
      */
     refresh(bar: IndicatorBar): void {
-      if (mounted.size === 0) {
+      const active = client
+      if (mounted.size === 0 || !active) {
         return
       }
-      client?.appendBar(bar)
-      client?.compute(false)
+      active.appendBar(bar)
+      active.compute(false)
     },
 
     /**
@@ -867,9 +951,9 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
      */
     readCursor(seriesData: Map<ISeriesApi<SeriesType>, unknown>): void {
       cursorActive = seriesData.size > 0
-      mounted.forEach((entry, instanceId) => {
+      for (const [instanceId, entry] of mounted) {
         publishIndicatorReadout(instanceId, readoutFor(entry, seriesData))
-      })
+      }
     },
 
     /**
@@ -877,15 +961,9 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
      * Only appearance is touched — no recalculation, no data leaves the worker.
      */
     retheme(): void {
-      mounted.forEach((entry) => {
-        entry.definition.plots.forEach((plot) => {
-          entry.series.get(plot.id)?.applyOptions(seriesOptions(
-            entry.instance.styles[plot.id],
-            plotStyleKind(plot),
-            plot.color,
-          ))
-        })
-      })
+      for (const entry of mounted.values()) {
+        applyStyles(entry)
+      }
     },
 
     /** History changed underneath: drop retained results and redraw fully. */
@@ -903,7 +981,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     },
 
     /** Instances paired with their definition, for the applied list. */
-    applied(): { instance: IndicatorInstance, definition: IndicatorDefinition }[] {
+    applied(): AppliedIndicator[] {
       return [...mounted.values()].map((entry) => ({
         instance: entry.instance,
         definition: entry.definition,
@@ -919,14 +997,14 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
 
     dispose(): void {
       const chart = options.chart()
-      mounted.forEach((entry, instanceId) => {
+      for (const [instanceId, entry] of mounted) {
         resetIndicatorReadout(instanceId)
         if (chart) {
           removeChartObjects(chart, entry)
         } else {
           entry.markers?.setMarkers([])
         }
-      })
+      }
       mounted.clear()
       client?.dispose()
       client = undefined

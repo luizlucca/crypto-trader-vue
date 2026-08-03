@@ -1,20 +1,23 @@
 <script setup lang="ts">
 import { Settings2, X } from '@lucide/vue'
-import type {
-  IndicatorDefinition,
-  IndicatorInstance,
-} from '@/domain/indicators'
+import type { AppliedIndicator } from '@/domain/indicators'
 import { instanceLabel } from '@/domain/indicators'
 import IndicatorReadout from './IndicatorReadout.vue'
 
 defineProps<{
-  applied: readonly { instance: IndicatorInstance, definition: IndicatorDefinition }[]
+  applied: readonly AppliedIndicator[]
 }>()
 
 defineEmits<{
   configure: [instanceId: string]
   remove: [instanceId: string]
 }>()
+
+function swatchColor(entry: AppliedIndicator): string {
+  const firstPlotId = entry.definition.plots[0]?.id
+  return (firstPlotId ? entry.instance.styles[firstPlotId]?.color : undefined)
+    ?? 'var(--blue)'
+}
 </script>
 
 <template>
@@ -26,9 +29,11 @@ defineEmits<{
     >
       <span
         class="applied-indicator-swatch"
-        :style="{ background: entry.definition.plots[0]?.color ?? 'var(--blue)' }"
+        :style="{ background: swatchColor(entry) }"
       />
-      <strong>{{ instanceLabel(entry.definition, entry.instance.inputs) }}</strong>
+      <strong>
+        {{ instanceLabel(entry.definition, entry.instance.inputs) }}
+      </strong>
       <IndicatorReadout :instance-id="entry.instance.instanceId" />
       <button
         :aria-label="`Parâmetros de ${entry.definition.name}`"

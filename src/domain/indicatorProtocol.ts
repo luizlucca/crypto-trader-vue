@@ -46,7 +46,7 @@ export type IndicatorRequest
     | {
       kind: 'detach'
       instanceId: string
-      /** A delayed detach must not remove a newer incarnation of the instance. */
+      /** A delayed detach cannot remove a newer incarnation of the instance. */
       instanceRevision: number
     }
   /** Replaces the retained history: first load or a new page of older bars. */
@@ -77,6 +77,13 @@ export interface IndicatorPlotPatch {
 }
 
 /**
+ * Reserved candle output: the market's own bars, repainted with the colours an
+ * indicator assigns per bar. It travels as a candle patch because that is
+ * exactly what it is — the same OHLC, a different palette.
+ */
+export const BAR_COLOR_PLOT = '__bars'
+
+/**
  * An OHLC output of the indicator itself, not of the market.
  *
  * Part of the catalog is defined as candles rather than lines — the CVD, the
@@ -88,13 +95,6 @@ export interface IndicatorPlotPatch {
  * two or three distinct colours, so sending the string per bar would be the
  * largest part of the message on the hot path.
  */
-/**
- * Reserved candle output: the market's own bars, repainted with the colours an
- * indicator assigns per bar. It travels as a candle patch because that is
- * exactly what it is — the same OHLC, a different palette.
- */
-export const BAR_COLOR_PLOT = '__bars'
-
 export interface IndicatorCandlePatch {
   plotId: string
   full: boolean
@@ -163,9 +163,9 @@ export type IndicatorResponse
    * empty result so the interface can explain the blank pane instead of
    * leaving it looking like a failure.
    *
-   * `outputs` carries the raw keys the library did fill and this pipeline does
-   * not draw — `plotCandles`, `boxes`, `lines`. Empty means the indicator
-   * simply returned no points: usually a period longer than the history.
+   * `outputs` carries any raw output keys the library filled but this pipeline
+   * cannot draw (currently only pivot metadata). Empty means the indicator
+   * simply returned no points, usually because its period exceeds the history.
    */
     | {
       kind: 'no-output'

@@ -4,6 +4,7 @@ import type {
   IPrimitivePaneView,
   ISeriesApi,
   ISeriesPrimitive,
+  ITimeScaleApi,
   PrimitivePaneViewZOrder,
   SeriesAttachedParameter,
   SeriesType,
@@ -25,9 +26,9 @@ import { EMPTY_DRAWINGS } from '@/domain/indicatorDrawings'
  * zooming work without asking the worker for anything.
  *
  * **This runs on the chart's paint path**, alongside the candles and the order
- * book commit (ADR-0003). Two rules follow from that, and both are load-bearing:
- * nothing is allocated per frame beyond the canvas calls themselves, and shapes
- * outside the visible range are skipped before any conversion.
+ * book commit (ADR-0003). Two rules follow from that, and both are
+ * load-bearing: nothing is allocated per frame beyond the canvas calls
+ * themselves, and off-screen shapes are discarded as early as possible.
  */
 
 const DASH_PATTERNS: Record<DrawingLineStyle, number[]> = {
@@ -36,20 +37,15 @@ const DASH_PATTERNS: Record<DrawingLineStyle, number[]> = {
   dotted: [2, 3],
 }
 
-const LABEL_FONT_SIZE: Record<string, number> = {
-  tiny: 9,
-  small: 10,
-  normal: 12,
-  large: 14,
+const LABEL_FONTS: Record<string, { size: number, css: string }> = {
+  tiny: { size: 9, css: '9px sans-serif' },
+  small: { size: 10, css: '10px sans-serif' },
+  normal: { size: 12, css: '12px sans-serif' },
+  large: { size: 14, css: '14px sans-serif' },
 }
 
 const LABEL_PADDING = 4
 const LABEL_GAP = 6
-
-interface Anchor {
-  x: number
-  y: number
-}
 
 class DrawingsRenderer implements IPrimitivePaneRenderer {
   constructor(private readonly primitive: IndicatorDrawingsPrimitive) {}
@@ -110,7 +106,11 @@ export class IndicatorDrawingsPrimitive implements ISeriesPrimitive<Time> {
    * Text widths, measured once per label instead of once per frame. Measuring
    * is not free, and this renderer runs on the same paint pass as the candles.
    */
-  private textWidths = new Map<string, number>()
+  private textWidths = new WeakMap<
+    IndicatorDrawings['labels'][number],
+    number
+  >()
+
   private chart: IChartApi | undefined
   private series: ISeriesApi<SeriesType> | undefined
   private requestUpdate: (() => void) | undefined
@@ -136,10 +136,10 @@ export class IndicatorDrawingsPrimitive implements ISeriesPrimitive<Time> {
     return this.views
   }
 
-  /** Replaces every shape. The catalog recomputes them whole, never in parts. */
+  /** Replaces all shapes; the catalog never recomputes them in parts. */
   setDrawings(drawings: IndicatorDrawings): void {
     this.drawings = drawings
-    this.textWidths.clear()
+    this.textWidths = new WeakMap()
     this.requestUpdate?.()
   }
 
@@ -184,16 +184,11 @@ export class IndicatorDrawingsPrimitive implements ISeriesPrimitive<Time> {
     const width = mediaSize.width
     const height = mediaSize.height
 
-    const x = (time: number): number | null => (
-      timeScale.timeToCoordinate(time as UTCTimestamp)
-    )
-    const y = (price: number): number | null => series.priceToCoordinate(price)
-
     context.save()
     try {
-      this.renderBoxes(context, x, y, width, height)
-      this.renderLines(context, x, y, width)
-      this.renderLabels(context, x, y, width, height)
+      this.renderBoxes(context, timeScale, series, width, height)
+      this.renderLines(context, timeScale, series, width)
+      this.renderLabels(context, timeScale, series, width, height)
     } finally {
       context.restore()
     }
@@ -201,16 +196,16 @@ export class IndicatorDrawingsPrimitive implements ISeriesPrimitive<Time> {
 
   private renderBoxes(
     context: CanvasRenderingContext2D,
-    x: (time: number) => number | null,
-    y: (price: number) => number | null,
+    timeScale: ITimeScaleApi<Time>,
+    series: ISeriesApi<SeriesType>,
     width: number,
     height: number,
   ): void {
     for (const box of this.drawings.boxes) {
-      const x1 = x(box.time1)
-      const x2 = x(box.time2)
-      const y1 = y(box.price1)
-      const y2 = y(box.price2)
+      const x1 = timeScale.timeToCoordinate(box.time1 as UTCTimestamp)
+      const x2 = timeScale.timeToCoordinate(box.time2 as UTCTimestamp)
+      const y1 = series.priceToCoordinate(box.price1)
+      const y2 = series.priceToCoordinate(box.price2)
       if (x1 === null || x2 === null || y1 === null || y2 === null) {
         continue
       }
@@ -238,7 +233,7 @@ export class IndicatorDrawingsPrimitive implements ISeriesPrimitive<Time> {
 
       if (box.text && boxHeight >= 10 && boxWidth >= 16) {
         context.fillStyle = box.textColor ?? '#FFFFFF'
-        context.font = `${LABEL_FONT_SIZE.tiny}px sans-serif`
+        context.font = LABEL_FONTS.tiny.css
         context.textAlign = 'center'
         context.textBaseline = 'middle'
         context.fillText(box.text, left + boxWidth / 2, top + boxHeight / 2)
@@ -248,22 +243,22 @@ export class IndicatorDrawingsPrimitive implements ISeriesPrimitive<Time> {
 
   private renderLines(
     context: CanvasRenderingContext2D,
-    x: (time: number) => number | null,
-    y: (price: number) => number | null,
+    timeScale: ITimeScaleApi<Time>,
+    series: ISeriesApi<SeriesType>,
     width: number,
   ): void {
     for (const line of this.drawings.lines) {
-      const x1 = x(line.time1)
-      const x2 = x(line.time2)
-      const y1 = y(line.price1)
-      const y2 = y(line.price2)
+      const x1 = timeScale.timeToCoordinate(line.time1 as UTCTimestamp)
+      const x2 = timeScale.timeToCoordinate(line.time2 as UTCTimestamp)
+      const y1 = series.priceToCoordinate(line.price1)
+      const y2 = series.priceToCoordinate(line.price2)
       if (x1 === null || x2 === null || y1 === null || y2 === null) {
         continue
       }
-      let startX = x1
-      let endX = x2
-      let startY = y1
-      let endY = y2
+      let startX: number = x1
+      let endX: number = x2
+      let startY: number = y1
+      let endY: number = y2
 
       if (line.extend === 'left' || line.extend === 'both') {
         const projected = projectTo(x1, y1, x2, y2, 0)
@@ -289,40 +284,34 @@ export class IndicatorDrawingsPrimitive implements ISeriesPrimitive<Time> {
 
   private renderLabels(
     context: CanvasRenderingContext2D,
-    x: (time: number) => number | null,
-    y: (price: number) => number | null,
+    timeScale: ITimeScaleApi<Time>,
+    series: ISeriesApi<SeriesType>,
     width: number,
     height: number,
   ): void {
     for (const label of this.drawings.labels) {
-      const anchorX = x(label.time)
-      const anchorY = y(label.price)
+      const anchorX = timeScale.timeToCoordinate(label.time as UTCTimestamp)
+      const anchorY = series.priceToCoordinate(label.price)
       if (anchorX === null || anchorY === null) {
         continue
       }
-      const size = LABEL_FONT_SIZE[label.size ?? 'small'] ?? LABEL_FONT_SIZE.small
-      context.font = `${size}px sans-serif`
-      const key = `${size}|${label.text}`
-      let textWidth = this.textWidths.get(key)
+      const font = LABEL_FONTS[label.size ?? 'small'] ?? LABEL_FONTS.small
+      context.font = font.css
+      let textWidth = this.textWidths.get(label)
       if (textWidth === undefined) {
         textWidth = context.measureText(label.text).width
-        this.textWidths.set(key, textWidth)
+        this.textWidths.set(label, textWidth)
       }
       const boxWidth = textWidth + LABEL_PADDING * 2
-      const boxHeight = size + LABEL_PADDING * 2
-      const placed = placeLabel(
-        label.style,
-        { x: anchorX, y: anchorY },
-        boxWidth,
-        boxHeight,
-      )
-      if (placed.y + boxHeight < 0 || placed.y > height) {
+      const boxHeight = font.size + LABEL_PADDING * 2
+      const placedX = labelLeft(label.style, anchorX, boxWidth)
+      const top = labelTop(label.style, anchorY, boxHeight)
+      if (top + boxHeight < 0 || top > height) {
         continue
       }
       // A label anchored on the last bar would otherwise run off the pane and
       // lose its last characters — exactly the ones that carry the value.
-      const left = Math.max(0, Math.min(placed.x, width - boxWidth))
-      const top = placed.y
+      const left = Math.max(0, Math.min(placedX, width - boxWidth))
       if (left + boxWidth < 0 || left > width) {
         continue
       }
@@ -353,25 +342,37 @@ function projectTo(
   return y1 + ((y2 - y1) * (targetX - x1)) / (x2 - x1)
 }
 
-/** Top-left corner of the label box for each anchoring style. */
-function placeLabel(
+/** Horizontal placement of a label without allocating on the paint path. */
+function labelLeft(
   style: string,
-  anchor: Anchor,
+  anchorX: number,
   boxWidth: number,
-  boxHeight: number,
-): Anchor {
+): number {
   if (style === 'label_left') {
-    return { x: anchor.x - boxWidth - LABEL_GAP, y: anchor.y - boxHeight / 2 }
+    return anchorX - boxWidth - LABEL_GAP
   }
   if (style === 'label_right') {
-    return { x: anchor.x + LABEL_GAP, y: anchor.y - boxHeight / 2 }
+    return anchorX + LABEL_GAP
   }
+  return anchorX - boxWidth / 2
+}
+
+/** Vertical placement of a label without allocating on the paint path. */
+function labelTop(
+  style: string,
+  anchorY: number,
+  boxHeight: number,
+): number {
   if (style === 'label_down') {
-    return { x: anchor.x - boxWidth / 2, y: anchor.y + LABEL_GAP }
+    return anchorY + LABEL_GAP
   }
-  if (style === 'label_center') {
-    return { x: anchor.x - boxWidth / 2, y: anchor.y - boxHeight / 2 }
+  if (
+    style === 'label_left'
+    || style === 'label_right'
+    || style === 'label_center'
+  ) {
+    return anchorY - boxHeight / 2
   }
   // label_up and anything unknown: above the anchor.
-  return { x: anchor.x - boxWidth / 2, y: anchor.y - boxHeight - LABEL_GAP }
+  return anchorY - boxHeight - LABEL_GAP
 }

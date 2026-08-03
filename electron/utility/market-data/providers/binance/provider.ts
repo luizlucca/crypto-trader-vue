@@ -12,6 +12,7 @@ import type {
 import type {
   CandleHistoryOptions,
   CatalogOptions,
+  ConnectionState,
   ConnectionStateHandler,
   MarketDataProvider,
   OrderBookStreamOptions,
@@ -39,6 +40,8 @@ import { websocketJSON$ } from './websocket'
 
 const catalogTTL = 60 * 60 * 1_000
 const requestTimeout = 12_000
+const snapshotRetryBaseMs = 1_000
+const snapshotRetryMaximumMs = 15_000
 
 interface CatalogCacheEntry {
   loadedAt: number
@@ -48,6 +51,14 @@ interface CatalogCacheEntry {
 
 interface ExchangeInfoPayload {
   symbols?: BinanceExchangeSymbol[]
+}
+
+function snapshotRetryDelay(attempt: number): number {
+  const exponent = Math.min(Math.max(attempt - 1, 0), 4)
+  return Math.min(
+    snapshotRetryBaseMs * (2 ** exponent),
+    snapshotRetryMaximumMs,
+  )
 }
 
 /** The local book stores `[price, quantity]`; aggregation wants levels. */
@@ -208,48 +219,114 @@ export class BinanceProvider implements MarketDataProvider {
 
     return new Observable<OrderBookSnapshot>((subscriber) => {
       const book = new BinanceOrderBook(market)
-      let resyncing = false
+      let snapshotInFlight = false
       let disposed = false
+      let socketConnected = false
+      let socketGeneration = 0
+      let snapshotRetryAttempt = 0
+      let snapshotRetryTimer: ReturnType<typeof setTimeout> | undefined
+      let bookReady = false
 
-      const resynchronise = async (): Promise<void> => {
-        if (resyncing || disposed) {
+      function clearSnapshotRetry(): void {
+        if (snapshotRetryTimer !== undefined) {
+          clearTimeout(snapshotRetryTimer)
+          snapshotRetryTimer = undefined
+        }
+      }
+
+      function reportResynchronising(message: string): void {
+        onState({ state: 'reconnecting', message })
+      }
+
+      function resetLocalBook(): void {
+        bookReady = false
+        book.reset()
+      }
+
+      function isCurrentSocketGeneration(generation: number): boolean {
+        return !disposed
+          && socketConnected
+          && generation === socketGeneration
+      }
+
+      function scheduleSnapshot(delayMs: number): void {
+        if (
+          disposed
+          || !socketConnected
+          || snapshotInFlight
+          || snapshotRetryTimer !== undefined
+        ) {
           return
         }
-        resyncing = true
+        if (delayMs <= 0) {
+          void resynchronise()
+          return
+        }
+        snapshotRetryTimer = setTimeout(() => {
+          snapshotRetryTimer = undefined
+          void resynchronise()
+        }, delayMs)
+      }
+
+      function scheduleSnapshotRetry(message: string): void {
+        if (disposed || !socketConnected) {
+          return
+        }
+        resetLocalBook()
+        snapshotRetryAttempt += 1
+        reportResynchronising(message)
+        scheduleSnapshot(snapshotRetryDelay(snapshotRetryAttempt))
+      }
+
+      async function resynchronise(): Promise<void> {
+        if (snapshotInFlight || disposed) {
+          return
+        }
+        const generation = socketGeneration
+        snapshotInFlight = true
+        // Events collected during a previous retry delay cannot bridge the
+        // snapshot fetched now. Retain only those arriving while this request
+        // is in flight, as prescribed by Binance's synchronization sequence.
+        resetLocalBook()
+        let failureMessage: string | undefined
         try {
-          // Retried by the caller's reconnect policy if it throws.
           const snapshot = normalizeDepthSnapshot(await fetchJSON<unknown>(
             `${endpoint.rest}/depth?symbol=${symbol}`
             + `&limit=${SNAPSHOT_LIMIT[market]}`,
           ))
-          if (disposed) {
-            return
-          }
-          if (!book.applySnapshot(snapshot)) {
-            // The buffered events could not bridge the gap; try a newer one.
-            resyncing = false
-            void resynchronise()
-            return
+          const currentSocket = isCurrentSocketGeneration(generation)
+          if (currentSocket && !book.applySnapshot(snapshot)) {
+            failureMessage = 'Snapshot não alcançou a sequência atual do livro'
+          } else if (currentSocket) {
+            snapshotRetryAttempt = 0
           }
         } catch (error) {
-          if (!disposed) {
-            onState({
-              state: 'reconnecting',
-              message: error instanceof Error ? error.message : String(error),
-            })
-          }
+          failureMessage = error instanceof Error
+            ? error.message
+            : String(error)
         } finally {
-          resyncing = false
+          snapshotInFlight = false
+        }
+        if (disposed || !socketConnected) {
+          return
+        }
+        if (!isCurrentSocketGeneration(generation)) {
+          // A new socket opened while this request was in flight. Its open
+          // callback could not start another request while a snapshot was in
+          // flight, so hand ownership to that generation now.
+          scheduleSnapshot(0)
+        } else if (failureMessage) {
+          scheduleSnapshotRetry(failureMessage)
         }
       }
 
-      const emit = (eventTime: number): void => {
+      function emitSnapshot(eventTime: number): void {
         const rows = options.rowsPerSide()
         const step = options.aggregationStep()
         // Pull more raw levels than rows: aggregation merges many into one.
         const depth = Math.max(rows, Math.min(rows * 200, 4_000))
         const best = book.best(depth)
-        subscriber.next(buildOrderBookSnapshot(
+        const snapshot = buildOrderBookSnapshot(
           market,
           symbol,
           eventTime,
@@ -260,33 +337,73 @@ export class BinanceProvider implements MarketDataProvider {
           aggregateOrderBookLevels(
             toLevels(best.asks), 'ask', step, selection.pricePrecision,
           ).slice(0, rows),
-        ))
+        )
+        if (!bookReady) {
+          bookReady = true
+          onState({ state: 'connected' })
+        }
+        subscriber.next(snapshot)
       }
 
-      const subscription = websocketJSON$<unknown>(streamURL, onState)
-        .subscribe({
-          next: (event) => {
-            const update = normalizeDepthUpdate(event)
-            const outcome = book.apply(update)
-            if (outcome.status === 'desynchronised') {
-              onState({ state: 'reconnecting', message: outcome.reason })
-              book.reset()
-              void resynchronise()
-              return
-            }
-            if (outcome.status === 'applied') {
-              emit(update.eventTime)
-            }
-          },
-          error: (error) => subscriber.error(error),
-        })
+      function handleSocketState(state: ConnectionState): void {
+        if (state.state === 'connected') {
+          socketConnected = true
+          socketGeneration += 1
+          snapshotRetryAttempt = 0
+          clearSnapshotRetry()
+          resetLocalBook()
+          scheduleSnapshot(0)
+          return
+        }
 
-      void resynchronise()
+        socketConnected = false
+        socketGeneration += 1
+        clearSnapshotRetry()
+        resetLocalBook()
+        onState(state)
+      }
+
+      function handleDepthEvent(event: unknown): void {
+        if (!socketConnected) {
+          return
+        }
+        // During backoff there is deliberately no buffer. Only events
+        // received while the REST snapshot is in flight are relevant.
+        if (!snapshotInFlight && !book.isSynchronised) {
+          return
+        }
+        const update = normalizeDepthUpdate(event)
+        const outcome = book.apply(update)
+        if (outcome.status === 'desynchronised') {
+          resetLocalBook()
+          snapshotRetryAttempt = 0
+          reportResynchronising(outcome.reason)
+          scheduleSnapshot(0)
+          return
+        }
+        if (outcome.status === 'applied') {
+          emitSnapshot(update.eventTime)
+        }
+      }
+
+      function handleStreamError(error: unknown): void {
+        subscriber.error(error)
+      }
+
+      const subscription = websocketJSON$<unknown>(
+        streamURL,
+        handleSocketState,
+      )
+        .subscribe({
+          next: handleDepthEvent,
+          error: handleStreamError,
+        })
 
       return () => {
         disposed = true
+        clearSnapshotRetry()
         subscription.unsubscribe()
-        book.reset()
+        resetLocalBook()
       }
     })
   }

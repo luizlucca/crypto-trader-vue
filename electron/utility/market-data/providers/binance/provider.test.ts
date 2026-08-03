@@ -1,10 +1,100 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { MarketSelection } from '@shared/types/market'
+import type {
+  MarketSelection,
+  OrderBookSnapshot,
+} from '@shared/types/market'
+import type {
+  ConnectionState,
+  ConnectionStateHandler,
+} from '../../provider'
 import { BinanceProvider } from './provider'
 
+interface WebSocketHarness {
+  state?: ConnectionStateHandler
+  next?: (value: unknown) => void
+}
+
+interface OrderBookObserver {
+  states: ConnectionState[]
+  books: OrderBookSnapshot[]
+  stop: () => void
+}
+
+const websocketHarness = vi.hoisted<WebSocketHarness>(() => ({}))
+
+vi.mock('./websocket', async () => {
+  const { Observable } = await import('rxjs')
+  return {
+    websocketJSON$: vi.fn((
+      _url: string,
+      onState: ConnectionStateHandler,
+    ) => new Observable<unknown>((subscriber) => {
+      websocketHarness.state = onState
+      websocketHarness.next = (value) => subscriber.next(value)
+      return () => {
+        websocketHarness.state = undefined
+        websocketHarness.next = undefined
+      }
+    })),
+  }
+})
+
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
+
+const futuresSelection: MarketSelection = {
+  provider: 'binance',
+  market: 'futures',
+  symbol: 'BTCUSDT',
+  interval: '1m',
+  baseAsset: 'BTC',
+  quoteAsset: 'USDT',
+  priceTickSize: 0.1,
+  pricePrecision: 1,
+  quantityPrecision: 3,
+}
+
+function depthResponse(lastUpdateId = 100): Response {
+  return new Response(JSON.stringify({
+    lastUpdateId,
+    bids: [['64000.0', '1.5']],
+    asks: [['64000.1', '2.0']],
+  }), { status: 200 })
+}
+
+function depthUpdate(
+  firstUpdateId = 100,
+  finalUpdateId = 101,
+): unknown {
+  return {
+    E: Date.now(),
+    U: firstUpdateId,
+    u: finalUpdateId,
+    pu: firstUpdateId - 1,
+    b: [['64000.0', '1.75']],
+    a: [['64000.1', '2.25']],
+  }
+}
+
+function observeOrderBook(): OrderBookObserver {
+  const states: ConnectionState[] = []
+  const books: OrderBookSnapshot[] = []
+  const subscription = new BinanceProvider().streamOrderBook(
+    futuresSelection,
+    (state) => states.push(state),
+    {
+      aggregationStep: () => 0.1,
+      rowsPerSide: () => 10,
+    },
+  ).subscribe((snapshot) => books.push(snapshot))
+  return {
+    states,
+    books,
+    stop: () => subscription.unsubscribe(),
+  }
+}
 
 describe('BinanceProvider catalog cache', () => {
   it('shares concurrent refreshes, honors TTL and supports forced refresh', async () => {
@@ -105,5 +195,125 @@ describe('BinanceProvider candle history', () => {
     expect(futuresURL.searchParams.get('limit')).toBe('400')
     expect(futuresURL.searchParams.get('endTime')).toBe('1722398399999')
     expect(spotURL.searchParams.get('endTime')).toBe('1722398399999')
+  })
+})
+
+describe('BinanceProvider order-book bootstrap', () => {
+  it('recovers before reporting the book as connected', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('Falha REST transitória'))
+      .mockResolvedValueOnce(depthResponse())
+    vi.stubGlobal('fetch', fetchMock)
+    const { states, books, stop } = observeOrderBook()
+
+    websocketHarness.state?.({ state: 'connecting' })
+    websocketHarness.state?.({ state: 'connected' })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(states.at(-1)).toMatchObject({
+      state: 'reconnecting',
+      message: 'Falha REST transitória',
+    })
+    expect(states.some((state) => state.state === 'connected')).toBe(false)
+    expect(books).toHaveLength(0)
+
+    await vi.advanceTimersByTimeAsync(999)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    websocketHarness.next?.(depthUpdate())
+
+    expect(states.at(-1)?.state).toBe('connected')
+    expect(books).toHaveLength(1)
+    expect(books[0]).toMatchObject({
+      lastUpdateId: 101,
+      bids: [{ price: 64000, quantity: 1.75 }],
+      asks: [{ price: 64000.1, quantity: 2.25 }],
+    })
+    stop()
+  })
+
+  it('gets a new snapshot after socket reconnect', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(depthResponse(100))
+      .mockResolvedValueOnce(depthResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+    const { states, books, stop } = observeOrderBook()
+
+    websocketHarness.state?.({ state: 'connecting' })
+    websocketHarness.state?.({ state: 'connected' })
+    await vi.advanceTimersByTimeAsync(0)
+    websocketHarness.next?.(depthUpdate(100, 101))
+    expect(books).toHaveLength(1)
+
+    websocketHarness.state?.({
+      state: 'reconnecting',
+      message: 'Socket interrompido',
+    })
+    websocketHarness.next?.(depthUpdate(101, 102))
+    expect(books).toHaveLength(1)
+    expect(states.at(-1)?.state).toBe('reconnecting')
+
+    websocketHarness.state?.({ state: 'connected' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(states.at(-1)?.state).toBe('reconnecting')
+
+    websocketHarness.next?.(depthUpdate(200, 201))
+    expect(books).toHaveLength(2)
+    expect(books[1].lastUpdateId).toBe(201)
+    expect(states.at(-1)?.state).toBe('connected')
+    stop()
+  })
+
+  it('cancels snapshot retry when the subscription stops', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn().mockRejectedValue(new Error('Binance offline'))
+    vi.stubGlobal('fetch', fetchMock)
+    const { stop } = observeOrderBook()
+
+    websocketHarness.state?.({ state: 'connecting' })
+    websocketHarness.state?.({ state: 'connected' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    stop()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('restarts a snapshot interrupted by socket reconnect', async () => {
+    vi.useFakeTimers()
+    let resolveFirstSnapshot: ((response: Response) => void) | undefined
+    const firstSnapshot = new Promise<Response>((resolve) => {
+      resolveFirstSnapshot = resolve
+    })
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(firstSnapshot)
+      .mockResolvedValueOnce(depthResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+    const { states, books, stop } = observeOrderBook()
+
+    websocketHarness.state?.({ state: 'connecting' })
+    websocketHarness.state?.({ state: 'connected' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    websocketHarness.state?.({ state: 'reconnecting' })
+    websocketHarness.state?.({ state: 'connected' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    resolveFirstSnapshot?.(depthResponse(100))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    websocketHarness.next?.(depthUpdate(200, 201))
+    expect(books).toHaveLength(1)
+    expect(books[0].lastUpdateId).toBe(201)
+    expect(states.at(-1)?.state).toBe('connected')
+    stop()
   })
 })

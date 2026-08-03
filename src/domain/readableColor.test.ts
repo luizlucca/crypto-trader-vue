@@ -27,9 +27,10 @@ describe('legibilidade de cor sobre o fundo do gráfico', () => {
   it('preserva o matiz, movendo apenas a luminosidade', () => {
     // Azul-marinho continua azul depois de clareado.
     const ajustado = readableOn('#000080', DARK)
-    const [red, green, blue] = [1, 3, 5].map(
-      (offset) => Number.parseInt(ajustado.slice(offset, offset + 2), 16),
-    )
+    const value = Number.parseInt(ajustado.slice(1), 16)
+    const red = (value >> 16) & 255
+    const green = (value >> 8) & 255
+    const blue = value & 255
     expect(blue).toBeGreaterThan(red)
     expect(blue).toBeGreaterThan(green)
   })

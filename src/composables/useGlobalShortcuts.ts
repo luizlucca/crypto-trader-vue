@@ -8,7 +8,7 @@ export interface GlobalShortcutHandlers {
   /** Ctrl/Cmd+I — open the indicator picker for the active chart. */
   openIndicators: () => void
   /** While true every shortcut is ignored: a modal owns the keyboard. */
-  suspended: Ref<boolean>
+  suspended: Readonly<Ref<boolean>>
 }
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
@@ -19,7 +19,7 @@ function isTextEditingTarget(target: EventTarget | null): boolean {
 
 export function useGlobalShortcuts(handlers: GlobalShortcutHandlers): void {
   function handleKey(event: KeyboardEvent): void {
-    if (handlers.suspended.value) {
+    if (handlers.suspended.value || event.repeat) {
       return
     }
 
@@ -39,11 +39,9 @@ export function useGlobalShortcuts(handlers: GlobalShortcutHandlers): void {
       return
     }
 
-    // Bare Enter only. `repeat` excludes a held key, and a text field must
-    // keep Enter for itself.
+    // Bare Enter only; a text field keeps Enter for itself.
     if (
       event.key !== 'Enter'
-      || event.repeat
       || event.defaultPrevented
       || event.altKey
       || event.ctrlKey

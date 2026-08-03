@@ -6,15 +6,16 @@ import type {
   IndicatorLabel,
   IndicatorLine,
 } from '@/domain/indicatorDrawings'
-import { BAR_COLOR_PLOT } from '@/domain/indicatorProtocol'
-import type {
-  IndicatorBar,
-  IndicatorCandlePatch,
-  IndicatorMarker,
-  IndicatorBarsPayload,
-  IndicatorPlotPatch,
-  IndicatorRequest,
-  IndicatorResponse,
+import { EMPTY_DRAWINGS } from '@/domain/indicatorDrawings'
+import {
+  BAR_COLOR_PLOT,
+  type IndicatorBar,
+  type IndicatorCandlePatch,
+  type IndicatorMarker,
+  type IndicatorBarsPayload,
+  type IndicatorPlotPatch,
+  type IndicatorRequest,
+  type IndicatorResponse,
 } from '@/domain/indicatorProtocol'
 import type {
   IndicatorDefinition,
@@ -55,7 +56,10 @@ interface RegistryEntry {
 }
 
 const registry = indicatorRegistry as unknown as RegistryEntry[]
-const byId = new Map(registry.map((entry) => [entry.id, entry]))
+const byId = new Map<string, RegistryEntry>()
+for (const entry of registry) {
+  byId.set(entry.id, entry)
+}
 
 /** A candle output of the indicator, as the library hands it over. */
 interface LibraryCandle {
@@ -69,6 +73,8 @@ interface LibraryCandle {
   wickColor?: string
 }
 
+const EMPTY_LIBRARY_CANDLES: LibraryCandle[] = []
+
 /** Retained per instance so a tick can be answered with a diff. */
 interface AttachedIndicator {
   definitionId: string
@@ -77,13 +83,28 @@ interface AttachedIndicator {
   previous: Map<string, { time: Float64Array, value: Float64Array }>
   /** Same role as `previous`, for indicators that draw their own candles. */
   previousCandles: Map<string, LibraryCandle[]>
-  /** Serialised marker set, to send only when it actually changes. */
-  previousMarkers: string
-  /** Same idea for the free-form shapes, which are also recomputed whole. */
-  previousDrawings: string
+  /** Previous markers, compared structurally instead of serialised per tick. */
+  previousMarkers: IndicatorMarker[]
+  /** Same idea for the free-form shapes, which are recomputed whole. */
+  previousDrawings: IndicatorDrawings
 }
 
+interface IndicatorCalculation {
+  patches: IndicatorPlotPatch[]
+  candles: IndicatorCandlePatch[]
+  drawings?: IndicatorDrawings
+  markers?: IndicatorMarker[]
+  /** Present when a complete round drew nothing; may be an empty list. */
+  undrawn?: string[]
+}
+
+type AttachRequest = Extract<IndicatorRequest, { kind: 'attach' }>
+type ComputeRequest = Extract<IndicatorRequest, { kind: 'compute' }>
+type ResultResponse = Extract<IndicatorResponse, { kind: 'result' }>
+
 const attached = new Map<string, AttachedIndicator>()
+const EMPTY_MARKERS: IndicatorMarker[] = []
+const EMPTY_COLOR_INDEX = new Uint8Array(0)
 
 /**
  * The bar array the library consumes, retained across calculations.
@@ -226,6 +247,38 @@ function sameCandle(left: LibraryCandle, right: LibraryCandle): boolean {
     && left.low === right.low
     && left.close === right.close
     && left.color === right.color
+    && left.borderColor === right.borderColor
+    && left.wickColor === right.wickColor
+}
+
+function validCandle(candle: LibraryCandle): boolean {
+  return Number.isFinite(candle?.time)
+    && Number.isFinite(candle?.open)
+    && Number.isFinite(candle?.high)
+    && Number.isFinite(candle?.low)
+    && Number.isFinite(candle?.close)
+}
+
+/** Keeps the original array on the normal path; allocates only if invalid. */
+function normalizeCandles(raw: LibraryCandle[]): LibraryCandle[] {
+  let firstInvalid = -1
+  for (let index = 0; index < raw.length; index += 1) {
+    if (!validCandle(raw[index])) {
+      firstInvalid = index
+      break
+    }
+  }
+  if (firstInvalid < 0) {
+    return raw
+  }
+
+  const valid = raw.slice(0, firstInvalid)
+  for (let index = firstInvalid + 1; index < raw.length; index += 1) {
+    if (validCandle(raw[index])) {
+      valid.push(raw[index])
+    }
+  }
+  return valid
 }
 
 /**
@@ -235,28 +288,28 @@ function sameCandle(left: LibraryCandle, right: LibraryCandle): boolean {
  */
 function candlePatch(
   plotId: string,
-  raw: LibraryCandle[],
+  points: LibraryCandle[],
   previous: LibraryCandle[] | undefined,
   forceFull: boolean,
 ): IndicatorCandlePatch | undefined {
-  const points = raw.filter((candle) => (
-    Number.isFinite(candle?.time)
-    && Number.isFinite(candle?.open)
-    && Number.isFinite(candle?.high)
-    && Number.isFinite(candle?.low)
-    && Number.isFinite(candle?.close)
-  ))
   if (points.length === 0) {
     return undefined
   }
 
   let from = 0
-  if (!forceFull && previous && previous.length > 0 && previous.length <= points.length) {
+  if (
+    !forceFull
+    && previous
+    && previous.length > 0
+    && previous.length <= points.length
+  ) {
     while (from < previous.length && sameCandle(previous[from], points[from])) {
       from += 1
     }
   }
-  const tailOnly = !forceFull && from >= (previous?.length ?? 0) - 1 && from > 0
+  const tailOnly = !forceFull
+    && from >= (previous?.length ?? 0) - 1
+    && from > 0
   if (!forceFull && tailOnly && from >= points.length) {
     return undefined // Nothing moved.
   }
@@ -268,7 +321,7 @@ function candlePatch(
   const high = new Float64Array(count)
   const low = new Float64Array(count)
   const close = new Float64Array(count)
-  const colorIndex = new Uint8Array(count)
+  let colorIndex: Uint8Array | undefined
   const palette: IndicatorCandlePatch['palette'] = []
   const paletteIndex = new Map<string, number>()
 
@@ -282,7 +335,10 @@ function candlePatch(
     if (candle.color === undefined) {
       continue
     }
-    const key = `${candle.color}|${candle.borderColor ?? ''}|${candle.wickColor ?? ''}`
+    colorIndex ??= new Uint8Array(count)
+    const key = `${candle.color}|${candle.borderColor ?? ''}|${
+      candle.wickColor ?? ''
+    }`
     let index = paletteIndex.get(key)
     if (index === undefined) {
       // 255 distinct colours in one indicator would mean a per-bar gradient,
@@ -307,7 +363,7 @@ function candlePatch(
     high,
     low,
     close,
-    colorIndex: palette.length > 0 ? colorIndex : new Uint8Array(0),
+    colorIndex: colorIndex ?? EMPTY_COLOR_INDEX,
     palette,
   }
 }
@@ -323,8 +379,17 @@ function lineStyle(value: unknown): IndicatorLine['style'] {
     : 'solid'
 }
 
-function anchored(...values: unknown[]): boolean {
-  return values.every((value) => Number.isFinite(value))
+function hasFinitePair(first: unknown, second: unknown): boolean {
+  return Number.isFinite(first) && Number.isFinite(second)
+}
+
+function hasFiniteAnchors(
+  time1: unknown,
+  price1: unknown,
+  time2: unknown,
+  price2: unknown,
+): boolean {
+  return hasFinitePair(time1, price1) && hasFinitePair(time2, price2)
 }
 
 /**
@@ -337,8 +402,11 @@ function eachBar<T extends { time?: number }>(
   entries: readonly unknown[] | undefined,
   visit: (bar: IndicatorBar, index: number, entry: T) => void,
 ): void {
+  if (!entries) {
+    return
+  }
   let cursor = 0
-  for (const raw of entries ?? []) {
+  for (const raw of entries) {
     const entry = raw as T
     if (!Number.isFinite(entry?.time)) {
       continue
@@ -383,6 +451,9 @@ function normalizeBands(raw: unknown[] | undefined): IndicatorBand[] {
  * chart's candles underneath.
  */
 function repaintedBars(raw: unknown[] | undefined): LibraryCandle[] {
+  if (!raw || raw.length === 0) {
+    return EMPTY_LIBRARY_CANDLES
+  }
   const painted: LibraryCandle[] = []
   eachBar<{ time?: number, color?: string }>(raw, (bar, _index, entry) => {
     if (typeof entry.color !== 'string') {
@@ -415,10 +486,10 @@ function normalizeDrawings(result: {
   const lines: IndicatorLine[] = []
   for (const raw of result.lines ?? []) {
     const line = raw as Partial<IndicatorLine>
-    if (!anchored(line.time1, line.price1, line.time2, line.price2)) {
+    if (!hasFiniteAnchors(line.time1, line.price1, line.time2, line.price2)) {
       continue
     }
-    lines.push({
+    const normalized: IndicatorLine = {
       time1: line.time1 as number,
       price1: line.price1 as number,
       time2: line.time2 as number,
@@ -426,17 +497,20 @@ function normalizeDrawings(result: {
       color: typeof line.color === 'string' ? line.color : '#787B86',
       width: Number.isFinite(line.width) ? line.width as number : 1,
       style: lineStyle(line.style),
-      ...(line.extend === undefined ? {} : { extend: line.extend }),
-    })
+    }
+    if (line.extend !== undefined) {
+      normalized.extend = line.extend
+    }
+    lines.push(normalized)
   }
 
   const boxes: IndicatorBox[] = []
   for (const raw of result.boxes ?? []) {
     const box = raw as Partial<IndicatorBox>
-    if (!anchored(box.time1, box.price1, box.time2, box.price2)) {
+    if (!hasFiniteAnchors(box.time1, box.price1, box.time2, box.price2)) {
       continue
     }
-    boxes.push({
+    const normalized: IndicatorBox = {
       time1: box.time1 as number,
       price1: box.price1 as number,
       time2: box.time2 as number,
@@ -444,35 +518,49 @@ function normalizeDrawings(result: {
       bgColor: typeof box.bgColor === 'string'
         ? box.bgColor
         : 'rgba(120,123,134,0.30)',
-      ...(box.borderColor === undefined ? {} : { borderColor: box.borderColor }),
-      ...(box.borderWidth === undefined ? {} : { borderWidth: box.borderWidth }),
-      ...(box.borderStyle === undefined
-        ? {}
-        : { borderStyle: lineStyle(box.borderStyle) }),
-      ...(box.text === undefined ? {} : { text: String(box.text) }),
-      ...(box.textColor === undefined ? {} : { textColor: box.textColor }),
-    })
+    }
+    if (box.borderColor !== undefined) {
+      normalized.borderColor = box.borderColor
+    }
+    if (box.borderWidth !== undefined) {
+      normalized.borderWidth = box.borderWidth
+    }
+    if (box.borderStyle !== undefined) {
+      normalized.borderStyle = lineStyle(box.borderStyle)
+    }
+    if (box.text !== undefined) {
+      normalized.text = String(box.text)
+    }
+    if (box.textColor !== undefined) {
+      normalized.textColor = box.textColor
+    }
+    boxes.push(normalized)
   }
 
   const labels: IndicatorLabel[] = []
   for (const raw of result.labels ?? []) {
     const label = raw as Partial<IndicatorLabel>
-    if (!anchored(label.time, label.price) || label.text === undefined) {
+    if (!hasFinitePair(label.time, label.price) || label.text === undefined) {
       continue
     }
-    labels.push({
+    const normalized: IndicatorLabel = {
       time: label.time as number,
       price: label.price as number,
       text: String(label.text),
-      ...(label.color === undefined ? {} : { color: label.color }),
       textColor: typeof label.textColor === 'string'
         ? label.textColor
         : '#FFFFFF',
       style: LABEL_STYLES.has(String(label.style))
         ? label.style as IndicatorLabel['style']
         : 'label_up',
-      ...(label.size === undefined ? {} : { size: label.size }),
-    })
+    }
+    if (label.color !== undefined) {
+      normalized.color = label.color
+    }
+    if (label.size !== undefined) {
+      normalized.size = label.size
+    }
+    labels.push(normalized)
   }
 
   return { lines, boxes, labels, bands: normalizeBands(result.bgColors) }
@@ -481,7 +569,7 @@ function normalizeDrawings(result: {
 const MARKER_POSITIONS = new Set(['aboveBar', 'belowBar', 'inBar'])
 const MARKER_SHAPES = new Set(['circle', 'square', 'arrowUp', 'arrowDown'])
 
-/** Keeps only markers the chart can render; the rest would be dropped anyway. */
+/** Keeps only markers the chart can render; the rest would be dropped. */
 function normalizeMarkers(raw: unknown[] | undefined): IndicatorMarker[] {
   const markers: IndicatorMarker[] = []
   for (const entry of raw ?? []) {
@@ -493,29 +581,113 @@ function normalizeMarkers(raw: unknown[] | undefined): IndicatorMarker[] {
     ) {
       continue
     }
-    markers.push({
+    const normalized: IndicatorMarker = {
       time: marker.time as number,
       position: marker.position as IndicatorMarker['position'],
       // The catalog uses triangleUp/triangleDown, which the chart lacks.
-      shape: MARKER_SHAPES.has(String(marker.shape))
-        ? marker.shape as IndicatorMarker['shape']
-        : String(marker.shape).toLowerCase().includes('down')
-          ? 'arrowDown'
-          : 'arrowUp',
+      shape: normalizeMarkerShape(marker.shape),
       color: marker.color,
-      ...(marker.size === undefined ? {} : { size: marker.size }),
-      ...(marker.text === undefined ? {} : { text: marker.text }),
-    })
+    }
+    if (marker.size !== undefined) {
+      normalized.size = marker.size
+    }
+    if (marker.text !== undefined) {
+      normalized.text = marker.text
+    }
+    markers.push(normalized)
   }
   // The chart requires markers in ascending time order.
   return markers.sort((left, right) => left.time - right.time)
 }
 
+function normalizeMarkerShape(value: unknown): IndicatorMarker['shape'] {
+  const shape = String(value)
+  if (MARKER_SHAPES.has(shape)) {
+    return shape as IndicatorMarker['shape']
+  }
+  return shape.toLowerCase().includes('down') ? 'arrowDown' : 'arrowUp'
+}
+
+function sameArray<T>(
+  current: readonly T[],
+  previous: readonly T[],
+  sameItem: (left: T, right: T) => boolean,
+): boolean {
+  if (current.length !== previous.length) {
+    return false
+  }
+  for (let index = 0; index < current.length; index += 1) {
+    if (!sameItem(current[index], previous[index])) {
+      return false
+    }
+  }
+  return true
+}
+
+function sameMarker(left: IndicatorMarker, right: IndicatorMarker): boolean {
+  return left.time === right.time
+    && left.position === right.position
+    && left.shape === right.shape
+    && left.color === right.color
+    && left.size === right.size
+    && left.text === right.text
+}
+
+function sameLine(left: IndicatorLine, right: IndicatorLine): boolean {
+  return left.time1 === right.time1
+    && left.price1 === right.price1
+    && left.time2 === right.time2
+    && left.price2 === right.price2
+    && left.color === right.color
+    && left.width === right.width
+    && left.style === right.style
+    && left.extend === right.extend
+}
+
+function sameBox(left: IndicatorBox, right: IndicatorBox): boolean {
+  return left.time1 === right.time1
+    && left.price1 === right.price1
+    && left.time2 === right.time2
+    && left.price2 === right.price2
+    && left.bgColor === right.bgColor
+    && left.borderColor === right.borderColor
+    && left.borderWidth === right.borderWidth
+    && left.borderStyle === right.borderStyle
+    && left.text === right.text
+    && left.textColor === right.textColor
+}
+
+function sameLabel(left: IndicatorLabel, right: IndicatorLabel): boolean {
+  return left.time === right.time
+    && left.price === right.price
+    && left.text === right.text
+    && left.color === right.color
+    && left.textColor === right.textColor
+    && left.style === right.style
+    && left.size === right.size
+}
+
+function sameBand(left: IndicatorBand, right: IndicatorBand): boolean {
+  return left.time1 === right.time1
+    && left.time2 === right.time2
+    && left.color === right.color
+}
+
+function sameDrawings(
+  current: IndicatorDrawings,
+  previous: IndicatorDrawings,
+): boolean {
+  return sameArray(current.lines, previous.lines, sameLine)
+    && sameArray(current.boxes, previous.boxes, sameBox)
+    && sameArray(current.labels, previous.labels, sameLabel)
+    && sameArray(current.bands, previous.bands, sameBand)
+}
+
 /**
  * Output kinds the chart pipeline cannot draw. Only raw pivot metadata remains,
- * and no catalog entry expresses itself through it alone. Detecting them is what separates "still
- * warming up" from "this one will never draw anything here" — the difference
- * between waiting and removing the indicator.
+ * and no catalog entry expresses itself through it alone. Detecting it is what
+ * separates "still warming up" from "this one will never draw anything here" —
+ * the difference between waiting and removing the indicator.
  */
 const UNSUPPORTED_OUTPUTS = [
   'pivots',
@@ -524,29 +696,26 @@ const UNSUPPORTED_OUTPUTS = [
 function unsupportedOutputs(result: Record<string, unknown>): string[] {
   const found: string[] = []
   for (const key of UNSUPPORTED_OUTPUTS) {
-    const value = result[key]
-    const filled = Array.isArray(value)
-      ? value.length > 0
-      : typeof value === 'object' && value !== null
-        && Object.keys(value).length > 0
-    if (filled) {
+    if (hasContent(result[key])) {
       found.push(key)
     }
   }
   return found
 }
 
+function hasContent(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.length > 0
+  }
+  return typeof value === 'object'
+    && value !== null
+    && Object.keys(value).length > 0
+}
+
 function computeInstance(
   indicator: AttachedIndicator,
   forceFull: boolean,
-): {
-  patches: IndicatorPlotPatch[]
-  candles: IndicatorCandlePatch[]
-  drawings?: IndicatorDrawings
-  markers?: IndicatorMarker[]
-  /** Present when a complete round drew nothing; may be an empty list. */
-  undrawn?: string[]
-} {
+): IndicatorCalculation {
   const entry = byId.get(indicator.definitionId)
   if (!entry) {
     throw new Error(`Indicador desconhecido: ${indicator.definitionId}`)
@@ -555,58 +724,68 @@ function computeInstance(
   const result = entry.calculate(bars, indicator.inputs)
   const patches: IndicatorPlotPatch[] = []
 
-  for (const [plotId, points] of Object.entries(result.plots ?? {})) {
-    // Non-finite values are warm-up gaps and must not reach setData().
-    const normalized = normalizePlotPoints(points)
-    const trimmedTime = normalized.time
-    const trimmedValue = normalized.value
-    const count = trimmedTime.length
+  const plots = result.plots
+  if (plots) {
+    for (const plotId in plots) {
+      const points = plots[plotId]
+      // Non-finite values are warm-up gaps and must not reach setData().
+      const normalized = normalizePlotPoints(points)
+      const trimmedTime = normalized.time
+      const trimmedValue = normalized.value
+      const count = trimmedTime.length
 
-    const previous = indicator.previous.get(plotId)
-    const from = forceFull
-      ? 0
-      : firstDifference(previous, trimmedTime, trimmedValue)
+      const previous = indicator.previous.get(plotId)
+      const from = forceFull
+        ? 0
+        : firstDifference(previous, trimmedTime, trimmedValue)
 
-    indicator.previous.set(plotId, {
-      time: trimmedTime.slice(),
-      value: trimmedValue.slice(),
-    })
+      // These arrays are private worker allocations. The patch below transfers
+      // slices, so retaining them needs no second full-history copy.
+      indicator.previous.set(plotId, {
+        time: trimmedTime,
+        value: trimmedValue,
+      })
 
-    if (!forceFull && from >= count) {
-      continue // Nothing changed for this plot.
+      if (!forceFull && from >= count) {
+        continue // Nothing changed for this plot.
+      }
+
+      /*
+       * `series.update()` only accepts a time at or after the series' last
+       * point. A recalculation can move a value in the middle of the series —
+       * a smoothing window reaching further back, for instance — and feeding
+       * that to `update()` throws. Only the tail can travel as a diff; anything
+       * earlier has to replace the whole series.
+       */
+      const previousLength = previous?.time.length ?? 0
+      const tailOnly = !forceFull && from >= previousLength - 1 && from > 0
+      const start = tailOnly ? from : 0
+
+      patches.push({
+        plotId,
+        full: !tailOnly,
+        from: start,
+        time: trimmedTime.slice(start),
+        value: trimmedValue.slice(start),
+      })
     }
-
-    /*
-     * `series.update()` only accepts a time at or after the series' last
-     * point. A recalculation can move a value in the middle of the series —
-     * a smoothing window reaching further back, for instance — and feeding
-     * that to `update()` throws. Only the tail can travel as a diff; anything
-     * earlier has to replace the whole series.
-     */
-    const previousLength = previous?.time.length ?? 0
-    const tailOnly = !forceFull && from >= previousLength - 1 && from > 0
-    const start = tailOnly ? from : 0
-
-    patches.push({
-      plotId,
-      full: !tailOnly,
-      from: start,
-      time: trimmedTime.slice(start),
-      value: trimmedValue.slice(start),
-    })
   }
 
   const candles: IndicatorCandlePatch[] = []
-  for (const [plotId, points] of Object.entries(result.plotCandles ?? {})) {
-    const patch = candlePatch(
-      plotId,
-      points,
-      indicator.previousCandles.get(plotId),
-      forceFull,
-    )
-    indicator.previousCandles.set(plotId, points)
-    if (patch) {
-      candles.push(patch)
+  const candlePlots = result.plotCandles
+  if (candlePlots) {
+    for (const plotId in candlePlots) {
+      const points = normalizeCandles(candlePlots[plotId])
+      const patch = candlePatch(
+        plotId,
+        points,
+        indicator.previousCandles.get(plotId),
+        forceFull,
+      )
+      indicator.previousCandles.set(plotId, points)
+      if (patch) {
+        candles.push(patch)
+      }
     }
   }
 
@@ -624,17 +803,24 @@ function computeInstance(
     }
   }
 
-  const shapes = normalizeDrawings(result)
+  const hasRawDrawings = Boolean(
+    result.lines?.length
+    || result.boxes?.length
+    || result.labels?.length
+    || result.bgColors?.length,
+  )
+  const shapes = hasRawDrawings ? normalizeDrawings(result) : EMPTY_DRAWINGS
   const shapeCount = shapes.lines.length + shapes.boxes.length
     + shapes.labels.length + shapes.bands.length
-  const encodedShapes = shapeCount > 0 ? JSON.stringify(shapes) : ''
-  const shapesChanged = encodedShapes !== indicator.previousDrawings
-  indicator.previousDrawings = encodedShapes
+  const shapesChanged = !sameDrawings(shapes, indicator.previousDrawings)
+  indicator.previousDrawings = shapes
   const drawings = shapesChanged || (forceFull && shapeCount > 0)
     ? shapes
     : undefined
 
-  const markers = normalizeMarkers(result.markers)
+  const markers = result.markers?.length
+    ? normalizeMarkers(result.markers)
+    : EMPTY_MARKERS
 
   /*
    * Only a complete round can conclude anything: on a diff round an untouched
@@ -655,123 +841,127 @@ function computeInstance(
     }
   }
 
-  const encoded = markers.length > 0 ? JSON.stringify(markers) : ''
-  if (encoded === indicator.previousMarkers && !forceFull) {
+  const markersChanged = !sameArray(
+    markers,
+    indicator.previousMarkers,
+    sameMarker,
+  )
+  if (!markersChanged && !forceFull) {
     return { patches, candles, drawings }
   }
-  indicator.previousMarkers = encoded
+  indicator.previousMarkers = markers
   return { patches, candles, drawings, markers }
 }
 
-function post(message: IndicatorResponse, transfer: Transferable[] = []): void {
-  ;(self as unknown as Worker).postMessage(message, transfer)
+function post(message: IndicatorResponse, transfer?: Transferable[]): void {
+  const target = self as unknown as Worker
+  if (transfer) {
+    target.postMessage(message, transfer)
+  } else {
+    target.postMessage(message)
+  }
 }
 
-self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
-  const request = event.data
-
-  if (request.kind === 'catalog') {
-    post({ kind: 'catalog', definitions: registry.map(toDefinition) })
-    return
+function createAttachedIndicator(request: AttachRequest): AttachedIndicator {
+  return {
+    definitionId: request.definitionId,
+    instanceRevision: request.instanceRevision,
+    inputs: request.inputs,
+    previous: new Map(),
+    previousCandles: new Map(),
+    previousMarkers: EMPTY_MARKERS,
+    previousDrawings: EMPTY_DRAWINGS,
   }
+}
 
-  if (request.kind === 'attach') {
-    const current = attached.get(request.instanceId)
-    if (current && current.instanceRevision > request.instanceRevision) {
-      return
+function collectTransferables(result: IndicatorCalculation): Transferable[] {
+  const transfer: Transferable[] = []
+  for (const patch of result.patches) {
+    transfer.push(patch.time.buffer, patch.value.buffer)
+  }
+  for (const patch of result.candles) {
+    transfer.push(
+      patch.time.buffer,
+      patch.open.buffer,
+      patch.high.buffer,
+      patch.low.buffer,
+      patch.close.buffer,
+    )
+    if (patch.colorIndex.byteLength > 0) {
+      transfer.push(patch.colorIndex.buffer)
     }
-    attached.set(request.instanceId, {
-      definitionId: request.definitionId,
-      instanceRevision: request.instanceRevision,
-      inputs: request.inputs,
-      previous: new Map(),
-      previousCandles: new Map(),
-      previousMarkers: '',
-      previousDrawings: '',
-    })
-    return
   }
+  return transfer
+}
 
-  if (request.kind === 'detach') {
-    const current = attached.get(request.instanceId)
-    if (current?.instanceRevision === request.instanceRevision) {
-      attached.delete(request.instanceId)
-    }
-    return
+function hasDrawableResult(result: IndicatorCalculation): boolean {
+  return result.patches.length > 0
+    || result.candles.length > 0
+    || result.markers !== undefined
+    || result.drawings !== undefined
+}
+
+function postResult(
+  request: ComputeRequest,
+  instanceId: string,
+  indicator: AttachedIndicator,
+  result: IndicatorCalculation,
+): void {
+  const response: ResultResponse = {
+    kind: 'result',
+    generation: request.generation,
+    roundId: request.roundId,
+    instanceId,
+    instanceRevision: indicator.instanceRevision,
+    patches: result.patches,
   }
-
-  if (request.kind === 'bars-replace') {
-    replaceBars(request.bars)
-    return
+  if (result.candles.length > 0) {
+    response.candles = result.candles
   }
-
-  if (request.kind === 'bars-tail') {
-    writeTailBar(request.bar)
-    return
+  if (result.drawings !== undefined) {
+    response.drawings = result.drawings
   }
+  if (result.markers !== undefined) {
+    response.markers = result.markers
+  }
+  post(response, collectTransferables(result))
+}
 
+function postComputed(request: ComputeRequest): void {
+  post({
+    kind: 'computed',
+    generation: request.generation,
+    roundId: request.roundId,
+  })
+}
+
+function computeAttachedIndicators(request: ComputeRequest): void {
   if (attached.size === 0 || bars.length === 0) {
-    post({
-      kind: 'computed',
-      generation: request.generation,
-      roundId: request.roundId,
-    })
+    postComputed(request)
     return
   }
 
   for (const [instanceId, indicator] of attached) {
     try {
-      const { patches, candles, drawings, markers, undrawn } = computeInstance(
+      const result = computeInstance(
         indicator,
         request.full,
       )
-      if (undrawn) {
+      if (result.undrawn) {
         post({
           kind: 'no-output',
           generation: request.generation,
           roundId: request.roundId,
           instanceId,
           instanceRevision: indicator.instanceRevision,
-          outputs: undrawn,
+          outputs: result.undrawn,
         })
         continue
       }
-      if (
-        patches.length === 0
-        && candles.length === 0
-        && markers === undefined
-        && drawings === undefined
-      ) {
+      if (!hasDrawableResult(result)) {
         continue
       }
-      const transfer: Transferable[] = []
-      for (const patch of patches) {
-        transfer.push(patch.time.buffer, patch.value.buffer)
-      }
-      for (const patch of candles) {
-        transfer.push(
-          patch.time.buffer,
-          patch.open.buffer,
-          patch.high.buffer,
-          patch.low.buffer,
-          patch.close.buffer,
-          patch.colorIndex.buffer,
-        )
-      }
-      post(
-        {
-          kind: 'result',
-          generation: request.generation,
-          roundId: request.roundId,
-          instanceId,
-          instanceRevision: indicator.instanceRevision,
-          patches,
-          ...(candles.length === 0 ? {} : { candles }),
-          ...(drawings === undefined ? {} : { drawings }),
-          ...(markers === undefined ? {} : { markers }),
-        },
-        transfer,
-      )
+      postResult(request, instanceId, indicator, result)
     } catch (error) {
       post({
         kind: 'error',
@@ -784,9 +974,39 @@ self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
     }
   }
 
-  post({
-    kind: 'computed',
-    generation: request.generation,
-    roundId: request.roundId,
-  })
+  postComputed(request)
+}
+
+function handleRequest(request: IndicatorRequest): void {
+  switch (request.kind) {
+    case 'catalog':
+      post({ kind: 'catalog', definitions: registry.map(toDefinition) })
+      return
+    case 'attach': {
+      const current = attached.get(request.instanceId)
+      if (!current || current.instanceRevision <= request.instanceRevision) {
+        attached.set(request.instanceId, createAttachedIndicator(request))
+      }
+      return
+    }
+    case 'detach': {
+      const current = attached.get(request.instanceId)
+      if (current?.instanceRevision === request.instanceRevision) {
+        attached.delete(request.instanceId)
+      }
+      return
+    }
+    case 'bars-replace':
+      replaceBars(request.bars)
+      return
+    case 'bars-tail':
+      writeTailBar(request.bar)
+      return
+    case 'compute':
+      computeAttachedIndicators(request)
+  }
+}
+
+self.onmessage = (event: MessageEvent<IndicatorRequest>) => {
+  handleRequest(event.data)
 }

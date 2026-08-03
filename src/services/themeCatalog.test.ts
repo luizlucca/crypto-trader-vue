@@ -11,18 +11,16 @@ import {
 } from './themeCatalog'
 
 function luminance(hex: string): number {
-  const value = hex.replace('#', '')
-  const channels = [0, 2, 4].map((offset) => {
-    const channel = Number.parseInt(value.slice(offset, offset + 2), 16) / 255
-    return channel <= 0.04045
-      ? channel / 12.92
-      : ((channel + 0.055) / 1.055) ** 2.4
-  })
-  return (
-    (0.2126 * channels[0]!)
-    + (0.7152 * channels[1]!)
-    + (0.0722 * channels[2]!)
-  )
+  const linear = (channel: number): number => {
+    const scaled = channel / 255
+    return scaled <= 0.04045
+      ? scaled / 12.92
+      : ((scaled + 0.055) / 1.055) ** 2.4
+  }
+  const [red, green, blue] = channels(hex)
+  return (0.2126 * linear(red))
+    + (0.7152 * linear(green))
+    + (0.0722 * linear(blue))
 }
 
 function contrast(first: string, second: string): number {
@@ -141,26 +139,6 @@ describe('temas neutros e o padrão TradingView', () => {
 })
 
 describe('superfície de modais (F-015)', () => {
-  const channels = (hex: string): [number, number, number] => {
-    const value = Number.parseInt(hex.replace('#', '').slice(0, 6), 16)
-    return [(value >> 16) & 255, (value >> 8) & 255, value & 255]
-  }
-  const luminance = (hex: string): number => {
-    const [r, g, b] = channels(hex).map((channel) => {
-      const scaled = channel / 255
-      return scaled <= 0.03928
-        ? scaled / 12.92
-        : ((scaled + 0.055) / 1.055) ** 2.4
-    })
-    return (0.2126 * r) + (0.7152 * g) + (0.0722 * b)
-  }
-  /** Perceived separation between two surfaces, 1 = identical. */
-  const contrast = (first: string, second: string): number => {
-    const [brighter, darker] = [luminance(first), luminance(second)]
-      .sort((left, right) => right - left)
-    return (brighter + 0.05) / (darker + 0.05)
-  }
-
   it('define os tokens em todos os presets, nas duas luminosidades', () => {
     for (const preset of themePresets) {
       for (const mode of ['dark', 'light'] as const) {

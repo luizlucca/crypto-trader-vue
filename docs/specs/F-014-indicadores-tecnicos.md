@@ -464,6 +464,10 @@ Além disso:
 - [x] Com oito indicadores aplicados e o livro ativo, não surge long task acima
       de 50 ms. Medido nos mesmos 90 s, cobrindo os quatro caminhos de desenho
       (linhas, velas próprias, primitivas e marcadores): **zero long tasks**.
+      Revalidado após o refactor de simplificação em 03/08/2026, no build de
+      produção com Binance Futures, BTC/USDT em 1h: em 30 s foram 86 rodadas,
+      **724 patches de cauda, zero patches completos e zero long tasks**, com
+      o livro conectado e oito indicadores representativos ativos.
 - [x] Os indicadores da comunidade aparecem no seletor, sinalizados.
 - [x] Os níveis declarados pelo indicador são desenhados no painel próprio.
 - [x] Indicadores de saída OHLC desenham como velas, com as cores da biblioteca.

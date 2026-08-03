@@ -1,16 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import type {
-  IndicatorDefinition,
-  IndicatorInputSpec,
-  IndicatorInputs,
-  IndicatorPlotStyle,
-} from '@/domain/indicators'
+import { computed, ref, shallowRef, watch } from 'vue'
 import {
   coerceInput,
   groupIndicatorInputs,
   resolveInputs,
   resolvePlotStyles,
+  type IndicatorDefinition,
+  type IndicatorInputSpec,
+  type IndicatorInputs,
+  type IndicatorPlotStyle,
 } from '@/domain/indicators'
 
 /**
@@ -40,10 +38,13 @@ const emit = defineEmits<{
 type Tab = 'inputs' | 'style'
 const tab = ref<Tab>('inputs')
 
-const draft = ref<IndicatorInputs>({ ...props.inputs })
-const styleDraft = ref<Record<string, IndicatorPlotStyle>>(
+const draft = shallowRef<IndicatorInputs>({ ...props.inputs })
+const styleDraft = shallowRef<Record<string, IndicatorPlotStyle>>(
   resolvePlotStyles(props.definition, props.styles),
 )
+
+const SOURCE_OPTIONS = ['open', 'high', 'low', 'close', 'hl2', 'hlc3', 'ohlc4']
+const LINE_WIDTHS = [1, 2, 3, 4]
 
 /**
  * Every declared line, always — the list must not change under the user.
@@ -76,7 +77,9 @@ const drawsNothing = computed(
  * The catalog lists parameters in calculation order, interleaving numbers and
  * dropdowns. Grouping by family keeps related controls together.
  */
-const inputGroups = computed(() => groupIndicatorInputs(props.definition.inputs))
+const inputGroups = computed(
+  () => groupIndicatorInputs(props.definition.inputs),
+)
 
 watch(() => props.inputs, (next) => {
   draft.value = { ...next }
@@ -181,7 +184,11 @@ defineExpose({ reset })
               :value="draft[spec.id]"
               @change="write(spec, fromEvent($event))"
             >
-              <option v-for="option in spec.options" :key="option" :value="option">
+              <option
+                v-for="option in spec.options"
+                :key="option"
+                :value="option"
+              >
                 {{ option }}
               </option>
             </select>
@@ -191,7 +198,7 @@ defineExpose({ reset })
               @change="write(spec, fromEvent($event))"
             >
               <option
-                v-for="option in ['open', 'high', 'low', 'close', 'hl2', 'hlc3', 'ohlc4']"
+                v-for="option in SOURCE_OPTIONS"
                 :key="option"
                 :value="option"
               >
@@ -209,14 +216,17 @@ defineExpose({ reset })
       </template>
     </div>
 
-    <p v-if="drawsNothing" class="indicator-draws-nothing">
+    <p
+      v-if="tab === 'style' && drawsNothing"
+      class="indicator-draws-nothing"
+    >
       Este indicador não desenhou nada com os parâmetros atuais. Alguns
       dependem de um parâmetro ativado; outros usam recursos visuais ainda não
       suportados.
     </p>
 
     <!-- One row per plotted line: an indicator can draw several. -->
-    <div v-else class="indicator-styles">
+    <div v-else-if="tab === 'style'" class="indicator-styles">
       <header class="indicator-styles-legend">
         <span />
         <span />
@@ -235,7 +245,9 @@ defineExpose({ reset })
       >
         <label
           class="indicator-style-toggle"
-          :title="styleDraft[plot.id]?.visible ? 'Ocultar linha' : 'Mostrar linha'"
+          :title="styleDraft[plot.id]?.visible
+            ? 'Ocultar linha'
+            : 'Mostrar linha'"
         >
           <input
             :checked="styleDraft[plot.id]?.visible"
@@ -255,7 +267,9 @@ defineExpose({ reset })
         >
 
         <strong class="indicator-style-name">
-          <span :title="plot.title || plot.id">{{ plot.title || plot.id }}</span>
+          <span :title="plot.title || plot.id">
+            {{ plot.title || plot.id }}
+          </span>
           <em
             v-if="!populated.has(plot.id)"
             title="Não produz valores com os parâmetros atuais"
@@ -267,9 +281,15 @@ defineExpose({ reset })
           :aria-label="`Espessura de ${plot.title || plot.id}`"
           class="indicator-style-width"
           title="Espessura"
-          @change="writeStyle(plot.id, { lineWidth: Number(fromEvent($event)) })"
+          @change="writeStyle(plot.id, {
+            lineWidth: Number(fromEvent($event)),
+          })"
         >
-          <option v-for="width in [1, 2, 3, 4]" :key="width" :value="width">
+          <option
+            v-for="width in LINE_WIDTHS"
+            :key="width"
+            :value="width"
+          >
             {{ width }} px
           </option>
         </select>

@@ -50,7 +50,12 @@ export interface IndicatorLabel {
   /** Background pill; absent means text only. */
   color?: string
   textColor: string
-  style: 'label_up' | 'label_down' | 'label_left' | 'label_right' | 'label_center'
+  style:
+    | 'label_up'
+    | 'label_down'
+    | 'label_left'
+    | 'label_right'
+    | 'label_center'
   size?: 'tiny' | 'small' | 'normal' | 'large'
 }
 

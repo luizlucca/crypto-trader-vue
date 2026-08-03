@@ -25,23 +25,36 @@ export function useDraggableDialog(options: DraggableDialogOptions = {}) {
   let originTop = 0
   let nextLeft = 0
   let nextTop = 0
+  let panelWidth = 0
+  let panelHeight = 0
   let frame = 0
 
   function clampToViewport(left: number, top: number): [number, number] {
-    const element = panel.value
-    if (!element) {
+    if (!panel.value) {
       return [left, top]
     }
-    const width = element.offsetWidth
-    const height = element.offsetHeight
+    const maxLeft = Math.max(margin, window.innerWidth - panelWidth - margin)
+    const maxTop = Math.max(margin, window.innerHeight - panelHeight - margin)
     return [
-      Math.min(Math.max(left, margin), window.innerWidth - width - margin),
-      Math.min(Math.max(top, margin), window.innerHeight - height - margin),
+      Math.min(Math.max(left, margin), maxLeft),
+      Math.min(Math.max(top, margin), maxTop),
     ]
   }
 
-  function render(): void {
+  /** Compositor-only update while dragging: no layout invalidation per move. */
+  function renderDrag(): void {
     frame = 0
+    const element = panel.value
+    if (!element) {
+      return
+    }
+    element.style.transform = `translate3d(${nextLeft - originLeft}px, ${
+      nextTop - originTop
+    }px, 0)`
+  }
+
+  /** Commits the final coordinates once, after the pointer stops moving. */
+  function commitPosition(): void {
     const element = panel.value
     if (!element) {
       return
@@ -64,16 +77,20 @@ export function useDraggableDialog(options: DraggableDialogOptions = {}) {
     nextLeft = left
     nextTop = top
     if (!frame) {
-      frame = requestAnimationFrame(render)
+      frame = requestAnimationFrame(renderDrag)
     }
   }
 
   function stop(): void {
     if (frame) {
       cancelAnimationFrame(frame)
-      render()
+      frame = 0
     }
-    if (pointerId !== undefined && captureTarget?.hasPointerCapture(pointerId)) {
+    commitPosition()
+    if (
+      pointerId !== undefined
+      && captureTarget?.hasPointerCapture(pointerId)
+    ) {
       captureTarget.releasePointerCapture(pointerId)
     }
     pointerId = undefined
@@ -96,6 +113,8 @@ export function useDraggableDialog(options: DraggableDialogOptions = {}) {
     }
     event.preventDefault()
     const rect = element.getBoundingClientRect()
+    panelWidth = rect.width
+    panelHeight = rect.height
     originLeft = rect.left
     originTop = rect.top
     nextLeft = rect.left
@@ -105,6 +124,7 @@ export function useDraggableDialog(options: DraggableDialogOptions = {}) {
     pointerId = event.pointerId
     captureTarget = event.currentTarget as HTMLElement
     captureTarget.setPointerCapture(event.pointerId)
+    commitPosition()
     element.classList.add('is-dragging')
     window.addEventListener('pointermove', handleMove, { passive: true })
     window.addEventListener('pointerup', stop)
@@ -117,13 +137,15 @@ export function useDraggableDialog(options: DraggableDialogOptions = {}) {
     if (!element) {
       return
     }
+    panelWidth = element.offsetWidth
+    panelHeight = element.offsetHeight
     const [left, top] = clampToViewport(
-      (window.innerWidth - element.offsetWidth) / 2,
-      (window.innerHeight - element.offsetHeight) / 2,
+      (window.innerWidth - panelWidth) / 2,
+      (window.innerHeight - panelHeight) / 2,
     )
     nextLeft = left
     nextTop = top
-    render()
+    commitPosition()
   }
 
   onBeforeUnmount(stop)
