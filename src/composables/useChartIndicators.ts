@@ -24,6 +24,11 @@ import type {
 import { BAR_COLOR_PLOT } from '@/domain/indicatorProtocol'
 import { RoundedCandleSeries } from '@/plugins/roundedCandles/RoundedCandleSeries'
 import { hasDrawings } from '@/domain/indicatorDrawings'
+import { readableOnCached } from '@/domain/readableColor'
+import {
+  publishIndicatorReadout,
+  resetIndicatorReadout,
+} from '@/services/indicatorReadout'
 import type { IndicatorDrawings } from '@/domain/indicatorDrawings'
 import { IndicatorDrawingsPrimitive } from '@/plugins/indicatorDrawings/IndicatorDrawingsPrimitive'
 import type {
@@ -65,6 +70,14 @@ interface MountedIndicator {
   populated: Set<string>
   /** A result already arrived, so an empty `populated` is meaningful. */
   calculated: boolean
+  /**
+   * Last value of each plot, kept as the legend's resting state.
+   *
+   * Read from the patches as they are applied — one number per plot per tick —
+   * because asking the series for it would copy the whole data array on a path
+   * that runs per pointer move.
+   */
+  lastValues: Map<string, number>
   /**
    * Markers live on the candle series, not on a series of their own — forty
    * indicators, every candlestick pattern among them, draw nothing else.
@@ -138,6 +151,49 @@ function applyCandlePatch(
   }
 }
 
+/**
+ * The surface every indicator is drawn against. Read from the published theme
+ * token rather than from the chart, so it is current the moment the theme
+ * changes and costs nothing to ask for.
+ */
+function chartSurface(): string {
+  if (typeof document === 'undefined') {
+    return '#000000'
+  }
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue('--chart-bg')
+    .trim() || '#000000'
+}
+
+/**
+ * Adapts a colour only while it is still the catalog's own. The moment the
+ * operator picks one, it is a decision — and correcting a decision would be
+ * worse than the problem this solves.
+ */
+function themedColor(color: string, catalogColor: string | undefined): string {
+  if (!catalogColor || color.toLowerCase() !== catalogColor.toLowerCase()) {
+    return color
+  }
+  return readableOnCached(color, chartSurface())
+}
+
+/**
+ * Formats an indicator value the way a chart legend does: enough digits to
+ * distinguish two candles, never so many that the number stops being readable
+ * at a glance. An oscillator lives in tens, a price in thousands, and both
+ * appear in the same row.
+ */
+function formatValue(value: number): string {
+  const size = Math.abs(value)
+  if (size >= 1000) {
+    return value.toFixed(0)
+  }
+  if (size >= 1) {
+    return value.toFixed(2)
+  }
+  return value.toPrecision(3)
+}
+
 /** Names the worker's raw output keys in the language of the interface. */
 const OUTPUT_LABELS: Record<string, string> = {
   lines: 'linhas livres',
@@ -183,6 +239,11 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
    * would put the per-frame indicator path back into Vue's dependency graph.
    */
   const populatedRevision = shallowRef(0)
+  /**
+   * True while the pointer is over the chart. It decides who owns the legend:
+   * the cursor while it is reading a bar, the newest tick otherwise.
+   */
+  let cursorActive = false
 
   function ensureClient(): IndicatorClient {
     if (client) {
@@ -205,6 +266,35 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     return created
   }
 
+  /** Builds the legend line for one indicator, at the cursor or at rest. */
+  function readoutFor(
+    entry: MountedIndicator,
+    seriesData?: Map<ISeriesApi<SeriesType>, unknown>,
+  ): string {
+    let text = ''
+    entry.definition.plots.forEach((plot) => {
+      const series = entry.series.get(plot.id)
+      if (!series || !entry.instance.styles[plot.id]?.visible) {
+        return
+      }
+      const point = seriesData?.get(series) as { value?: number } | undefined
+      /*
+       * With the cursor off the chart the legend rests on the last bar instead
+       * of going blank: the current value of an indicator is what the operator
+       * wants at a glance, and an empty row would look broken.
+       */
+      const value = point !== undefined && Number.isFinite(point.value)
+        ? point.value as number
+        : entry.lastValues.get(plot.id)
+      if (value === undefined) {
+        return
+      }
+      text += text ? '  ' : ''
+      text += `${plot.title ?? plot.id} ${formatValue(value)}`
+    })
+    return text
+  }
+
   function applyMarkers(
     entry: MountedIndicator,
     markers: IndicatorMarker[],
@@ -217,7 +307,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       time: marker.time as UTCTimestamp,
       position: marker.position,
       shape: marker.shape,
-      color: marker.color,
+      color: readableOnCached(marker.color, chartSurface()),
       ...(marker.size === undefined ? {} : { size: marker.size }),
       ...(marker.text === undefined ? {} : { text: marker.text }),
     })) as SeriesMarker<Time>[]
@@ -331,6 +421,12 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
             }
           }
           series.setData(points)
+          if (patch.value.length > 0) {
+            entry.lastValues.set(
+              patch.plotId,
+              patch.value[patch.value.length - 1],
+            )
+          }
           // `setData` is synchronous. A non-empty patch that leaves no data is
           // not a successful commit and must enter the bounded full retry.
           if (patch.time.length > 0 && series.data().length === 0) {
@@ -346,6 +442,9 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
             time: patch.time[i] as UTCTimestamp,
             value: patch.value[i],
           })
+        }
+        if (patch.value.length > 0) {
+          entry.lastValues.set(patch.plotId, patch.value[patch.value.length - 1])
         }
       }
 
@@ -366,6 +465,11 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       if (presentationChanged) {
         populatedRevision.value += 1
       }
+      if (!cursorActive) {
+        // The cursor owns the legend while it is over the chart; otherwise the
+        // newest bar does.
+        publishIndicatorReadout(instanceId, readoutFor(entry))
+      }
     } catch (error) {
       if (createdNow) {
         const chart = options.chart()
@@ -382,8 +486,12 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
   function seriesOptions(
     style: IndicatorPlotStyle,
     kind: ReturnType<typeof plotStyleKind>,
+    catalogColor?: string,
   ) {
-    const color = plotColor(style)
+    const color = plotColor({
+      ...style,
+      color: themedColor(style.color, catalogColor),
+    })
     const shared = {
       visible: style.visible,
       priceLineVisible: false,
@@ -424,9 +532,10 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       const type = kind === 'histogram'
         ? HistogramSeries
         : kind === 'area' ? AreaSeries : LineSeries
+      const options = seriesOptions(styles[plot.id], kind, plot.color)
       const created = pane
-        ? pane.addSeries(type, seriesOptions(styles[plot.id], kind))
-        : chart.addSeries(type, seriesOptions(styles[plot.id], kind), 0)
+        ? pane.addSeries(type, options)
+        : chart.addSeries(type, options, 0)
       series.set(plot.id, created)
     }
     return series
@@ -481,7 +590,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       }
       anchor.createPriceLine({
         price: hline.price,
-        color: hline.color ?? '#787B86',
+        color: readableOnCached(hline.color ?? '#787B86', chartSurface(), 1.8),
         lineWidth: 1,
         lineStyle: hline.linestyle === 'dashed'
           ? LineStyle.Dashed
@@ -649,6 +758,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         series,
         populated: new Set(),
         calculated: false,
+        lastValues: new Map(),
       })
       // The client seeds every worker it creates, so there is no "first
       // indicator" special case to get wrong here.
@@ -674,6 +784,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
        * bookkeeping corrupts every later calculation.
        */
       mounted.delete(instanceId)
+      resetIndicatorReadout(instanceId)
       client?.detach(instanceId)
       if (mounted.size === 0) {
         client = undefined
@@ -694,6 +805,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       entry.instance.inputs = resolveInputs(entry.definition, inputs)
       // New parameters can switch lines on or off, so the record is rebuilt.
       entry.populated.clear()
+      entry.lastValues.clear()
       entry.calculated = false
       populatedRevision.value += 1
       client.reconfigure(instanceId, entry.definition.id, entry.instance.inputs)
@@ -716,6 +828,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         entry.series.get(plot.id)?.applyOptions(seriesOptions(
           entry.instance.styles[plot.id],
           plotStyleKind(plot),
+          plot.color,
         ))
       })
     },
@@ -744,6 +857,35 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       }
       client?.appendBar(bar)
       client?.compute(false)
+    },
+
+    /**
+     * Values under the crosshair, written straight to the legend nodes.
+     *
+     * Runs on every pointer move, so it allocates one string per indicator and
+     * nothing else — no array of points, no reactive write, no render pass.
+     */
+    readCursor(seriesData: Map<ISeriesApi<SeriesType>, unknown>): void {
+      cursorActive = seriesData.size > 0
+      mounted.forEach((entry, instanceId) => {
+        publishIndicatorReadout(instanceId, readoutFor(entry, seriesData))
+      })
+    },
+
+    /**
+     * The theme changed: catalog colours are resolved against the new surface.
+     * Only appearance is touched — no recalculation, no data leaves the worker.
+     */
+    retheme(): void {
+      mounted.forEach((entry) => {
+        entry.definition.plots.forEach((plot) => {
+          entry.series.get(plot.id)?.applyOptions(seriesOptions(
+            entry.instance.styles[plot.id],
+            plotStyleKind(plot),
+            plot.color,
+          ))
+        })
+      })
     },
 
     /** History changed underneath: drop retained results and redraw fully. */
@@ -777,7 +919,8 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
 
     dispose(): void {
       const chart = options.chart()
-      mounted.forEach((entry) => {
+      mounted.forEach((entry, instanceId) => {
+        resetIndicatorReadout(instanceId)
         if (chart) {
           removeChartObjects(chart, entry)
         } else {

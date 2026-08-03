@@ -11,6 +11,8 @@ import {
   type ISeriesApi,
   type LogicalRangeChangeEventHandler,
   type ITextWatermarkPluginApi,
+  type MouseEventHandler,
+  type SeriesType,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts'
@@ -76,6 +78,7 @@ let pendingCandle: Candle | undefined
 let displayedCandles: Candle[] = []
 let historyExhausted = false
 let visibleLogicalRangeHandler: LogicalRangeChangeEventHandler | undefined
+let crosshairHandler: MouseEventHandler<Time> | undefined
 
 /**
  * Indicators read the same candles the chart holds. The arrays are rebuilt per
@@ -586,6 +589,10 @@ function applyChartTheme(palette: ThemePalette): void {
       chart.value?.timeScale().setVisibleLogicalRange(visibleRange)
     }
   }
+
+  // The catalog's own colours are resolved against the surface they land on,
+  // so a new theme can turn a readable line into an invisible one.
+  indicators.retheme()
 }
 
 function updateLegend(candle: Candle): void {
@@ -742,6 +749,19 @@ onMounted(() => {
     visibleLogicalRangeHandler,
   )
 
+  /*
+   * Indicator values under the cursor. The handler fires on every pointer
+   * move: it hands the series map straight to the indicators, which write the
+   * formatted numbers into their own legend nodes. Nothing reactive is touched
+   * on this path (ADR-0003).
+   */
+  crosshairHandler = (param: Parameters<MouseEventHandler<Time>>[0]) => {
+    indicators.readCursor(
+      param.seriesData as unknown as Map<ISeriesApi<SeriesType>, unknown>,
+    )
+  }
+  chartApi.subscribeCrosshairMove(crosshairHandler)
+
   unsubscribeCandle = onCandle(props.sessionId, (candle) => {
     if (!isCurrentSelection(candle)) {
       return
@@ -784,6 +804,10 @@ onBeforeUnmount(() => {
       visibleLogicalRangeHandler,
     )
     visibleLogicalRangeHandler = undefined
+  }
+  if (crosshairHandler) {
+    chart.value?.unsubscribeCrosshairMove(crosshairHandler)
+    crosshairHandler = undefined
   }
   releaseVerticalPricePan?.()
   releaseVerticalPricePan = undefined

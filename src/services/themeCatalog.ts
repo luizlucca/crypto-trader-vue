@@ -61,9 +61,13 @@ interface SurfaceTone {
   /** How far towards the hue's own chroma, 0 to 1. */
   amount?: number
   /**
-   * Lightens (positive) or deepens (negative) the whole ramp, proportionally
-   * to the room each surface still has. It is what separates three greys from
+   * Lightens (positive) or deepens (negative) the dark ramp, proportionally to
+   * the room each surface still has. It is what separates three greys from
    * one: near-black, charcoal and slate are the same ramp at three depths.
+   *
+   * The light ramp ignores it. A theme's depth is a statement about its dark
+   * variant; carrying it over would turn the light side of a deep neutral into
+   * a dim mid-grey, which is neither light nor the theme's intent.
    */
   lift?: number
 }
@@ -834,7 +838,8 @@ function darkPalette(definition: ThemeDefinition): ThemePalette {
 }
 
 function lightPalette(definition: ThemeDefinition): ThemePalette {
-  const surface = (hex: string): string => toned(hex, definition.surface)
+  const tone = definition.surface && { ...definition.surface, lift: 0 }
+  const surface = (hex: string): string => toned(hex, tone)
   const tint = surface(definition.tintLight ?? definition.accentLight)
   const accent = definition.accentLight
   const text = mix(surface('#263d48'), tint, 0.025)

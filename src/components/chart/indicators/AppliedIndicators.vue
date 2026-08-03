@@ -5,6 +5,7 @@ import type {
   IndicatorInstance,
 } from '@/domain/indicators'
 import { instanceLabel } from '@/domain/indicators'
+import IndicatorReadout from './IndicatorReadout.vue'
 
 defineProps<{
   applied: readonly { instance: IndicatorInstance, definition: IndicatorDefinition }[]
@@ -28,6 +29,7 @@ defineEmits<{
         :style="{ background: entry.definition.plots[0]?.color ?? 'var(--blue)' }"
       />
       <strong>{{ instanceLabel(entry.definition, entry.instance.inputs) }}</strong>
+      <IndicatorReadout :instance-id="entry.instance.instanceId" />
       <button
         :aria-label="`Parâmetros de ${entry.definition.name}`"
         title="Parâmetros"

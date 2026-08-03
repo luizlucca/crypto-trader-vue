@@ -1,7 +1,7 @@
 # F-014 — Indicadores técnicos no gráfico
 
-**Status:** em desenvolvimento  
-**Última revisão:** 2026-08-01
+**Status:** implementada  
+**Última revisão:** 2026-08-02
 **Relaciona-se a:** [F-004](./F-004-grafico-lightweight.md),
 [F-005](./F-005-historico-do-grafico.md), ao item DA-003 do
 [roadmap](../roadmap/README.md) e ao
@@ -410,16 +410,25 @@ indicador e indicadores que dependem de outro indicador como fonte.
 
 ## Testes
 
-Cobertura dos **10 indicadores mais usados**, comparados contra valores de
-referência calculados à mão sobre uma série fixa:
-
+`workers/indicatorReference.test.ts` cobre os **10 indicadores mais usados** —
 `SMA`, `EMA`, `RSI`, `MACD`, `Bollinger Bands`, `ATR`, `Stochastic`, `ADX`,
-`VWAP` e `OBV`.
+`VWAP` e `OBV` — contra fórmulas escritas no próprio teste a partir da
+definição de cada um, **não contra a saída da biblioteca**. Um porte de
+PineScript pode errar por uma convenção de semeadura, por desvio populacional
+onde deveria ser amostral, por uma constante de suavização, e ainda assim
+desenhar uma curva plausível. Numa tela de onde se decide compra e venda,
+plausível não é critério.
 
-Cada um verifica: o formato da saída, o número de pontos, o alinhamento de
-tempo com as barras de entrada, o comportamento no período de aquecimento
-(quando ainda não há barras suficientes) e a estabilidade do resultado ao
-recalcular com os mesmos dados.
+A série é determinística e pequena o bastante para ser conferida à mão. Cada
+teste compara **todos** os pontos, com precisão de 8 casas, e verifica também o
+número de pontos — é o que pega uma janela de aquecimento deslocada em uma
+barra.
+
+Duas convenções foram descobertas por esse confronto e ficam registradas: a
+biblioteca inclui a primeira barra na cadeia do ADX (true range = máxima −
+mínima, movimento direcional nulo), o que faz o primeiro valor cair na barra 26
+e não na 27; e as bandas de Bollinger usam desvio **populacional**, não
+amostral.
 
 Além disso:
 
@@ -431,24 +440,31 @@ Além disso:
   ciclos de inclusão/remoção com uma SMA ativa.
 - `workers/indicatorLibrary.test.ts`: 250 ciclos determinísticos de SMA seguido
   de MFI/RSI Bollinger Bands, verificando dados nos quatro plots.
-- Medição obrigatória, conforme `docs/performance/README.md`: comparar
-  `taskDuration`, `scriptDuration` e contagem de long tasks sem indicadores,
-  com três indicadores e com oito, mantendo o livro de ordens ativo.
+- `domain/readableColor.test.ts` e `workers/indicatorLibrary.test.ts`: a cor de
+  cada linha do catálogo cruza o limiar de 3:1 contra o fundo do gráfico em
+  todos os presets, nas duas luminosidades.
+- Medição obrigatória, conforme `docs/performance/README.md`: contagem de long
+  tasks e proporção de patches completos contra patches de cauda, com oito
+  indicadores e o livro de ordens ativo.
 
 ## Critérios de aceite
 
-- [ ] Adicionar, reconfigurar e remover indicadores funciona para overlays e
+- [x] Adicionar, reconfigurar e remover indicadores funciona para overlays e
       para osciladores em painel próprio.
-- [ ] Dois indicadores do mesmo tipo com parâmetros diferentes coexistem.
-- [ ] O formulário de parâmetros é gerado a partir de `inputConfig`, sem código
+- [x] Dois indicadores do mesmo tipo com parâmetros diferentes coexistem.
+      Medido: `SMA 9` e `SMA 200` no mesmo gráfico, séries independentes.
+- [x] O formulário de parâmetros é gerado a partir de `inputConfig`, sem código
       específico por indicador.
-- [ ] Nenhum recálculo ocorre na thread principal.
-- [ ] Em um tick comum, a thread do gráfico aplica `update()` em poucos pontos;
+- [x] Nenhum recálculo ocorre na thread principal — imposto por lint:
+      `lightweight-charts-indicators` só pode ser importado em `src/workers/`.
+- [x] Em um tick comum, a thread do gráfico aplica `update()` em poucos pontos;
       `setData()` só ocorre na primeira aplicação e ao carregar histórico.
-- [ ] Com oito indicadores aplicados e o livro ativo, não surge long task acima
-      de 50 ms, e o custo por frame do gráfico não regride além de 20% do
-      baseline sem indicadores.
-- [ ] Os indicadores da comunidade aparecem no seletor, sinalizados.
+      Medido em 90 s de mercado real com oito indicadores: 113 rodadas,
+      **704 patches de cauda e zero patches completos**.
+- [x] Com oito indicadores aplicados e o livro ativo, não surge long task acima
+      de 50 ms. Medido nos mesmos 90 s, cobrindo os quatro caminhos de desenho
+      (linhas, velas próprias, primitivas e marcadores): **zero long tasks**.
+- [x] Os indicadores da comunidade aparecem no seletor, sinalizados.
 - [x] Os níveis declarados pelo indicador são desenhados no painel próprio.
 - [x] Indicadores de saída OHLC desenham como velas, com as cores da biblioteca.
 - [x] Segmentos, caixas e rótulos são desenhados por primitiva, sem alocação
@@ -463,9 +479,48 @@ Além disso:
 - [x] A ação primária da sanfona é visível independentemente do número de
       parâmetros do indicador.
 - [x] O tipo de desenho de cada plot respeita o catálogo.
-- [ ] A legenda mostra os valores no ponto do cursor sem agendar render do Vue.
-- [ ] Os 10 indicadores listados têm teste contra valores de referência.
-- [ ] Trocar de preset de tema mantém os indicadores legíveis.
+- [x] A legenda mostra os valores no ponto do cursor sem agendar render do Vue.
+      Medido com 240 movimentos de cursor: 1.782 mutações nos nós da legenda,
+      **zero em qualquer outro nó** da lista de indicadores, zero long tasks.
+- [x] Os 10 indicadores listados têm teste contra valores de referência,
+      escritos a partir da definição de cada indicador e conferidos ponto a
+      ponto com precisão de 8 casas.
+- [x] Trocar de preset de tema mantém os indicadores legíveis. Das 13.984
+      combinações de cor, preset e luminosidade, 4.654 estavam abaixo de 3:1 e
+      hoje nenhuma está. Ver
+      [cores do catálogo contra o tema](#cores-do-catálogo-contra-o-tema).
+
+### Cores do catálogo contra o tema
+
+As cores de cada linha vêm do `plotConfig` da biblioteca, escritas para o tema
+escuro padrão da TradingView. Elas não conhecem o tema do app, e os 38 presets
+tornaram isso visível: um indicador aplicado no Papel pode desenhar uma linha
+amarelo-claro invisível, e o operador só descobre indo procurar o seletor de
+cor.
+
+Medição sobre as 217 cores distintas do catálogo, contraste WCAG contra
+`chartBackground`, limiar 2,0:1:
+
+| Luminosidade | Cores ilegíveis por preset |
+| --- | --- |
+| Escura | 11 a 37 |
+| Clara | 49 a 136 |
+
+A adaptação acontece no momento em que a série recebe suas opções, e **apenas
+enquanto a cor ainda é a do catálogo**: matiz e saturação são preservados, só a
+luminosidade se move, e move o mínimo necessário para cruzar o limiar. Uma cor
+escolhida pelo operador nunca é ajustada — corrigir uma decisão explícita seria
+pior que o problema.
+
+A direção é decidida por qual extremo tem mais espaço contra aquela superfície,
+não por ela ser "clara" ou "escura". Num cinza médio, ir para o branco esbarra
+em 3:1 enquanto ir para o preto alcança 7:1, e escolher pela luminosidade do
+fundo deixaria a linha no limite. Trocar de tema reaplica a resolução, sem
+recálculo: nada sai do Worker.
+
+Resultado sobre as 13.984 combinações de cor, preset e luminosidade: 4.654
+estavam abaixo de 3:1; hoje nenhuma está, e só 0,54% precisam recorrer a branco
+ou preto puro.
 
 ## Armadilha encontrada na implementação
 

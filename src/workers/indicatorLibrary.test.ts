@@ -4,6 +4,12 @@ import {
   calculateSMA,
   indicatorRegistry,
 } from 'lightweight-charts-indicators'
+import {
+  MIN_GRAPHIC_CONTRAST,
+  contrastRatio,
+  readableOn,
+} from '@/domain/readableColor'
+import { themePresets } from '@/services/themeCatalog'
 
 const bars = Array.from({ length: 500 }, (_, index) => {
   const close = 60_000 + Math.sin(index / 8) * 500 + index
@@ -102,5 +108,43 @@ describe('classificação de saídas do catálogo', () => {
     // Declaram plots e devolvem apenas NaN com os parâmetros padrão: o painel
     // fica vazio por falta de dados, não por limitação do gráfico.
     expect(classify('hott-lott')).toBe('sem-valores')
+  })
+})
+
+/**
+ * The catalog's colours were written for one dark theme. This is the guard that
+ * every one of them stays visible on every preset the app ships — the check
+ * that turns "trocar de tema mantém os indicadores legíveis" from an intention
+ * into a property.
+ */
+describe('legibilidade do catálogo em todos os temas', () => {
+  it('nenhuma cor de linha fica abaixo do limiar em nenhum preset', () => {
+    const registry = indicatorRegistry as unknown as {
+      plotConfig?: { color?: string }[]
+    }[]
+    const colors = new Set<string>()
+    for (const entry of registry) {
+      for (const plot of entry.plotConfig ?? []) {
+        if (plot.color) {
+          colors.add(plot.color)
+        }
+      }
+    }
+    expect(colors.size).toBeGreaterThan(200)
+
+    const falhas: string[] = []
+    for (const preset of themePresets) {
+      for (const mode of ['dark', 'light'] as const) {
+        const surface = preset[mode].chartBackground
+        for (const color of colors) {
+          const resolved = readableOn(color, surface)
+          const ratio = contrastRatio(resolved, surface)
+          if (ratio !== null && ratio < MIN_GRAPHIC_CONTRAST) {
+            falhas.push(`${color} → ${resolved} em ${preset.id}/${mode}`)
+          }
+        }
+      }
+    }
+    expect(falhas).toEqual([])
   })
 })

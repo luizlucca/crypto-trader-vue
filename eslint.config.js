@@ -82,6 +82,30 @@ export default tseslint.config(
     },
   },
 
+  // ARCHITECTURE: the indicator library runs in a Worker and nowhere else.
+  // Importing it on the renderer thread would put an O(n) recalculation on the
+  // same thread that draws candles and commits the order book (ADR-0003) — the
+  // one property the whole indicator design exists to protect.
+  {
+    files: ['src/**/*.{ts,vue}'],
+    ignores: ['src/workers/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'lightweight-charts-indicators',
+              message:
+                'O cálculo de indicadores vive em src/workers/. '
+                + 'Fale com ele pelo protocolo em domain/indicatorProtocol.ts.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // ARCHITECTURE: `shared/` is the contract between processes. It must stay
   // free of both renderer and Electron dependencies.
   {

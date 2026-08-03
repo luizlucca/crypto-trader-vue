@@ -434,6 +434,30 @@
   font-weight: 500;
 }
 
+/*
+ * Values under the cursor. Written straight into this node by
+ * `IndicatorReadout`, so it must never be sized by its own content: the chip
+ * would resize on every pointer move and drag the whole row with it.
+ */
+.applied-indicator-readout {
+  min-width: 0;
+  /* An indicator with seven plots would otherwise stretch its row across the
+     whole chart; the first plots are the ones that carry the reading. */
+  max-width: 420px;
+  overflow: hidden;
+  color: var(--accent);
+  font-family: var(--font-data);
+  font-size: 10.5px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.applied-indicator-readout:empty {
+  display: none;
+}
+
 .applied-indicator-swatch {
   width: 8px;
   height: 2px;
