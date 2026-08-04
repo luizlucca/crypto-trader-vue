@@ -8,6 +8,10 @@ import {
   Workflow,
 } from '@lucide/vue'
 
+defineProps<{
+  settingsOpen: boolean
+}>()
+
 const emit = defineEmits<{
   settings: []
 }>()
@@ -15,7 +19,13 @@ const emit = defineEmits<{
 
 <template>
   <nav class="navigation-rail" aria-label="Navegação principal">
-    <button aria-label="Mercado" class="active" title="Mercado" type="button">
+    <button
+      aria-current="page"
+      aria-label="Mercado"
+      class="active"
+      title="Mercado"
+      type="button"
+    >
       <CandlestickChart aria-hidden="true" />
     </button>
     <button aria-label="Carteira" title="Carteira" type="button">
@@ -29,6 +39,8 @@ const emit = defineEmits<{
     </button>
     <span class="rail-spacer" />
     <button
+      :aria-expanded="settingsOpen"
+      :class="{ active: settingsOpen }"
       aria-label="Configurações"
       title="Configurações"
       type="button"

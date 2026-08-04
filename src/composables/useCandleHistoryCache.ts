@@ -36,6 +36,11 @@ export function useCandleHistoryCache(
 ): CandleHistoryCache {
   const entries = new Map<string, HistoryEntry>()
   const unsubscribers = new Map<string, () => void>()
+  /*
+   * `slice(-0)` returns the whole array, so a window of zero would silently
+   * mean "unbounded" — the one thing a bounded cache must never do.
+   */
+  const windowSize = Math.max(1, Math.floor(maxCachedCandles))
 
   function ingest(
     sessionId: string,
@@ -61,7 +66,7 @@ export function useCandleHistoryCache(
     const last = current.candles.at(-1)
     if (!last || candle.time > last.time) {
       current.candles.push(candle)
-      if (current.candles.length > maxCachedCandles) {
+      if (current.candles.length > windowSize) {
         current.candles.shift()
       }
     } else if (candle.time === last.time) {
@@ -72,8 +77,10 @@ export function useCandleHistoryCache(
   return {
     read(sessionId, selection) {
       const cached = entries.get(sessionId)
-      return cached?.ready
-        && cached.fingerprint === marketSelectionFingerprint(selection)
+      if (!cached?.ready) {
+        return undefined
+      }
+      return cached.fingerprint === marketSelectionFingerprint(selection)
         ? cached.candles
         : undefined
     },
@@ -85,20 +92,18 @@ export function useCandleHistoryCache(
       const latest = pending?.fingerprint === fingerprint
         ? pending.candles.at(-1)
         : undefined
-      const merged = candles.slice(-maxCachedCandles)
+      const merged = candles.slice(-windowSize)
       const last = merged.at(-1)
       if (latest && (!last || latest.time >= last.time)) {
         if (last?.time === latest.time) {
           merged[merged.length - 1] = latest
         } else {
           merged.push(latest)
+          // The tick pushed the window one past its bound.
+          merged.splice(0, merged.length - windowSize)
         }
       }
-      entries.set(sessionId, {
-        fingerprint,
-        candles: merged.slice(-maxCachedCandles),
-        ready: true,
-      })
+      entries.set(sessionId, { fingerprint, candles: merged, ready: true })
     },
 
     attach(sessionId, selection) {

@@ -21,7 +21,12 @@ const style = {
 
 export default tseslint.config(
   {
-    ignores: ['out/**', 'release/**', 'build/**', 'node_modules/**'],
+    ignores: [
+      'out/**', 'release/**', 'build/**', 'node_modules/**',
+      // Código de terceiro mantido byte a byte igual ao upstream, para que
+      // atualizar seja um diff. Ver src/plugins/lineTools/README.md.
+      'src/plugins/lineTools/**',
+    ],
   },
 
   js.configs.recommended,

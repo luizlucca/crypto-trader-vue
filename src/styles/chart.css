@@ -91,14 +91,48 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
   width: 40px;
-  padding-top: 8px;
   border-right: 1px solid var(--border);
   background: var(--navigation-bg);
 }
 
+/*
+ * The tool list scrolls on its own so a short chart clips nothing, and the
+ * two actions below it stay reachable at any height.
+ */
+.drawing-tools,
+.drawing-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 0;
+}
+
+.drawing-tools {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.drawing-tools::-webkit-scrollbar {
+  display: none;
+}
+
+.drawing-actions {
+  border-top: 1px solid var(--border-soft);
+}
+
+.drawing-tools hr {
+  width: 20px;
+  height: 0;
+  margin: 2px 0;
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+}
+
 .drawing-toolbar button {
+  position: relative;
   display: grid;
   place-items: center;
   width: 30px;
@@ -120,8 +154,112 @@
   background: var(--border-soft);
 }
 
-.drawing-toolbar span {
-  flex: 1;
+.drawing-toolbar button:disabled {
+  opacity: .35;
+}
+
+.drawing-toolbar button:disabled:hover {
+  color: color-mix(in srgb, var(--selected-bg) 45%, var(--text));
+  background: transparent;
+}
+
+.drawing-clear i {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  min-width: 12px;
+  padding: 0 2px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-style: normal;
+  line-height: 12px;
+  color: var(--navigation-bg);
+  background: var(--accent-hover);
+}
+
+/*
+ * Anchored to the chart, not to the drawing. Following the shape would mean
+ * measuring it every frame, which is a Vue render per pointer pixel — the one
+ * thing the drawing path exists to avoid (ADR-0003).
+ */
+.drawing-style {
+  position: absolute;
+  z-index: 5;
+  /* Below the legend row: the legend runs the full width of the chart top. */
+  top: 30px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  transform: translateX(-50%);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel-raised, var(--navigation-bg));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .28);
+}
+
+.drawing-style strong {
+  padding-right: 2px;
+  color: var(--text-strong);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.drawing-style-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  background: var(--border-soft);
+}
+
+.drawing-style button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  border-radius: 3px;
+  color: color-mix(in srgb, var(--selected-bg) 45%, var(--text));
+  background: transparent;
+}
+
+.drawing-style button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.drawing-style button:hover {
+  color: var(--accent-hover);
+  background: var(--border-soft);
+}
+
+.drawing-swatch {
+  position: relative;
+}
+
+.drawing-swatch::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(0, 0, 0, .25);
+  border-radius: 50%;
+  background: var(--swatch);
+}
+
+.drawing-swatch.active {
+  outline: 1.5px solid var(--accent-hover);
+  outline-offset: -1px;
+}
+
+.drawing-width i {
+  width: 15px;
+  border-radius: 2px;
+  background: currentcolor;
+}
+
+.drawing-width.active {
+  color: var(--accent-hover);
+  background: var(--border-soft);
 }
 
 .chart-message {

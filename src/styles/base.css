@@ -592,7 +592,7 @@ html[data-theme] .symbol-table-row.selected {
 }
 
 .chart-toolbar .panel-restore {
-  color: var(--accent);
+  color: var(--blue);
 }
 
 .chart-toolbar .panel-restore:hover {

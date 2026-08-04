@@ -176,7 +176,10 @@ onBeforeUnmount(() => {
       :data-order-book="orderBookPanelVisible ? 'visible' : 'hidden'"
       :style="workspaceStyle"
     >
-      <NavigationRail @settings="settingsOpen = true" />
+      <NavigationRail
+        :settings-open="settingsOpen"
+        @settings="settingsOpen = !settingsOpen"
+      />
       <MarketSidebar
         v-if="marketPanelVisible"
         :connection-state="activeTab.status"

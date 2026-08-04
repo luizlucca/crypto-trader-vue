@@ -10,11 +10,11 @@ import {
   Sun,
   X,
 } from '@lucide/vue'
+import { computed } from 'vue'
 import { appTheme, toggleTheme } from '@/services/theme'
-import type { StreamStatus } from '@shared/types/market'
-import type { MarketSelection } from '@shared/types/market'
+import type { MarketSelection, StreamStatus } from '@shared/types/market'
 
-defineProps<{
+const props = defineProps<{
   status: StreamStatus['state']
   selection: MarketSelection
   settingsOpen: boolean
@@ -23,6 +23,19 @@ defineProps<{
 const emit = defineEmits<{
   settings: []
 }>()
+
+const connectionLabel = computed(() => {
+  switch (props.status) {
+    case 'connected':
+      return 'Conectado'
+    case 'reconnecting':
+      return 'Reconectando'
+    case 'error':
+      return 'Erro'
+    default:
+      return 'Conectando'
+  }
+})
 </script>
 
 <template>
@@ -39,16 +52,8 @@ const emit = defineEmits<{
     </button>
 
     <div class="connection" :class="status">
-      <span class="connection-dot" />
-      {{
-        status === 'connected'
-          ? 'Conectado'
-          : status === 'reconnecting'
-            ? 'Reconectando'
-            : status === 'error'
-              ? 'Erro'
-              : 'Conectando'
-      }}
+      <span class="connection-dot" aria-hidden="true" />
+      {{ connectionLabel }}
     </div>
 
     <div class="ticker-strip">

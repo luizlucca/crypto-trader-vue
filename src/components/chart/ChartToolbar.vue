@@ -19,7 +19,20 @@ import {
 defineProps<{ interval: string, indicatorCount: number }>()
 defineEmits<{ interval: [value: string], indicators: [] }>()
 
-const intervals = ['1m', '5m', '15m', '1h', '4h', '1D']
+/**
+ * Two fields because the two values genuinely differ: `id` is what the
+ * provider and the selection use, `label` is what a trader reads on the
+ * button. Deriving one from the other tied the emitted interval to a casing
+ * choice made for looks.
+ */
+const intervals = [
+  { id: '1m', label: '1m' },
+  { id: '5m', label: '5m' },
+  { id: '15m', label: '15m' },
+  { id: '1h', label: '1h' },
+  { id: '4h', label: '4h' },
+  { id: '1d', label: '1D' },
+]
 </script>
 
 <template>
@@ -48,13 +61,14 @@ const intervals = ['1m', '5m', '15m', '1h', '4h', '1D']
       <Plus aria-hidden="true" />
     </button>
     <button
-      v-for="value in intervals"
-      :key="value"
-      :class="{ active: interval === value.toLowerCase() }"
+      v-for="option in intervals"
+      :key="option.id"
+      :aria-pressed="interval === option.id"
+      :class="{ active: interval === option.id }"
       type="button"
-      @click="$emit('interval', value.toLowerCase())"
+      @click="$emit('interval', option.id)"
     >
-      {{ value }}
+      {{ option.label }}
     </button>
     <span class="toolbar-divider" />
     <button

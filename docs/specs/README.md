@@ -34,6 +34,7 @@ e inclua o link no índice antes de iniciar a implementação.
 | F-013 | [Profundidade real do livro de ordens](./F-013-profundidade-livro-ordens.md) | Implementada |
 | F-014 | [Indicadores técnicos no gráfico](./F-014-indicadores-tecnicos.md) | Implementada |
 | F-015 | [Superfície de modais destacada do fundo](./F-015-superficie-de-modais.md) | Em desenvolvimento |
+| F-016 | [Desenhos no gráfico](./F-016-desenhos-no-grafico.md) | Em evolução |
 
 Para a visão transversal de processos, IPC e isolamento de performance, veja a
 [arquitetura](../architecture.md).

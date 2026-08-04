@@ -93,7 +93,7 @@
 
 .symbol-modal-cache button:hover {
   color: white;
-  border-color: var(--accent);
+  border-color: var(--blue);
   background: color-mix(in srgb, var(--border-soft) 85%, var(--accent-hover));
 }
 
@@ -299,7 +299,7 @@
 }
 
 .symbol-table-header button:hover {
-  color: var(--accent);
+  color: var(--blue);
 }
 
 .symbol-virtual-viewport {
@@ -448,7 +448,7 @@
   height: 10px;
   border: 2px solid color-mix(in srgb, var(--text-strong) 90%, var(--accent-hover));
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--blue);
   transform: translate(-50%, -50%);
 }
 

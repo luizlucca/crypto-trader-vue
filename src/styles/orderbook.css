@@ -85,11 +85,11 @@
   height: 24px;
   min-width: 58px;
   padding: 0 18px 0 7px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  color: var(--text-secondary);
+  color: var(--muted);
   background-color: var(--control-bg);
-  font: 600 10.5px/1 var(--font-mono);
+  font: 600 10.5px/1 var(--font-data);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
@@ -97,7 +97,7 @@
 .book-aggregation select:hover,
 .book-aggregation select:focus-visible {
   border-color: var(--blue);
-  color: var(--text-primary);
+  color: var(--text-strong);
   outline: none;
 }
 

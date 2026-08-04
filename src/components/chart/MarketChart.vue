@@ -29,8 +29,12 @@ import {
 } from '@/plugins/roundedCandles/RoundedCandleSeries'
 import type { RoundedCandleData } from '@/plugins/roundedCandles/data'
 import type { Candle, MarketSelection } from '@shared/types/market'
+import { uniqueSortedCandles } from '@/domain/candles'
 import { marketSelectionFingerprint } from '@/domain/marketSelection'
 import { useChartIndicators } from '@/composables/useChartIndicators'
+import { useChartDrawings } from '@/composables/useChartDrawings'
+import type { DrawingToolId } from '@/domain/chartDrawings'
+import { readDrawings, writeDrawings } from '@/services/drawingStore'
 import type { IndicatorBars } from '@/services/indicators'
 import {
   readIndicatorLayout,
@@ -48,6 +52,7 @@ import type {
 } from '@/domain/indicators'
 import type { PresentedIndicator } from '@/domain/indicatorLegend'
 import ChartToolbar from './ChartToolbar.vue'
+import DrawingStyleBar from './DrawingStyleBar.vue'
 import DrawingToolbar from './DrawingToolbar.vue'
 import AppliedIndicators from './indicators/AppliedIndicators.vue'
 import IndicatorPicker from './indicators/IndicatorPicker.vue'
@@ -88,6 +93,16 @@ let displayedCandles: Candle[] = []
 let historyExhausted = false
 let visibleLogicalRangeHandler: LogicalRangeChangeEventHandler | undefined
 let crosshairHandler: MouseEventHandler<Time> | undefined
+/*
+ * Anchors are placed from the DOM, not from `subscribeClick`: the chart drops
+ * any second click inside its 500 ms double-click window, which is exactly the
+ * cadence of placing the two points of a trend line.
+ *
+ * The releaser closes over the element the listeners were bound to instead of
+ * reading the template ref again at teardown, so the pair cannot survive an
+ * unmount that clears the ref first.
+ */
+let releaseDrawingPointer: (() => void) | undefined
 
 function currentIndicatorBars(): IndicatorBars {
   const count = displayedCandles.length
@@ -125,6 +140,17 @@ const indicators = useChartIndicators({
   candleSeries: () => candleSeries.value,
   bars: currentIndicatorBars,
   onError: showIndicatorError,
+})
+
+/**
+ * Drawings live on the candle series and are saved per asset: a trend line is
+ * manual work, and losing it on restart would be losing the analysis.
+ */
+const drawings = useChartDrawings({
+  chart: () => chart.value,
+  series: () => candleSeries.value,
+  bars: () => displayedCandles,
+  onChange: (list) => writeDrawings(props.selection, list),
 })
 
 /**
@@ -262,6 +288,45 @@ async function initializeChartData(): Promise<void> {
   }
 }
 
+/**
+ * Arming a tool takes the keyboard too: Esc is the universal way out of a
+ * drawing mode, and leaving it armed after a mistaken click is a trap.
+ */
+function selectDrawingTool(tool: DrawingToolId | null): void {
+  drawings.select(tool)
+}
+
+/**
+ * Esc leaves whatever drawing mode is on: an armed tool first, then a
+ * selection. Delete removes the selected drawing — but never while the
+ * operator is typing, or renaming a tab would delete a trend line.
+ */
+function cancelDrawingOnEscape(event: KeyboardEvent): void {
+  const typing = event.target instanceof HTMLElement
+    && (event.target.isContentEditable
+      || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName))
+  if (typing) {
+    return
+  }
+  if (event.key === 'Escape' && drawings.activeTool.value) {
+    event.preventDefault()
+    drawings.select(null)
+    return
+  }
+  if (event.key === 'Escape' && drawings.selected.value) {
+    event.preventDefault()
+    drawings.deselect()
+    return
+  }
+  if (
+    (event.key === 'Delete' || event.key === 'Backspace')
+    && drawings.selected.value
+  ) {
+    event.preventDefault()
+    drawings.removeSelected()
+  }
+}
+
 /** Puts the indicator on the chart and expands its settings. */
 function addIndicator(definition: IndicatorDefinition): void {
   const instance = indicators.add(definition)
@@ -391,22 +456,6 @@ function rememberDisplayedCandle(candle: Candle): void {
   }
 }
 
-/** De-duplicates exchange pages and restores the chart's required order. */
-function uniqueSortedCandles(
-  source: readonly Candle[],
-  beforeTime = Number.POSITIVE_INFINITY,
-): Candle[] {
-  const byTime = new Map<number, Candle>()
-  for (const candle of source) {
-    if (candle.time < beforeTime) {
-      byTime.set(candle.time, candle)
-    }
-  }
-  const unique = Array.from(byTime.values())
-  unique.sort((left, right) => left.time - right.time)
-  return unique
-}
-
 function setChartInteractionsLocked(locked: boolean): void {
   chart.value?.applyOptions({
     handleScale: locked
@@ -469,8 +518,11 @@ async function loadHistory(): Promise<void> {
       return
     }
     const candles = uniqueSortedCandles(history)
+    // Measured against the raw page, never the de-duplicated one: a single
+    // repeated bar in a full page would otherwise latch the flag and the chart
+    // would refuse to load history for the rest of the session.
     historyExhausted = !hasCachedHistory
-      && candles.length < INITIAL_HISTORY_SIZE
+      && history.length < INITIAL_HISTORY_SIZE
     displayedCandles = candles
     candleSeries.value.setData(candles.map(candlePoint))
     volumeSeries.value.setData(candles.map((candle) => volumePoint(candle)))
@@ -490,6 +542,7 @@ async function loadHistory(): Promise<void> {
     emit('history', props.sessionId, fingerprint, candles)
     showInitialCandleWindow(displayedCandles.length)
     indicators.invalidate()
+    drawings.restore(readDrawings(props.selection))
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error)
   } finally {
@@ -560,6 +613,9 @@ async function loadOlderHistory(): Promise<void> {
     }
     historyExhausted = page.length < HISTORY_PAGE_SIZE
     indicators.invalidate()
+    // Prepending shifted every logical index; the drawings are anchored to
+    // time and have to be placed again against the new indexing.
+    drawings.rebuild()
   } catch (error) {
     historyErrorMessage.value = error instanceof Error
       ? error.message
@@ -719,12 +775,15 @@ function isCurrentSelection(candle: Candle): boolean {
 }
 
 onMounted(() => {
-  if (!container.value) {
+  // Held as a local for the whole mount: the listeners bound below must be
+  // removed from this exact element, and the template ref is gone by then.
+  const host = container.value
+  if (!host) {
     return
   }
 
   const palette = appThemePalette.value
-  const chartApi = createChart(container.value, {
+  const chartApi = createChart(host, {
     autoSize: true,
     layout: {
       background: {
@@ -847,8 +906,22 @@ onMounted(() => {
     if (hoveredIndicatorId.value !== nextIndicatorId) {
       hoveredIndicatorId.value = nextIndicatorId
     }
+    drawings.handleMove(param)
   }
   chartApi.subscribeCrosshairMove(crosshairHandler)
+
+  const onDrawingPointerDown = (event: MouseEvent) => {
+    drawings.handlePointerDown(event)
+  }
+  const onDrawingPointerUp = (event: MouseEvent) => {
+    drawings.handlePointerUp(event)
+  }
+  host.addEventListener('mousedown', onDrawingPointerDown)
+  host.addEventListener('mouseup', onDrawingPointerUp)
+  releaseDrawingPointer = () => {
+    host.removeEventListener('mousedown', onDrawingPointerDown)
+    host.removeEventListener('mouseup', onDrawingPointerUp)
+  }
 
   unsubscribeCandle = onCandle(props.sessionId, (candle) => {
     if (!isCurrentSelection(candle)) {
@@ -879,6 +952,8 @@ onMounted(() => {
     })
   })
 
+  document.addEventListener('keydown', cancelDrawingOnEscape)
+
   // The chart owns its initial load. This avoids a parent-ref race while
   // Vue replaces keyed chart instances during tab and interval changes.
   void initializeChartData()
@@ -901,6 +976,10 @@ onBeforeUnmount(() => {
     chart.value?.unsubscribeCrosshairMove(crosshairHandler)
     crosshairHandler = undefined
   }
+  releaseDrawingPointer?.()
+  releaseDrawingPointer = undefined
+  drawings.dispose()
+  document.removeEventListener('keydown', cancelDrawingOnEscape)
   releaseVerticalPricePan?.()
   releaseVerticalPricePan = undefined
   unsubscribeCandle?.()
@@ -925,8 +1004,22 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
       @interval="emit('interval', $event)"
     />
     <div class="chart-stage">
-      <DrawingToolbar />
+      <DrawingToolbar
+        :active-tool="drawings.activeTool.value"
+        :drawing-count="drawings.count()"
+        :drawings-visible="drawings.visible.value"
+        @clear="drawings.clear()"
+        @select="selectDrawingTool"
+        @toggle-visibility="drawings.toggleVisibility()"
+      />
       <div ref="container" class="chart-container" />
+      <DrawingStyleBar
+        v-if="drawings.selected.value"
+        :drawing="drawings.selected.value"
+        @close="drawings.deselect()"
+        @remove="drawings.removeSelected()"
+        @restyle="drawings.restyleSelected($event)"
+      />
       <div ref="legend" class="chart-legend">
         <strong>{{ displaySymbol() }} · {{ selection.interval }}</strong>
         <span>O <b ref="legendOpen">—</b></span>
