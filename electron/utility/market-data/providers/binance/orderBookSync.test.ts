@@ -209,4 +209,17 @@ describe('binance order book — eventos anteriores ao snapshot', () => {
     expect(book.applySnapshot(snapshot)).toBe(false)
     expect(book.isSynchronised).toBe(false)
   })
+
+  it('recusa o snapshot depois que o buffer de bootstrap transborda', () => {
+    const book = new BinanceOrderBook('futures')
+    for (let index = 0; index < 300; index += 1) {
+      book.buffer(update({
+        firstUpdateId: index,
+        finalUpdateId: index,
+      }))
+    }
+
+    expect(book.applySnapshot(snapshot)).toBe(false)
+    expect(book.isSynchronised).toBe(false)
+  })
 })

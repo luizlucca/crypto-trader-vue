@@ -41,6 +41,13 @@ export const SNAPSHOT_LIMIT: Record<Market, number> = {
 }
 
 /**
+ * A snapshot request times out after 12 seconds and the Binance stream emits at
+ * most every 100 ms. This ceiling is deliberately above that normal window,
+ * but still prevents a failed bootstrap from retaining depth events forever.
+ */
+const MAX_BUFFERED_UPDATES = 256
+
+/**
  * Maintains a local copy of a Binance order book from a REST snapshot plus the
  * diff depth stream.
  *
@@ -63,6 +70,7 @@ export class BinanceOrderBook {
   private readonly bids = new Map<number, number>()
   private readonly asks = new Map<number, number>()
   private buffered: DepthUpdate[] = []
+  private bufferOverflowed = false
   private lastUpdateId = 0
   private synchronised = false
   /**
@@ -89,6 +97,10 @@ export class BinanceOrderBook {
     if (this.synchronised) {
       return
     }
+    if (this.buffered.length >= MAX_BUFFERED_UPDATES) {
+      this.buffered = []
+      this.bufferOverflowed = true
+    }
     this.buffered.push(update)
   }
 
@@ -98,6 +110,12 @@ export class BinanceOrderBook {
    * should fetch a newer snapshot.
    */
   applySnapshot(snapshot: DepthSnapshot): boolean {
+    if (this.bufferOverflowed) {
+      this.buffered = []
+      this.bufferOverflowed = false
+      this.synchronised = false
+      return false
+    }
     this.bids.clear()
     this.asks.clear()
     this.lastUpdateId = snapshot.lastUpdateId
@@ -153,6 +171,7 @@ export class BinanceOrderBook {
     this.bids.clear()
     this.asks.clear()
     this.buffered = []
+    this.bufferOverflowed = false
     this.lastUpdateId = 0
     this.synchronised = false
     this.chained = false

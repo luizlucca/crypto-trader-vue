@@ -33,6 +33,7 @@ import {
   stopMarketStream,
   updateMarketCandleStream,
 } from '@/services/marketData'
+import { dropIndicatorLayout } from '@/services/indicatorLayout'
 import { resetStreamLatency } from '@/services/streamLatency'
 import {
   useCandleHistoryCache,
@@ -367,6 +368,7 @@ export function useWorkspaceTabs(
     closedTab.generation += 1
     history.detach(closedTab.id)
     resetStreamLatency(closedTab.id)
+    dropIndicatorLayout(closedTab.id)
     void stopMarketStream(closedTab.id)
 
     if (activeTabId.value !== tabId) {

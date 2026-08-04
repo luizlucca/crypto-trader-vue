@@ -5,8 +5,10 @@ export interface GlobalShortcutHandlers {
   newTab: () => void
   /** Enter on the workspace — open the symbol picker for the current tab. */
   openSearch: () => void
+  /** Ctrl/Cmd+I — open the indicator picker for the active chart. */
+  openIndicators: () => void
   /** While true every shortcut is ignored: a modal owns the keyboard. */
-  suspended: Ref<boolean>
+  suspended: Readonly<Ref<boolean>>
 }
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
@@ -17,26 +19,29 @@ function isTextEditingTarget(target: EventTarget | null): boolean {
 
 export function useGlobalShortcuts(handlers: GlobalShortcutHandlers): void {
   function handleKey(event: KeyboardEvent): void {
-    if (handlers.suspended.value) {
+    if (handlers.suspended.value || event.repeat) {
       return
     }
 
-    if (
-      event.key.toLowerCase() === 't'
-      && (event.ctrlKey || event.metaKey)
+    const withModifier = (event.ctrlKey || event.metaKey)
       && !event.altKey
       && !event.shiftKey
-    ) {
+
+    if (withModifier && event.key.toLowerCase() === 't') {
       event.preventDefault()
       handlers.newTab()
       return
     }
 
-    // Bare Enter only. `repeat` excludes a held key, and a text field must
-    // keep Enter for itself.
+    if (withModifier && event.key.toLowerCase() === 'i') {
+      event.preventDefault()
+      handlers.openIndicators()
+      return
+    }
+
+    // Bare Enter only; a text field keeps Enter for itself.
     if (
       event.key !== 'Enter'
-      || event.repeat
       || event.defaultPrevented
       || event.altKey
       || event.ctrlKey

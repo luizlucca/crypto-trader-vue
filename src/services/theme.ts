@@ -38,6 +38,8 @@ const CSS_VARIABLES: readonly [string, keyof ThemePalette][] = [
   ['--panel', 'panel'],
   ['--panel-raised', 'panelRaised'],
   ['--panel-muted', 'panelMuted'],
+  ['--overlay-surface', 'overlaySurface'],
+  ['--overlay-border', 'overlayBorder'],
   ['--header-bg', 'header'],
   ['--workspace-bg', 'workspace'],
   ['--navigation-bg', 'navigation'],

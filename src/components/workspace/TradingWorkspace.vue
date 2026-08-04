@@ -107,9 +107,12 @@ function requestNewTab(): void {
   openSymbolSearch('', 'new-tab')
 }
 
+const marketChart = ref<{ openIndicatorPicker: () => void } | null>(null)
+
 useGlobalShortcuts({
   newTab: requestNewTab,
   openSearch: () => openSymbolSearch(),
+  openIndicators: () => marketChart.value?.openIndicatorPicker(),
   suspended: settingsOpen,
 })
 
@@ -185,6 +188,7 @@ onBeforeUnmount(() => {
         />
         <MarketChart
           :key="chartRenderKey"
+          ref="marketChart"
           :initial-history="initialHistory(activeTab)"
           :selection="selection"
           :session-id="activeTab.id"

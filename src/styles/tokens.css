@@ -94,3 +94,31 @@ html[data-theme="light"] {
   --chart-border: #bfd0d7;
   --chart-text: #526975;
 }
+
+/*
+ * Floating panels rebind the surface family to the elevated one.
+ *
+ * The panels already sat on `--overlay-surface`, but their internal areas —
+ * header band, side navigation, recessed blocks — kept reading the workspace
+ * tokens, the same family as the chart behind them. Half of a dialog was
+ * elevated and half was not, and the three floating panels disagreed with each
+ * other about which half. Rebinding here means every rule written against the
+ * ordinary surfaces lands on the elevated family without being rewritten.
+ *
+ * Each step mixes towards `--overlay-border`, which belongs to the same
+ * elevated family and sits between the surface and the ink. That direction is
+ * correct in both luminosities — lighter on dark themes, denser on light ones —
+ * which is the same rule the F-015 tokens themselves follow.
+ */
+.indicator-picker,
+.indicator-settings,
+.settings-panel,
+.symbol-modal {
+  --panel: var(--overlay-surface);
+  --panel-raised: color-mix(in srgb, var(--overlay-surface) 88%, var(--overlay-border));
+  --panel-muted: color-mix(in srgb, var(--overlay-surface) 94%, var(--overlay-border));
+  --header-bg: color-mix(in srgb, var(--overlay-surface) 91%, var(--overlay-border));
+  --navigation-bg: color-mix(in srgb, var(--overlay-surface) 96%, var(--overlay-border));
+  --border: var(--overlay-border);
+  --border-soft: color-mix(in srgb, var(--overlay-border) 55%, var(--overlay-surface));
+}

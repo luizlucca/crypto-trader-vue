@@ -1,7 +1,7 @@
 # F-013 — Profundidade real do livro de ordens
 
 **Status:** implementada
-**Última revisão:** 2026-07-31
+**Última revisão:** 2026-08-03
 **Relaciona-se a:** [F-003](./F-003-streams-realtime.md),
 [F-011](./F-011-agregacao-livro-ordens.md) e ao item DA-002 do
 [roadmap](../roadmap/README.md)
@@ -31,6 +31,8 @@ seja, poucos baldes. A agregação está correta; falta profundidade na fonte.
 - Trocar a agregação não reinicia a conexão nem produz livro vazio.
 - Uma perda de sequência no stream é detectada e se recupera sozinha, sem
   exibir um livro corrompido.
+- Falhas transitórias no snapshot inicial são repetidas sem anunciar uma falsa
+  conexão e sem acumular eventos indefinidamente.
 - O custo de IPC por frame não cresce com a profundidade mantida.
 
 ## Implementação e decisões de arquitetura
@@ -56,6 +58,14 @@ Em ambos, a quantidade recebida é absoluta e `0` remove o nível. Eventos que
 chegam antes do snapshot são bufferizados. Uma quebra de continuidade descarta o
 livro e refaz o snapshot, em vez de seguir com dados furados — um livro
 silenciosamente errado é pior do que um livro que reconecta.
+
+O bootstrap também separa **socket aberto** de **livro pronto**. O snapshot é
+repetido com backoff exponencial de 1 a 15 segundos, e `connected` só é
+publicado depois que um evento válido foi aplicado ao snapshot. Reconectar o
+socket invalida o estado local e inicia uma geração nova. O buffer é limitado a
+256 atualizações e os eventos recebidos durante o backoff são descartados; isso
+impede crescimento de memória quando o REST está indisponível. A correção está
+registrada no [BUG-003](../bugs/BUG-003-livro-conectado-sem-snapshot.md).
 
 ### A agregação passa para o processo utilitário
 
@@ -94,7 +104,11 @@ recursos, mas eles têm spec própria.
   acumulado.
 - `orderBookSync.test.ts`: aplicação de diffs, remoção por quantidade zero,
   descarte de eventos antigos, aceitação do primeiro evento em cada mercado e
-  detecção de quebra de sequência.
+  detecção de quebra de sequência e limite do buffer de bootstrap.
+- `provider.test.ts`: retry do snapshot, status conectado somente depois de
+  dados válidos, reconexão, cancelamento e concorrência entre gerações.
+- `provider.live.test.ts`: integração opt-in com REST e streams reais de Spot e
+  Futures.
 - Validação manual: percorrer todos os passos do seletor em Spot e Futures e
   confirmar que as linhas permanecem preenchidas.
 
@@ -105,6 +119,8 @@ recursos, mas eles têm spec própria.
       (0,01 / 0,1 / 1 / 10) mantêm 10 linhas por lado.
 - [x] Trocar o passo não reinicia o WebSocket nem esvazia o livro.
 - [x] Uma quebra de sequência refaz o snapshot automaticamente.
+- [x] Falha no snapshot inicial usa retry e não produz conexão verde vazia.
+- [x] O buffer anterior ao snapshot tem crescimento limitado.
 - [x] O payload de IPC por frame não cresce com a profundidade mantida.
 - [x] Spot e Futures usam cada um a sua regra de sincronização.
 

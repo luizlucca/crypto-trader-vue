@@ -4,24 +4,23 @@ import {
   customizeThemePalette,
   defaultThemeCustomization,
   getThemePalette,
+  getThemePreset,
   isCustomThemeDefinition,
   isThemePresetId,
   themePresets,
 } from './themeCatalog'
 
 function luminance(hex: string): number {
-  const value = hex.replace('#', '')
-  const channels = [0, 2, 4].map((offset) => {
-    const channel = Number.parseInt(value.slice(offset, offset + 2), 16) / 255
-    return channel <= 0.04045
-      ? channel / 12.92
-      : ((channel + 0.055) / 1.055) ** 2.4
-  })
-  return (
-    (0.2126 * channels[0]!)
-    + (0.7152 * channels[1]!)
-    + (0.0722 * channels[2]!)
-  )
+  const linear = (channel: number): number => {
+    const scaled = channel / 255
+    return scaled <= 0.04045
+      ? scaled / 12.92
+      : ((scaled + 0.055) / 1.055) ** 2.4
+  }
+  const [red, green, blue] = channels(hex)
+  return (0.2126 * linear(red))
+    + (0.7152 * linear(green))
+    + (0.0722 * linear(blue))
 }
 
 function contrast(first: string, second: string): number {
@@ -31,9 +30,9 @@ function contrast(first: string, second: string): number {
 }
 
 describe('theme catalog', () => {
-  it('offers 30 unique presets with readable light and dark variants', () => {
-    expect(themePresets).toHaveLength(30)
-    expect(new Set(themePresets.map(({ id }) => id)).size).toBe(30)
+  it('offers 38 unique presets with readable light and dark variants', () => {
+    expect(themePresets).toHaveLength(38)
+    expect(new Set(themePresets.map(({ id }) => id)).size).toBe(38)
 
     themePresets.forEach((preset) => {
       expect(isThemePresetId(preset.id)).toBe(true)
@@ -88,5 +87,105 @@ describe('theme catalog', () => {
     const preset = createCustomThemePreset(definition)
     expect(preset.id).toBe(definition.id)
     expect(preset.dark.accent).toBe(definition.dark.accent)
+  })
+})
+
+function channels(hex: string): [number, number, number] {
+  const value = Number.parseInt(hex.replace('#', '').slice(0, 6), 16)
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255]
+}
+
+describe('temas neutros e o padrão TradingView', () => {
+  const NEUTRAL = ['onyx', 'carbon', 'ash'] as const
+  /** Chrome that must carry no hue at all in a neutral theme. */
+  const SURFACES = [
+    'background', 'panel', 'panelRaised', 'panelMuted', 'overlaySurface',
+    'header', 'workspace', 'navigation', 'control', 'input', 'border',
+    'text', 'textStrong', 'muted', 'chartBackground', 'chartGrid',
+  ] as const
+
+  it('mantém os neutros em escala de cinza nas duas luminosidades', () => {
+    NEUTRAL.forEach((id) => {
+      const preset = getThemePreset(id)
+      ;(['dark', 'light'] as const).forEach((mode) => {
+        SURFACES.forEach((token) => {
+          const [red, green, blue] = channels(preset[mode][token])
+          // One step of rounding is tolerated; a hue is not.
+          expect(Math.max(red, green, blue) - Math.min(red, green, blue))
+            .toBeLessThanOrEqual(1)
+        })
+      })
+    })
+  })
+
+  it('separa os três neutros por profundidade, não por matiz', () => {
+    const depths = NEUTRAL.map(
+      (id) => channels(getThemePreset(id).dark.background)[0],
+    )
+    expect(depths[0]).toBeLessThan(depths[1])
+    expect(depths[1]).toBeLessThan(depths[2])
+  })
+
+  it('reproduz as cores oficiais da TradingView', () => {
+    const preset = getThemePreset('tradingview')
+    expect(preset.dark.candleUp).toBe('#26a69a')
+    expect(preset.dark.candleDown).toBe('#ef5350')
+    expect(preset.dark.accent).toBe('#2962ff')
+    // O fundo escuro fica na vizinhança de #131722, o gráfico da plataforma.
+    const [red, green, blue] = channels(preset.dark.chartBackground)
+    expect(blue).toBeGreaterThan(red)
+    expect(red + green + blue).toBeLessThan(120)
+  })
+})
+
+describe('superfície de modais (F-015)', () => {
+  it('define os tokens em todos os presets, nas duas luminosidades', () => {
+    for (const preset of themePresets) {
+      for (const mode of ['dark', 'light'] as const) {
+        expect(preset[mode].overlaySurface, `${preset.id}/${mode}`)
+          .toMatch(/^#[0-9a-f]{6}$/i)
+        expect(preset[mode].overlayBorder, `${preset.id}/${mode}`)
+          .toMatch(/^#[0-9a-f]{6}$/i)
+      }
+    }
+  })
+
+  it('separa a superfície do modal do painel do workspace', () => {
+    // Without a dimmed backdrop this separation is the only thing telling the
+    // user where the dialog ends, so it has to hold in every preset.
+    for (const preset of themePresets) {
+      for (const mode of ['dark', 'light'] as const) {
+        expect(
+          contrast(preset[mode].overlaySurface, preset[mode].panel),
+          `${preset.id}/${mode}`,
+        ).toBeGreaterThan(1.12)
+      }
+    }
+  })
+
+  it('eleva no escuro e adensa no claro', () => {
+    for (const preset of themePresets) {
+      expect(
+        luminance(preset.dark.overlaySurface),
+        `${preset.id}/dark`,
+      ).toBeGreaterThan(luminance(preset.dark.panel))
+      expect(
+        luminance(preset.light.overlaySurface),
+        `${preset.id}/light`,
+      ).toBeLessThan(luminance(preset.light.panel))
+    }
+  })
+
+  it('dá ao contorno do modal mais presença que a borda comum', () => {
+    for (const preset of themePresets) {
+      for (const mode of ['dark', 'light'] as const) {
+        expect(
+          contrast(preset[mode].overlayBorder, preset[mode].overlaySurface),
+          `${preset.id}/${mode}`,
+        ).toBeGreaterThan(
+          contrast(preset[mode].border, preset[mode].panel),
+        )
+      }
+    }
   })
 })

@@ -10,6 +10,7 @@ atualizada se o comportamento esperado mudou.
 | --- | --- | --- |
 | [BUG-001](./BUG-001-indicador-do-livro-na-aba.md) | Indicador do livro permanece vermelho | Corrigido |
 | [BUG-002](./BUG-002-proporcao-do-livro-estatica.md) | Proporção do livro era estática | Corrigido |
+| [BUG-003](./BUG-003-livro-conectado-sem-snapshot.md) | Livro conectado sem snapshot inicial | Corrigido |
 
 ## Modelo
 

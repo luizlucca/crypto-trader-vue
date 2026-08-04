@@ -617,7 +617,7 @@ onBeforeUnmount(() => {
               <div>
                 <strong>Paletas disponíveis</strong>
                 <small>
-                  30 predefinidas
+                  {{ themePresets.length }} predefinidas
                   <template v-if="customThemePresets.length">
                     · {{ customThemePresets.length }} personalizadas
                   </template>
