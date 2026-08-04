@@ -332,6 +332,13 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
 
   /** The topmost drawing under a pane coordinate, newest first. */
   function drawingAt(x: number, y: number): MountedDrawing | null {
+    // A hidden drawing is off the chart, and hit testing does not know that:
+    // the primitives answer `toolHitTest` whether or not they are attached. A
+    // click on apparently empty chart would pick a shape nobody can see, open
+    // the style bar on it and let it be dragged blind.
+    if (!visible.value) {
+      return null
+    }
     for (let index = mounted.length - 1; index >= 0; index -= 1) {
       const entry = mounted[index]
       if (editable(entry.primitive).toolHitTest?.(x, y)?.hit) {
@@ -924,16 +931,19 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       selected.value = null
       clearPreview()
       revision.value += 1
-      options.onChange?.([])
+      persist()
     },
 
     toggleVisibility(): void {
       visible.value = !visible.value
       if (visible.value) {
         mounted.forEach((entry) => attach(entry.primitive))
-      } else {
-        mounted.forEach((entry) => detach(entry.primitive))
+        return
       }
+      // Nothing can stay under edit once it leaves the chart, or the style bar
+      // would go on offering colours for a shape that is no longer drawn.
+      markSelected(null)
+      mounted.forEach((entry) => detach(entry.primitive))
     },
 
     count(): number {

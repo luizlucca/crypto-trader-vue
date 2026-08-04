@@ -128,6 +128,12 @@ describe('leitura de um desenho salvo', () => {
       .toBeNull()
   })
 
+  it('não confunde um nome herdado do protótipo com uma ferramenta', () => {
+    // `DRAWING_ANCHORS['constructor']` não é undefined: vem do protótipo.
+    expect(parseDrawing({ ...valid, tool: 'constructor' })).toBeNull()
+    expect(parseDrawing({ ...valid, tool: 'toString' })).toBeNull()
+  })
+
   it('repõe cor e espessura ausentes em vez de descartar o desenho', () => {
     const parsed = parseDrawing({ tool: 'horizontal-line', anchors: [{ time: 1, price: 5 }] })
     expect(parsed?.color).toBe('#2962FF')

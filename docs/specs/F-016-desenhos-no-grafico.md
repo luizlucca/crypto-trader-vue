@@ -26,7 +26,9 @@ qualquer período e depois de fechar o app.
 - O desenho selecionado pode ser arrastado inteiro, ter uma alça arrastada
   sozinha, ser restilizado (oito cores, quatro espessuras) e apagado — por
   botão ou pela tecla `Delete`.
-- Os desenhos podem ser ocultados em conjunto e apagados em conjunto.
+- Os desenhos podem ser ocultados em conjunto e apagados em conjunto. Enquanto
+  ocultos, não podem ser selecionados nem arrastados, e ocultar larga o que
+  estivesse sob edição.
 - **Um desenho pertence ao ativo, não ao período.** Traçado no 1h, aparece no
   4h no mesmo lugar.
 - Sobrevive ao fechamento do app.
@@ -156,6 +158,12 @@ qual desenho está sob edição — e ligá-lo ao ponteiro e ao teclado.
 O acerto é procurado do mais recente para o mais antigo, que é a ordem em que
 estão empilhados na tela: quem foi desenhado por último é quem se pega.
 
+Com os desenhos ocultos não se procura acerto algum. As primitivas respondem
+`toolHitTest` estejam anexadas ou não — ocultar as tira do gráfico, não da
+lista — então clicar no que parecia vazio selecionava uma forma invisível,
+abria a barra de estilo sobre ela e permitia arrastá-la às cegas. Pelo mesmo
+motivo ocultar larga a seleção.
+
 Arrastar desloca as âncoras em **posição lógica e preço**, as unidades do
 gráfico, e só então converte de volta para instantes. Assim um desenho
 arrastado sobre um buraco no histórico acompanha o que o operador vê, e não uma
@@ -276,6 +284,8 @@ ao reiniciar seria perder a análise.
       4h, 2 de volta no 1h.
 - [x] Os desenhos sobrevivem ao fechamento do app.
 - [x] Selecionar um desenho clicando sobre ele, e largar clicando no vazio.
+- [ ] Com os desenhos ocultos, clicar onde havia um não seleciona nada, e
+      ocultar com um selecionado fecha a barra de estilo.
 - [x] Arrastar o desenho selecionado: deslocamento rígido, medido âncora a
       âncora, e o gráfico não rola junto.
 - [x] Arrastar uma alça sozinha: medido na tendência, no triângulo, no círculo

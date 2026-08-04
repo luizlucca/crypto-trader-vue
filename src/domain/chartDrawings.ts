@@ -148,10 +148,16 @@ export function parseDrawing(value: unknown): ChartDrawing | null {
     return null
   }
   const tool = drawing.tool as DrawingToolId
-  const expected = DRAWING_ANCHORS[tool]
-  if (expected === undefined || !Array.isArray(drawing.anchors)) {
+  // Own property, not a lookup: a stored `tool` of `"constructor"` or
+  // `"toString"` resolves through the prototype and is not `undefined`, so the
+  // table alone cannot say whether the name is a tool this build knows.
+  if (
+    !Object.hasOwn(DRAWING_ANCHORS, tool)
+    || !Array.isArray(drawing.anchors)
+  ) {
     return null
   }
+  const expected = DRAWING_ANCHORS[tool]
   const anchors = drawing.anchors.filter(isAnchor)
   if (anchors.length !== expected) {
     return null

@@ -91,6 +91,17 @@ let historyGeneration = 0
 let pendingCandle: Candle | undefined
 let displayedCandles: Candle[] = []
 let historyExhausted = false
+/*
+ * Set when a page failed, and read only by the prefetch.
+ *
+ * Without it a provider that is down is asked again on every pan: the range
+ * handler fires per gesture, each attempt holds the interaction lock until the
+ * IPC request times out, and the chart flashes the loading overlay for as long
+ * as the operator keeps scrolling. Distinct from `historyExhausted`, which
+ * means the asset has no more history — this one means the last try failed and
+ * the manual button below the chart is what decides to try again.
+ */
+let historyRetryBlocked = false
 let visibleLogicalRangeHandler: LogicalRangeChangeEventHandler | undefined
 let crosshairHandler: MouseEventHandler<Time> | undefined
 /*
@@ -498,6 +509,7 @@ async function loadHistory(): Promise<void> {
   historyErrorMessage.value = ''
   indicatorErrorMessage.value = ''
   historyExhausted = false
+  historyRetryBlocked = false
   lastTimestamp = 0
   pendingCandle = undefined
   displayedCandles = []
@@ -511,10 +523,7 @@ async function loadHistory(): Promise<void> {
     const history = cachedHistory?.length
       ? cachedHistory
       : await loadCandles(props.selection, INITIAL_HISTORY_SIZE)
-    if (
-      generation !== historyGeneration
-      || fingerprint !== selectionFingerprint()
-    ) {
+    if (!ownsChart(generation, fingerprint)) {
       return
     }
     const candles = uniqueSortedCandles(history)
@@ -544,7 +553,11 @@ async function loadHistory(): Promise<void> {
     indicators.invalidate()
     drawings.restore(readDrawings(props.selection))
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : String(error)
+    if (ownsChart(generation, fingerprint)) {
+      errorMessage.value = error instanceof Error
+        ? error.message
+        : String(error)
+    }
   } finally {
     if (generation === historyGeneration) {
       loading.value = false
@@ -574,6 +587,9 @@ async function loadOlderHistory(): Promise<void> {
   const visibleRange = chartApi.timeScale().getVisibleLogicalRange()
   historyLoading.value = true
   historyErrorMessage.value = ''
+  // Cleared here rather than on success: this function is also the retry
+  // button, and reaching it at all is the decision to try again.
+  historyRetryBlocked = false
   setChartInteractionsLocked(true)
 
   try {
@@ -582,10 +598,7 @@ async function loadOlderHistory(): Promise<void> {
       HISTORY_PAGE_SIZE,
       oldest.time,
     )
-    if (
-      generation !== historyGeneration
-      || fingerprint !== selectionFingerprint()
-    ) {
+    if (!ownsChart(generation, fingerprint)) {
       return
     }
 
@@ -617,9 +630,12 @@ async function loadOlderHistory(): Promise<void> {
     // time and have to be placed again against the new indexing.
     drawings.rebuild()
   } catch (error) {
-    historyErrorMessage.value = error instanceof Error
-      ? error.message
-      : String(error)
+    if (ownsChart(generation, fingerprint)) {
+      historyRetryBlocked = true
+      historyErrorMessage.value = error instanceof Error
+        ? error.message
+        : String(error)
+    }
   } finally {
     if (generation === historyGeneration) {
       historyLoading.value = false
@@ -636,6 +652,7 @@ function handleVisibleLogicalRangeChange(
     || loading.value
     || historyLoading.value
     || historyExhausted
+    || historyRetryBlocked
   ) {
     return
   }
@@ -647,6 +664,22 @@ function handleVisibleLogicalRangeChange(
 
 function selectionFingerprint(): string {
   return marketSelectionFingerprint(props.selection)
+}
+
+/**
+ * Whether a request issued earlier still owns the chart it was issued for.
+ *
+ * Asked by the failure paths as well as the successful ones. A rejection that
+ * lands after the chart moved on would otherwise paint an error over history
+ * that loaded fine, and offer a retry button aimed at the wrong asset.
+ *
+ * The `finally` blocks deliberately test only the generation: `loading` and
+ * the interaction lock have to be released even when the fingerprint moved on,
+ * because nothing else is going to release them.
+ */
+function ownsChart(generation: number, fingerprint: string): boolean {
+  return generation === historyGeneration
+    && fingerprint === selectionFingerprint()
 }
 
 /**
