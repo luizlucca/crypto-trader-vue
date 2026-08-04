@@ -7,6 +7,18 @@ import type {
 const maximumBackoffMs = 15_000
 
 /**
+ * Consecutive failures before the state stops calling itself "reconnecting".
+ *
+ * Retrying itself stays unbounded — a stream that can come back has to come
+ * back on its own, and a network outage is not a reason to give up on the
+ * market. What changes is the claim. A permanently invalid stream, a delisted
+ * symbol above all, fails identically forever, and reporting that as
+ * "reconnecting" makes the interface unable to tell a blip from a dead stream.
+ * With the backoff below, this lands after roughly a minute of silence.
+ */
+const failuresBeforeError = 6
+
+/**
  * Binance sends a ping frame every three minutes on the market streams, so a
  * live connection is never quiet for longer than that no matter how illiquid
  * the pair is. Two missed windows mean the socket died without TCP ever saying
@@ -111,7 +123,10 @@ export function websocketJSON$<T>(
       resetOnSuccess: true,
       delay: (error, retryCount) => {
         const message = error instanceof Error ? error.message : String(error)
-        onState({ state: 'reconnecting', message })
+        onState({
+          state: retryCount >= failuresBeforeError ? 'error' : 'reconnecting',
+          message,
+        })
         const delay = Math.min(
           1_000 * (2 ** Math.min(retryCount - 1, 4)),
           maximumBackoffMs,

@@ -93,4 +93,35 @@ describe('websocketJSON$', () => {
 
     subscription.unsubscribe()
   })
+
+  it('para de chamar de "reconectando" um stream que nunca volta', () => {
+    // Símbolo deslistado: cada tentativa falha igual. Retentar segue infinito,
+    // mas a interface precisa distinguir oscilação de rede de stream morto.
+    const states: ConnectionState[] = []
+    const subscription = websocketJSON$<unknown>(
+      'wss://example.test/ws',
+      (state) => states.push(state),
+    ).subscribe({ next: () => {}, error: () => {} })
+
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      const socket = FakeSocket.instances.at(-1)
+      if (!socket) {
+        break
+      }
+      socket.emit('close', 1006, Buffer.from('sem resposta'))
+      // Backoff dobrando até o teto de 15s.
+      vi.advanceTimersByTime(20_000)
+    }
+
+    const falhas = states
+      .filter((s) => s.state === 'reconnecting' || s.state === 'error')
+      .map((s) => s.state)
+    // Cinco tentativas ainda são "oscilação"; a partir da sexta, é falha.
+    expect(falhas.slice(0, 5)).toEqual(Array(5).fill('reconnecting'))
+    expect(falhas.at(-1)).toBe('error')
+    // Nunca desiste: um socket novo continua sendo aberto.
+    expect(FakeSocket.instances.length).toBeGreaterThan(6)
+
+    subscription.unsubscribe()
+  })
 })

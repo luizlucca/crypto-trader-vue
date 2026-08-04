@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  describeStreamFrame,
+  isKlineEvent,
   mergeCatalog,
   normalizeCandleRow,
   normalizeDepthEvent,
@@ -116,5 +118,37 @@ describe('Binance normalizers', () => {
     expect(snapshot.asks.map((level) => level.total)).toEqual([1, 5])
     expect(snapshot.midPrice).toBe(100.5)
     expect(snapshot.spread).toBe(1)
+  })
+})
+
+describe('quadros que não são candles', () => {
+  const kline = {
+    s: 'BTCUSDT',
+    k: {
+      i: '1h', t: 1_700_000_000_000, T: 1_700_003_599_999,
+      o: '1', h: '2', l: '0.5', c: '1.5', v: '10', q: '15', x: true,
+    },
+  }
+
+  it('reconhece um kline de verdade', () => {
+    expect(isKlineEvent(kline)).toBe(true)
+  })
+
+  it('recusa o que o mesmo socket também entrega', () => {
+    // O socket carrega resposta de assinatura e erro da corretora. Tratar
+    // isso como candle malformado errava o observable e derrubava o stream
+    // para sempre, porque a reconexão recebia o mesmo quadro.
+    expect(isKlineEvent({ result: null, id: 1 })).toBe(false)
+    expect(isKlineEvent({ error: { code: -1121, msg: 'Invalid symbol' } }))
+      .toBe(false)
+    expect(isKlineEvent(null)).toBe(false)
+    expect(isKlineEvent({ s: 'BTCUSDT' })).toBe(false)
+  })
+
+  it('descreve o motivo para a linha de status', () => {
+    expect(describeStreamFrame({ error: { code: -1121, msg: 'Invalid symbol' } }))
+      .toBe('A Binance recusou a assinatura (-1121): Invalid symbol')
+    expect(describeStreamFrame({ result: null }))
+      .toBe('Quadro ignorado no stream de candles: não é um kline')
   })
 })

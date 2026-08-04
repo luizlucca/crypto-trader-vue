@@ -10,6 +10,11 @@ commitada em separado.
 | 3 | `MarketChart.vue`, desenho, cache de histórico | `69f0876` |
 | 4 | Interface, temas, workspace | `24ef678` |
 
+**Andamento:** o trabalho é acompanhado pela
+[F-017](../specs/F-017-endurecimento-pos-revisao.md), que tem os critérios de
+aceite e o que cada correção descobriu. Itens já fechados: RV-001, RV-002,
+RV-003.
+
 **Este documento é o que sobrou.** O que era correção segura e defensável já
 foi aplicado nos commits acima. Aqui estão os achados que exigem decisão sua:
 porque mudam comportamento de produto, porque tocam caminho quente e precisam
@@ -42,7 +47,7 @@ em uso e o único da lista que faz o app mentir sobre a saúde dos dados.
 
 ## Onda 1 — engana o operador ou interrompe os dados
 
-### RV-001 · Livro dessincronizado reporta a sessão inteira como "Reconectando"
+### ✅ RV-001 · Livro dessincronizado reporta a sessão inteira como "Reconectando"
 
 **O que acontece.** O estado agregado da sessão só vira `connected` quando o
 snapshot REST do livro chega. Se `/depth` falhar em laço — 429 é o caso
@@ -63,7 +68,7 @@ agregado otimista com o livro sinalizando à parte.
 
 **Custo:** baixo depois da decisão.
 
-### RV-002 · Um quadro que não é kline mata o stream de candles
+### ✅ RV-002 · Um quadro que não é kline mata o stream de candles
 
 **O que acontece.** `normalizeKlineEvent` lança em qualquer quadro sem `s` ou
 `k.i` — inclusive nos quadros `{"error":{…}}` que a Binance envia. A exceção
@@ -81,7 +86,7 @@ teste precisa mudar junto, de propósito.
 
 **Custo:** médio.
 
-### RV-003 · Retentativa infinita sem estado terminal
+### ✅ RV-003 · Retentativa infinita sem estado terminal
 
 **O que acontece.** `count: Number.POSITIVE_INFINITY` na política de
 retentativa. Um stream permanentemente inválido — símbolo deslistado, par que

@@ -26,7 +26,11 @@ import {
   toggleOrderBookPanel,
 } from '@/services/workspacePanels'
 import { useWorkspaceTabs } from '@/composables/useWorkspaceTabs'
-import { MAX_WORKSPACE_TABS, type WorkspaceTab } from '@/domain/workspace'
+import {
+  MAX_WORKSPACE_TABS,
+  sessionStatusLabel,
+  type WorkspaceTab,
+} from '@/domain/workspace'
 
 const SIDEBAR_DEFAULT_WIDTH = 250
 const SIDEBAR_MIN_WIDTH = 190
@@ -68,18 +72,7 @@ const activeTabPosition = computed(
   () => tabs.findIndex((tab) => tab.id === activeTab.value.id) + 1,
 )
 
-const statusLabel = computed(() => {
-  switch (activeTab.value.status) {
-    case 'connected':
-      return 'Candles e livro conectados'
-    case 'reconnecting':
-      return 'Reconectando aos streams'
-    case 'error':
-      return 'Falha na sessão de mercado'
-    default:
-      return 'Conectando aos streams'
-  }
-})
+const statusLabel = computed(() => sessionStatusLabel(activeTab.value))
 
 /**
  * The picker lives in its own BrowserWindow, so opening it is a window

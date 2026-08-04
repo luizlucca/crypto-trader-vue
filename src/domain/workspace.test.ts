@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { MarketSelection } from '@shared/types/market'
+import type { MarketSelection, StreamState } from '@shared/types/market'
 import {
   marketSelectionFingerprint,
   selectionForNewTab,
 } from './marketSelection'
 import {
   applyWorkspaceStreamStatus,
+  sessionStatusLabel,
   createWorkspaceTab,
   workspaceTabLabel,
 } from './workspace'
@@ -77,5 +78,33 @@ describe('workspace tabs', () => {
     })
     expect(nextSelection.interval).toBe('1h')
     expect(selection.symbol).toBe('BTCUSDT')
+  })
+})
+
+describe('o que a barra de status diz da sessão', () => {
+  const tab = (candleState: StreamState, orderBookState: StreamState) => ({
+    candleState,
+    orderBookState,
+  })
+
+  it('fala de um estado só quando os dois streams concordam', () => {
+    expect(sessionStatusLabel(tab('connected', 'connected')))
+      .toBe('Candles e livro conectados')
+    expect(sessionStatusLabel(tab('connecting', 'connecting')))
+      .toBe('Conectando aos streams')
+    expect(sessionStatusLabel(tab('error', 'error')))
+      .toBe('Falha na sessão de mercado')
+  })
+
+  it('nomeia os dois quando discordam — o caso que enganava', () => {
+    // O livro perde o snapshot REST e tenta de novo; os candles seguem
+    // chegando. Dizer "Reconectando aos streams" aqui faz o operador
+    // desconfiar de um preço que está correto.
+    expect(sessionStatusLabel(tab('connected', 'reconnecting')))
+      .toBe('Candles conectados · livro reconectando')
+    expect(sessionStatusLabel(tab('reconnecting', 'connected')))
+      .toBe('Candles reconectando · livro conectado')
+    expect(sessionStatusLabel(tab('connected', 'error')))
+      .toBe('Candles conectados · livro com falha')
   })
 })
