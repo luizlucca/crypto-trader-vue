@@ -6,6 +6,21 @@ import type {
 
 const maximumBackoffMs = 15_000
 
+/**
+ * Binance sends a ping frame every three minutes on the market streams, so a
+ * live connection is never quiet for longer than that no matter how illiquid
+ * the pair is. Two missed windows mean the socket died without TCP ever saying
+ * so: no close, no error, and a book frozen on the last frame it received.
+ */
+const idleTimeoutMs = 6 * 60_000
+
+/**
+ * Checked on a fixed interval rather than by rearming a timer per frame: the
+ * depth stream delivers ten messages a second per session, and the liveness
+ * check must not allocate on that path.
+ */
+const idleCheckIntervalMs = 30_000
+
 function messageText(data: RawData): string {
   if (typeof data === 'string') {
     return data
@@ -33,18 +48,36 @@ export function websocketJSON$<T>(
       perMessageDeflate: false,
     })
     let disposed = false
+    let lastActivityAt = Date.now()
+
+    function noteActivity(): void {
+      lastActivityAt = Date.now()
+    }
+
+    const idleCheck = setInterval(() => {
+      if (!disposed && Date.now() - lastActivityAt >= idleTimeoutMs) {
+        subscriber.error(new Error(
+          'WebSocket Binance parou de entregar dados',
+        ))
+      }
+    }, idleCheckIntervalMs)
 
     socket.once('open', () => {
       connectedOnce = true
+      noteActivity()
       onState({ state: 'connected' })
     })
     socket.on('message', (data) => {
+      noteActivity()
       try {
         subscriber.next(JSON.parse(messageText(data)) as T)
       } catch (error) {
         subscriber.error(error)
       }
     })
+    // Control frames prove the peer is alive even when the pair is not trading.
+    socket.on('ping', noteActivity)
+    socket.on('pong', noteActivity)
     socket.once('error', (error) => {
       if (!disposed) {
         subscriber.error(error)
@@ -60,6 +93,7 @@ export function websocketJSON$<T>(
 
     return () => {
       disposed = true
+      clearInterval(idleCheck)
       socket.removeAllListeners()
       // Switching symbols can dispose a socket during its handshake. `ws`
       // reports that abort through `error`; retain a sink so it never becomes

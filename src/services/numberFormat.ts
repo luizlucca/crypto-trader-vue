@@ -45,5 +45,10 @@ export function formatMarketPercent(value: number): string {
 }
 
 export function formatClockTime(timestamp: number): string {
+  // `Intl` throws on an invalid date, and these timestamps come from a catalog
+  // payload the exchange filled in.
+  if (!Number.isFinite(timestamp)) {
+    return '—'
+  }
   return clockFormatter.format(new Date(timestamp))
 }

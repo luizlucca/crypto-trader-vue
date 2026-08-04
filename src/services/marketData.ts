@@ -120,8 +120,19 @@ export function setMarketOrderBookAggregation(
     ?? Promise.resolve()
 }
 
+/**
+ * Teardown always settles. Callers await this before starting the replacement
+ * stream, so a rejection here — an IPC timeout, a utility process restarting —
+ * used to abandon the switch with the tab already marked `connecting`, and
+ * nothing ever moved it out of that state again.
+ *
+ * Absorbing the failure is safe because stopping is idempotent from both ends:
+ * starting a session stops whatever ran under the same id first, and the main
+ * process drops the subscription as soon as the command is issued.
+ */
 export function stopMarketStream(sessionId: string): Promise<void> {
-  return window.cryptoPro?.marketData.stopStream(sessionId) ?? Promise.resolve()
+  const stopped = window.cryptoPro?.marketData.stopStream(sessionId)
+  return stopped?.catch(() => undefined) ?? Promise.resolve()
 }
 
 export function updateMarketCandleStream(

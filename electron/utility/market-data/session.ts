@@ -49,17 +49,7 @@ export class MarketSession {
     this.lastMessage = ''
     this.emitStatus()
 
-    this.candleSubscription = provider
-      .streamCandles(selection, (state) => {
-        this.updateState('candles', state)
-      })
-      .subscribe({
-        next: (candle) => {
-          this.confirmStreamData('candles')
-          this.emit({ kind: 'candle', payload: candle })
-        },
-        error: (error) => this.handleFatal('candles', error),
-      })
+    this.subscribeCandles(provider, selection)
 
     // A renderer cannot display more than one state per animation frame.
     // Coalescing here prevents IPC queues from growing if a future provider
@@ -112,14 +102,7 @@ export class MarketSession {
     this.lastMessage = ''
     this.emitStatus()
 
-    this.candleSubscription = provider
-      .streamCandles(selection, (state) => {
-        this.updateState('candles', state)
-      })
-      .subscribe({
-        next: (candle) => this.emit({ kind: 'candle', payload: candle }),
-        error: (error) => this.handleFatal('candles', error),
-      })
+    this.subscribeCandles(provider, selection)
   }
 
   /**
@@ -150,6 +133,29 @@ export class MarketSession {
     this.orderBookSubscription = undefined
     this.selection = undefined
     this.latestOrderBook = undefined
+  }
+
+  /**
+   * Both entry points subscribe the same way. They were written twice and
+   * drifted: the interval switch never confirmed the stream from arriving data,
+   * so a socket that reports itself open while sending nothing stayed
+   * indistinguishable from a healthy one.
+   */
+  private subscribeCandles(
+    provider: MarketDataProvider,
+    selection: MarketSelection,
+  ): void {
+    this.candleSubscription = provider
+      .streamCandles(selection, (state) => {
+        this.updateState('candles', state)
+      })
+      .subscribe({
+        next: (candle) => {
+          this.confirmStreamData('candles')
+          this.emit({ kind: 'candle', payload: candle })
+        },
+        error: (error) => this.handleFatal('candles', error),
+      })
   }
 
   private updateState(

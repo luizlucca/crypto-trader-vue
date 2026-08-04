@@ -25,6 +25,9 @@ atualizar a lista quando necessário e acessar favoritos sem congestionar o grá
 - Formatações são memorizadas e o catálogo vem de processo auxiliar separado de
   realtime.
 - `favorites.ts` persiste chaves no `localStorage`; IPC sincroniza alterações.
+  A chave é sempre minúscula — sementes e valores lidos do armazenamento são
+  normalizados na leitura, senão um favorito gravado por outra versão nunca
+  volta a casar com o par que nomeia.
 - A barra lateral limita a lista compacta a 14 linhas; a busca explora todos os pares.
 
 Fontes de verdade: `src/components/market/`,

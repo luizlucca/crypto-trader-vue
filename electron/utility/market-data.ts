@@ -67,6 +67,15 @@ async function execute(request: MarketDataRequest): Promise<unknown> {
     case 'set-order-book-aggregation':
       sessions.setOrderBookAggregation(request.sessionId, request.step)
       return undefined
+    default: {
+      // Keeps a new command kind from silently resolving with `undefined`.
+      const unsupported: never = request
+      throw new Error(
+        `Comando de market data não implementado: ${
+          JSON.stringify(unsupported)
+        }`,
+      )
+    }
   }
 }
 
@@ -75,11 +84,19 @@ async function handleMessage(message: unknown): Promise<void> {
     return
   }
   const command = message as Partial<UtilityRequest>
-  if (
-    command.type !== 'request'
-    || typeof command.requestId !== 'string'
-    || !isMarketDataRequest(command.request)
-  ) {
+  if (command.type !== 'request' || typeof command.requestId !== 'string') {
+    return
+  }
+  // Answering instead of dropping matters: the coordinator has no other way to
+  // learn the command was refused, and would wait out its full timeout window
+  // before failing the session.
+  if (!isMarketDataRequest(command.request)) {
+    send({
+      type: 'response',
+      requestId: command.requestId,
+      ok: false,
+      error: 'Comando de market data inválido',
+    })
     return
   }
 

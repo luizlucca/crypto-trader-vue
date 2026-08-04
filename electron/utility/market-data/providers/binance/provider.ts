@@ -74,7 +74,12 @@ async function fetchJSON<T>(url: string): Promise<T> {
   if (!response.ok) {
     throw new Error(`Binance retornou HTTP ${response.status} para ${url}`)
   }
-  return response.json() as Promise<T>
+  // Under load and behind rate limiting the edge answers 200 with an HTML
+  // page. Naming the endpoint turns an opaque parser message into something
+  // that says which request failed.
+  return await response.json().catch(() => {
+    throw new Error(`Resposta da Binance não é JSON: ${url}`)
+  }) as T
 }
 
 export class BinanceProvider implements MarketDataProvider {

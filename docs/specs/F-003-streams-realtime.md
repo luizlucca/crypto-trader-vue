@@ -15,6 +15,12 @@ sem que bursts do livro atrasem o canvas, troca de aba ou interface.
 - Livros de abas ocultas não atravessam o IPC até voltarem ao primeiro plano.
 - Status de conexão e latência são expostos por aba.
 - A proporção de compra/venda acompanha a liquidez dos níveis visíveis.
+- Nenhuma falha de comunicação deixa a aba parada: encerrar um stream sempre
+  conclui, mesmo quando o processo utilitário não responde.
+- Um processo utilitário que para de responder é reiniciado e suas assinaturas
+  restauradas, incluindo a agregação escolhida para o livro.
+- Um socket que continua aberto sem entregar dados é derrubado e reconectado.
+- Recarregar ou fechar a janela principal libera os WebSockets daquelas sessões.
 
 ## Implementação e decisões de arquitetura
 
@@ -31,8 +37,24 @@ sem que bursts do livro atrasem o canvas, troca de aba ou interface.
   permanecem disponíveis separadamente.
 - A proporção soma quantidades dos 10 níveis visíveis e atualiza textos/barra no
   mesmo frame imperativo das linhas.
+- `MarketDataCoordinator` registra a intenção do renderer **antes** do round
+  trip. O mapa de assinaturas descreve o estado desejado, e não o confirmado:
+  um `stop-stream` que estoura o tempo não pode ser revivido pelo próximo
+  reinício, e um `start-stream` que estoura ainda precisa ser restaurado.
+- Um timeout só reinicia o processo quando **nada** voltou dele enquanto o
+  pedido estava aberto. Endpoint lento e processo travado produzem o mesmo
+  timeout, e apenas o segundo justifica derrubar as demais sessões.
+- Reinícios usam backoff exponencial até 15 s, zerado no `ready`.
+- `stopMarketStream` sempre resolve. Ele é aguardado antes de iniciar o stream
+  substituto: uma rejeição abandonava a troca com a aba já em `connecting` e
+  nada mais a tirava desse estado.
+- Cada socket tem vigia de ociosidade de 6 minutos. A Binance envia ping a cada
+  3 minutos, então silêncio além de duas janelas significa conexão morta sem
+  `close` nem `error` — caso em que o TCP nunca avisa e o livro congela.
 
 Fontes de verdade: `electron/utility/market-data/session.ts`,
+`electron/main/marketDataCoordinator.ts`,
+`electron/utility/market-data/providers/binance/websocket.ts`,
 `src/components/orderbook/OrderBook.vue`,
 `src/components/chart/MarketChart.vue` e
 `src/services/realtimePrice.ts`.
@@ -41,6 +63,9 @@ Fontes de verdade: `electron/utility/market-data/session.ts`,
 
 - `session.test.ts` verifica candle imediato, coalescência do livro e sessões.
 - `marketData.test.ts` verifica roteamento único de eventos por sessão.
+- `marketDataCoordinator.test.ts` cobre restauração após queda, reinício de
+  processo mudo e tolerância a um pedido lento com tráfego ativo.
+- `websocket.test.ts` cobre o vigia de ociosidade e o ping do servidor.
 - Estabilidade em bursts deve ser validada manualmente no DevTools Performance.
 
 ## Critérios de aceite
@@ -50,6 +75,9 @@ Fontes de verdade: `electron/utility/market-data/session.ts`,
 - [ ] Aba inativa deixa de entregar bursts de livro ao renderer.
 - [ ] Latência é limitada, não atualizada por snapshot.
 - [ ] Falha do processo sinaliza a aba e restaura assinaturas após reinício.
+- [ ] Timeout de IPC não deixa a aba presa em "Conectando aos streams".
+- [ ] Aba fechada durante uma falha não reaparece no reinício do processo.
+- [ ] Recarregar a janela não acumula WebSockets órfãos no processo utilitário.
 - [ ] A barra de compra/venda acompanha os snapshots sem render Vue adicional.
 
 ## Evolução

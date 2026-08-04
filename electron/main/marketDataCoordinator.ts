@@ -8,6 +8,7 @@ import type {
   UtilityMessage,
   UtilityRequest,
 } from '@shared/contracts/desktop'
+import type { MarketSelection } from '@shared/types/market'
 
 interface PendingRequest {
   resolve: (value: unknown) => void
@@ -21,6 +22,8 @@ interface ReadyWaiter {
 }
 
 const requestTimeoutMs = 20_000
+const restartBaseDelayMs = 1_000
+const restartMaximumDelayMs = 15_000
 
 export class MarketDataCoordinator {
   private child: UtilityProcess | undefined
@@ -30,6 +33,8 @@ export class MarketDataCoordinator {
 
   private shuttingDown = false
   private restartTimer: NodeJS.Timeout | undefined
+  private restartAttempt = 0
+  private lastMessageAt = 0
   private activeSubscriptions = new Map<string, StartStreamRequest>()
 
   constructor(
@@ -52,12 +57,21 @@ export class MarketDataCoordinator {
       },
     )
     this.child = child
-    child.on('message', (message) => this.handleMessage(message))
-    child.on('exit', (code) => this.handleExit(code))
+    // Every listener is bound to the child that installed it. A recycled
+    // process can still deliver queued messages, and routing those into the
+    // live state would broadcast events and schedule restarts twice.
+    child.on('message', (message) => {
+      if (this.child === child) {
+        this.handleMessage(message)
+      }
+    })
+    child.on('exit', (code) => this.handleExit(child, code))
     child.on('error', (_type, location) => {
-      this.failPending(new Error(
-        `Falha fatal no processo de market data: ${location}`,
-      ))
+      if (this.child === child) {
+        this.failPending(new Error(
+          `Falha fatal no processo de market data: ${location}`,
+        ))
+      }
     })
   }
 
@@ -68,6 +82,12 @@ export class MarketDataCoordinator {
       throw new Error('Processo de market data indisponível')
     }
 
+    // Recorded before the round trip, not after it. The map holds what the
+    // renderer asked for, and that is known now: a `stop-stream` that times out
+    // must not leave a subscription behind for the next restart to revive, and
+    // a `start-stream` that times out must still be restored.
+    this.trackIntent(request)
+
     const requestId = randomUUID()
     const command: UtilityRequest = {
       type: 'request',
@@ -75,44 +95,29 @@ export class MarketDataCoordinator {
       request,
     }
     const result = new Promise<unknown>((resolve, reject) => {
+      const postedAt = Date.now()
       const timeout = setTimeout(() => {
         this.pending.delete(requestId)
         reject(new Error(`Timeout no comando de market data: ${request.kind}`))
+        this.recycleIfUnresponsive(postedAt)
       }, requestTimeoutMs)
       this.pending.set(requestId, { resolve, reject, timeout })
       child.postMessage(command)
     })
+    return await result as T
+  }
 
-    const value = await result
-    if (request.kind === 'start-stream') {
-      this.activeSubscriptions.set(request.sessionId, request)
-    } else if (request.kind === 'update-candle-stream') {
-      const subscription = this.activeSubscriptions.get(request.sessionId)
-      if (subscription) {
-        this.activeSubscriptions.set(request.sessionId, {
-          ...subscription,
-          selection: request.selection,
-        })
-      } else {
-        this.activeSubscriptions.set(request.sessionId, {
-          kind: 'start-stream',
-          sessionId: request.sessionId,
-          selection: request.selection,
-          visible: request.visible,
-        })
-      }
-    } else if (request.kind === 'stop-stream') {
-      this.activeSubscriptions.delete(request.sessionId)
-    } else if (request.kind === 'set-stream-visibility') {
-      const subscription = this.activeSubscriptions.get(request.sessionId)
-      if (subscription) {
-        this.activeSubscriptions.set(request.sessionId, {
-          ...subscription,
-          visible: request.visible,
-        })
-      }
+  /** Releases every stream when the window that owns them is gone. */
+  stopAllStreams(): void {
+    const sessionIds = [...this.activeSubscriptions.keys()]
+    this.activeSubscriptions.clear()
+    if (!this.ready || !this.child) {
+      return
     }
-    return value as T
+    sessionIds.forEach((sessionId) => {
+      void this.request({ kind: 'stop-stream', sessionId })
+        .catch(() => undefined)
+    })
   }
 
   shutdown(): void {
@@ -121,11 +126,62 @@ export class MarketDataCoordinator {
       clearTimeout(this.restartTimer)
       this.restartTimer = undefined
     }
-    this.failPending(new Error('Aplicação encerrando'))
-    this.rejectReadyWaiters(new Error('Aplicação encerrando'))
+    const error = new Error('Aplicação encerrando')
+    this.failPending(error)
+    this.rejectReadyWaiters(error)
+    this.activeSubscriptions.clear()
     this.child?.kill()
     this.child = undefined
     this.ready = false
+  }
+
+  /**
+   * Mirrors the renderer's intent for the session so a restarted process can be
+   * brought back to the same set of streams.
+   */
+  private trackIntent(request: MarketDataRequest): void {
+    switch (request.kind) {
+      case 'start-stream':
+        this.activeSubscriptions.set(request.sessionId, request)
+        return
+      case 'update-candle-stream': {
+        const current = this.activeSubscriptions.get(request.sessionId)
+        this.activeSubscriptions.set(request.sessionId, current
+          ? { ...current, selection: request.selection }
+          : {
+              kind: 'start-stream',
+              sessionId: request.sessionId,
+              selection: request.selection,
+              visible: request.visible,
+            })
+        return
+      }
+      case 'set-stream-visibility':
+        this.patchSubscription(request.sessionId, { visible: request.visible })
+        return
+      case 'set-order-book-aggregation':
+        // Kept so a restored session comes back at the grouping the user chose
+        // instead of falling back to the symbol's tick size.
+        this.patchSubscription(request.sessionId, {
+          aggregationStep: request.step,
+        })
+        return
+      case 'stop-stream':
+        this.activeSubscriptions.delete(request.sessionId)
+        return
+      default:
+        // `catalog`, `symbols` and `candles` own no session state.
+    }
+  }
+
+  private patchSubscription(
+    sessionId: string,
+    patch: Partial<StartStreamRequest>,
+  ): void {
+    const current = this.activeSubscriptions.get(sessionId)
+    if (current) {
+      this.activeSubscriptions.set(sessionId, { ...current, ...patch })
+    }
   }
 
   private waitUntilReady(): Promise<void> {
@@ -167,9 +223,12 @@ export class MarketDataCoordinator {
     if (!message || typeof message !== 'object') {
       return
     }
+    // Any message is proof the process is still draining its loop.
+    this.lastMessageAt = Date.now()
     const response = message as UtilityMessage
     if (response.type === 'ready') {
       this.ready = true
+      this.restartAttempt = 0
       const waiters = this.readyWaiters.splice(0)
       waiters.forEach((waiter) => waiter.resolve())
       this.restoreSubscriptions()
@@ -196,57 +255,93 @@ export class MarketDataCoordinator {
     }
   }
 
-  private handleExit(code: number): void {
-    this.child = undefined
-    this.ready = false
-    const error = new Error(`Processo de market data encerrado com código ${code}`)
-    this.failPending(error)
-    this.rejectReadyWaiters(error)
-    this.emitProcessError(error)
-
-    if (!this.shuttingDown) {
-      this.restartTimer = setTimeout(() => {
-        this.restartTimer = undefined
-        this.start()
-      }, 1_000)
+  /**
+   * A request times out either because one endpoint is slow — which the process
+   * survives — or because it stopped answering at all, which it does not
+   * recover from on its own. The difference is whether anything came back while
+   * the request was outstanding, so only the second case forces a restart.
+   */
+  private recycleIfUnresponsive(postedAt: number): void {
+    if (this.shuttingDown || !this.child || this.lastMessageAt > postedAt) {
+      return
     }
+    this.recycle(new Error(
+      'Processo de market data parou de responder e será reiniciado',
+    ))
   }
 
-  private emitProcessError(error: unknown): void {
+  private recycle(error: Error): void {
+    const child = this.child
+    if (!child) {
+      return
+    }
+    this.child = undefined
+    this.ready = false
+    child.kill()
+    this.abandonProcess(error)
+  }
+
+  private handleExit(child: UtilityProcess, code: number): void {
+    if (this.child !== child) {
+      // Already dropped by `recycle`, which scheduled its own restart.
+      return
+    }
+    this.child = undefined
+    this.ready = false
+    this.abandonProcess(new Error(
+      `Processo de market data encerrado com código ${code}`,
+    ))
+  }
+
+  private abandonProcess(error: Error): void {
+    this.failPending(error)
+    this.rejectReadyWaiters(error)
     this.activeSubscriptions.forEach((subscription, sessionId) => {
-      const selection = subscription.selection
-      this.onEvent({
-        sessionId,
-        kind: 'status',
-        payload: {
-          provider: selection.provider,
-          market: selection.market,
-          symbol: selection.symbol,
-          state: 'error',
-          candleState: 'error',
-          orderBookState: 'error',
-          message: error instanceof Error ? error.message : String(error),
-        },
-      })
+      this.emitSessionError(sessionId, subscription.selection, error)
     })
+    this.scheduleRestart()
+  }
+
+  /**
+   * Backs off between attempts. A process that fails during startup used to be
+   * forked once per second forever, each attempt emitting an error status to
+   * every open session.
+   */
+  private scheduleRestart(): void {
+    if (this.shuttingDown || this.restartTimer) {
+      return
+    }
+    this.restartAttempt += 1
+    const delay = Math.min(
+      restartBaseDelayMs * (2 ** (this.restartAttempt - 1)),
+      restartMaximumDelayMs,
+    )
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = undefined
+      this.start()
+    }, delay)
   }
 
   private restoreSubscriptions(): void {
     const subscriptions = [...this.activeSubscriptions.values()]
     subscriptions.forEach((subscription) => {
       void this.request(subscription).catch((error) => {
-        this.emitSessionError(subscription, error)
+        this.emitSessionError(
+          subscription.sessionId,
+          subscription.selection,
+          error,
+        )
       })
     })
   }
 
   private emitSessionError(
-    subscription: StartStreamRequest,
+    sessionId: string,
+    selection: MarketSelection,
     error: unknown,
   ): void {
-    const selection = subscription.selection
     this.onEvent({
-      sessionId: subscription.sessionId,
+      sessionId,
       kind: 'status',
       payload: {
         provider: selection.provider,

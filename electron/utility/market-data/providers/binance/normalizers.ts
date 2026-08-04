@@ -182,8 +182,9 @@ export function normalizeCandleRow(
   interval: string,
   now = Date.now(),
 ): Candle {
-  if (row.length < 8) {
-    throw new Error(`Candle Binance inválido: ${row.length} campos`)
+  if (!Array.isArray(row) || row.length < 8) {
+    const shape = Array.isArray(row) ? `${row.length} campos` : typeof row
+    throw new Error(`Candle Binance inválido: ${shape}`)
   }
   const openTime = requiredNumber(row[0], 'openTime')
   const closeTime = requiredNumber(row[6], 'closeTime')

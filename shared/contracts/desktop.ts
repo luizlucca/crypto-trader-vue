@@ -320,6 +320,20 @@ function isAggregationStep(value: unknown): value is number {
     && value <= 1_000_000
 }
 
+function isCandleLimit(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isInteger(value)
+    && value >= 1
+    && value <= 1_000
+}
+
+/** Exclusive `openTime` cursor, in seconds, of the oldest candle shown. */
+function isHistoryCursor(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isSafeInteger(value)
+    && value > 0
+}
+
 function isSessionId(value: unknown): value is string {
   return typeof value === 'string'
     && value.length >= 1
@@ -344,15 +358,10 @@ export function isMarketDataRequest(value: unknown): value is MarketDataRequest 
         && typeof request.quoteAsset === 'string'
     case 'candles':
       return isMarketSelection(request.selection)
-        && Number.isInteger(request.limit)
-        && (request.limit ?? 0) >= 1
-        && (request.limit ?? 0) <= 1_000
+        && isCandleLimit(request.limit)
         && (
           request.before === undefined
-          || (
-            Number.isSafeInteger(request.before)
-            && request.before > 0
-          )
+          || isHistoryCursor(request.before)
         )
     case 'start-stream':
       return isSessionId(request.sessionId)

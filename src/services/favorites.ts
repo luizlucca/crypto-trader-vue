@@ -2,13 +2,16 @@ import type { Market, MarketSymbol } from '@shared/types/market'
 
 const storageKey = 'cryptopro.market-favorites.v1'
 
+// Every comparison against a stored key goes through `favoriteKey`, which
+// lower-cases. Seeds and stored values are normalized the same way so a key
+// written by an older build still matches the pair it names.
 const initialFavorites = [
-  'binance:spot:BTCUSDT',
-  'binance:spot:ETHUSDT',
-  'binance:spot:SOLUSDT',
-  'binance:futures:BTCUSDT',
-  'binance:futures:ETHUSDT',
-  'binance:futures:SOLUSDT',
+  'binance:spot:btcusdt',
+  'binance:spot:ethusdt',
+  'binance:spot:solusdt',
+  'binance:futures:btcusdt',
+  'binance:futures:ethusdt',
+  'binance:futures:solusdt',
 ]
 
 export function favoriteKey(
@@ -31,7 +34,9 @@ export function loadFavoriteKeys(): Set<string> {
       return new Set()
     }
     return new Set(
-      values.filter((value): value is string => typeof value === 'string'),
+      values
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.toLowerCase()),
     )
   } catch {
     return new Set(initialFavorites)
