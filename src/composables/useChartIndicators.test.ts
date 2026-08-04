@@ -347,6 +347,49 @@ describe('chart indicator visual lifecycle', () => {
     expect(api.removePane).toHaveBeenCalledWith(2)
   })
 
+  it('mounts a candle output that only shows up after the first result', () => {
+    const { chart, panes } = chartHarness()
+    let apply!: IndicatorPatchHandler
+    const indicators = useChartIndicators({
+      chart: () => chart,
+      candleSeries: () => null,
+      bars: () => ({
+        time: [], open: [], high: [], low: [], close: [], volume: [],
+      }),
+      createClient: (handler) => {
+        apply = handler
+        return stubClient()
+      },
+    })
+
+    const instance = indicators.add(definition)!
+    apply(instance.instanceId, { patches: patches() })
+    expect(panes[2].series).toHaveLength(definition.plots.length)
+
+    /*
+     * An indicator that repaints bars on a condition sends no candle output at
+     * all until the condition first occurs, so the output can arrive rounds
+     * after the series were mounted.
+     */
+    apply(instance.instanceId, { patches: [], candles: [{
+      plotId: 'repaint',
+      full: true,
+      from: 0,
+      time: Float64Array.from([1]),
+      open: Float64Array.from([1]),
+      high: Float64Array.from([2]),
+      low: Float64Array.from([0]),
+      close: Float64Array.from([1.5]),
+      colorIndex: Uint8Array.from([0]),
+      palette: [
+        { color: '#EF5350', borderColor: '#EF5350', wickColor: '#EF5350' },
+      ],
+    }] })
+
+    expect(panes[2].series).toHaveLength(definition.plots.length + 1)
+    expect(indicators.populatedPlots(instance.instanceId)).toContain('repaint')
+  })
+
   it('anchors free-form drawings on the candle series for an overlay', () => {
     const { chart, api } = chartHarness()
     const candles = new FakeSeries()

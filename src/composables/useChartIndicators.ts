@@ -460,6 +460,18 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     rememberLastValue(entry, patch)
   }
 
+  /** Creates the series for one candle output and records its owner. */
+  function mountCandleSeries(
+    chart: IChartApi,
+    entry: MountedIndicator,
+    plotId: string,
+  ): ISeriesApi<SeriesType> {
+    const series = createCandleSeries(chart, entry.pane, plotId)
+    entry.series.set(candleSeriesId(plotId), series)
+    seriesOwners.set(series, entry.instance.instanceId)
+    return series
+  }
+
   function applyCandlePatches(
     entry: MountedIndicator,
     patches: readonly IndicatorCandlePatch[] | undefined,
@@ -469,12 +481,22 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       return
     }
     for (const patch of patches) {
-      const series = entry.series.get(candleSeriesId(patch.plotId))
+      let series = entry.series.get(candleSeriesId(patch.plotId))
       if (!series) {
-        throw new Error(
-          `Série de velas ${patch.plotId} não está montada em `
-          + entry.definition.name,
-        )
+        /*
+         * A candle output can show up after the first result: `barColors` stays
+         * empty until the indicator actually repaints a bar, so an indicator
+         * that paints on a condition has no such output on mount. Throwing here
+         * left it permanently broken — the bounded full retry finds the other
+         * series already mounted, so it never reaches the creation path again.
+         */
+        const chart = options.chart()
+        if (!chart) {
+          throw new Error(
+            `Gráfico indisponível ao montar velas de ${entry.definition.name}`,
+          )
+        }
+        series = mountCandleSeries(chart, entry, patch.plotId)
       }
       if (!entry.populated.has(patch.plotId)) {
         newlyPopulated.push(patch.plotId)
@@ -562,10 +584,10 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     kind: ReturnType<typeof plotStyleKind>,
     catalogColor?: string,
   ) {
-    const color = plotColor({
-      ...style,
-      color: themedColor(style.color, catalogColor),
-    })
+    // Themed once: the area gradient has to follow the same colour the line
+    // got, or a light preset draws a readable line over the catalog's own fill.
+    const themed = { ...style, color: themedColor(style.color, catalogColor) }
+    const color = plotColor(themed)
     const shared = {
       visible: style.visible,
       priceLineVisible: false,
@@ -578,8 +600,8 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       return {
         ...shared,
         lineColor: color,
-        topColor: plotColor({ ...style, opacity: style.opacity * 0.4 }),
-        bottomColor: plotColor({ ...style, opacity: 0 }),
+        topColor: plotColor({ ...themed, opacity: themed.opacity * 0.4 }),
+        bottomColor: plotColor({ ...themed, opacity: 0 }),
         lineWidth: style.lineWidth as 1 | 2 | 3 | 4,
         crosshairMarkerVisible: false,
       }
@@ -732,9 +754,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
        * exclusively this way.
        */
       for (const patch of candles ?? []) {
-        const series = createCandleSeries(chart, entry.pane, patch.plotId)
-        entry.series.set(candleSeriesId(patch.plotId), series)
-        seriesOwners.set(series, entry.instance.instanceId)
+        mountCandleSeries(chart, entry, patch.plotId)
       }
       createHLines(entry.definition, entry.series.values().next().value)
       return true

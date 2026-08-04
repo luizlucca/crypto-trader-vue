@@ -300,6 +300,13 @@ Por isso a montagem é dirigida pelo resultado, e não pela definição: chegou 
 `IndicatorCandlePatch`, cria-se uma `CandlestickSeries` no painel do indicador.
 Encaixa no mesmo desenho de montagem tardia já usado para as linhas.
 
+A montagem tardia vale para **qualquer** rodada, não só a primeira. A repintura
+(`barColors`) fica vazia até o indicador de fato pintar uma barra, então essa
+saída aparece rodadas depois das demais séries. Tratá-la como ausente era uma
+falha sem saída: o retry completo encontra as outras séries já montadas e nunca
+volta ao caminho de criação, de modo que a instância ficava quebrada em
+definitivo.
+
 As cores vêm da biblioteca, por barra. Trafegam como paleta mais um índice por
 barra — uma série usa duas ou três cores distintas, e mandar a string por barra
 seria a maior parte da mensagem no caminho quente. O diff é o mesmo das linhas:
@@ -433,11 +440,18 @@ amostral.
 Além disso:
 
 - `domain/indicators.test.ts`: validação de parâmetros contra `inputConfig`
-  (limites, tipos, opções), e identidade de instâncias — dois RSI com períodos
-  diferentes não podem colidir.
+  (limites, tipos, opções, valores não finitos), identidade de instâncias —
+  dois RSI com períodos diferentes não podem colidir — e a dobra da opacidade
+  na cor, incluindo as formas curtas `#RGB` e `#RGBA`.
 - `services/indicators.test.ts`: descarte por rodada/revisão, retry completo,
-  recuperação do Worker, resultado ausente, erro isolado de cálculo e 100
-  ciclos de inclusão/remoção com uma SMA ativa.
+  recuperação do Worker por `error` e por `messageerror`, limite de tentativas
+  de recuperação, resultado ausente, erro isolado de cálculo, encerramento do
+  Worker ao remover o último indicador e 100 ciclos de inclusão/remoção com uma
+  SMA ativa.
+- `workers/indicators.worker.test.ts`: diff de cauda contra snapshot completo,
+  isolamento de uma instância que falha sem reter a rodada, liberação da rodada
+  sem nada a calcular e descarte de uma barra de cauda mais antiga que o
+  histórico retido.
 - `workers/indicatorLibrary.test.ts`: 250 ciclos determinísticos de SMA seguido
   de MFI/RSI Bollinger Bands, verificando dados nos quatro plots.
 - `domain/readableColor.test.ts` e `workers/indicatorLibrary.test.ts`: a cor de

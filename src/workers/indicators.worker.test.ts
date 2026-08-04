@@ -109,6 +109,60 @@ describe('indicator worker protocol', () => {
     expect(tail?.time).toHaveLength(1)
   })
 
+  it('isolates a failing instance without withholding the round', () => {
+    attachSma()
+    dispatch({
+      kind: 'attach',
+      instanceId: 'broken-one',
+      instanceRevision: 1,
+      definitionId: 'indicador-que-nao-existe',
+      inputs: {},
+    })
+    dispatch({ kind: 'compute', generation: 0, roundId: 1, full: true })
+
+    const messages = responses()
+    expect(messages.find((message) => message.kind === 'error'))
+      .toMatchObject({ instanceId: 'broken-one', instanceRevision: 1 })
+    // The healthy sibling still draws...
+    expect(messages.some((message) => (
+      message.kind === 'result' && message.instanceId === 'sma-one'
+    ))).toBe(true)
+    // ...and the round is still released, or the client waits forever.
+    expect(messages.at(-1))
+      .toEqual({ kind: 'computed', generation: 0, roundId: 1 })
+  })
+
+  it('completes a round even when there is nothing to calculate', () => {
+    dispatch({ kind: 'bars-replace', bars: history(10) })
+    dispatch({ kind: 'compute', generation: 3, roundId: 7, full: true })
+
+    expect(responses())
+      .toEqual([{ kind: 'computed', generation: 3, roundId: 7 }])
+  })
+
+  it('ignores a tail bar older than the history it already holds', () => {
+    attachSma()
+    dispatch({ kind: 'compute', generation: 0, roundId: 1, full: true })
+    worker.postMessage.mockClear()
+
+    dispatch({
+      kind: 'bars-tail',
+      bar: {
+        time: 1_700_000_000,
+        open: 1,
+        high: 2,
+        low: 0,
+        close: 1,
+        volume: 1,
+      },
+    })
+    dispatch({ kind: 'compute', generation: 0, roundId: 2, full: false })
+
+    // A late duplicate of an old bar must not rewrite the series behind it.
+    expect(responses())
+      .toEqual([{ kind: 'computed', generation: 0, roundId: 2 }])
+  })
+
   it('emits only the round completion when no output changed', () => {
     attachSma()
     dispatch({ kind: 'compute', generation: 0, roundId: 1, full: true })

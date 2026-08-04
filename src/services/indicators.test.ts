@@ -325,6 +325,74 @@ describe('indicator worker client', () => {
     client.dispose()
   })
 
+  it('recovers from an unreadable message like it does from a crash', () => {
+    const workers: FakeWorker[] = []
+    const errors: string[] = []
+    const client = createIndicatorClient(
+      vi.fn(),
+      () => bars,
+      workerFactory(workers),
+    )
+    client.setErrorHandler((message) => errors.push(message))
+    client.attach('indicator-one', 'sma', { length: 20 })
+    client.compute(true)
+
+    workers[0].onmessageerror?.()
+
+    expect(workers[0].terminated).toBe(true)
+    expect(workers).toHaveLength(2)
+    expect(workers[1].requests[0]).toMatchObject({ kind: 'bars-replace' })
+    expect(workers[1].attaches()).toEqual([
+      expect.objectContaining({
+        instanceId: 'indicator-one',
+        instanceRevision: 1,
+      }),
+    ])
+    expect(errors.some((message) => message.includes('Mensagem inválida')))
+      .toBe(true)
+    client.dispose()
+  })
+
+  it('stops recreating the worker once the recovery limit is reached', () => {
+    const workers: FakeWorker[] = []
+    const errors: string[] = []
+    const client = createIndicatorClient(
+      vi.fn(),
+      () => bars,
+      workerFactory(workers),
+    )
+    client.setErrorHandler((message) => errors.push(message))
+    client.attach('indicator-one', 'sma', { length: 20 })
+    client.compute(true)
+
+    workers[0].crash('primeira')
+    workers[1].crash('segunda')
+    workers[2].crash('terceira')
+
+    // Bounded on purpose: a worker that dies on every start would otherwise
+    // spin the recreation loop forever.
+    expect(workers).toHaveLength(3)
+    expect(errors.at(-1)).toContain('Não foi possível recuperar o Worker')
+    client.dispose()
+  })
+
+  it('terminates the worker when the last indicator is removed', () => {
+    const workers: FakeWorker[] = []
+    const client = createIndicatorClient(
+      vi.fn(),
+      () => bars,
+      workerFactory(workers),
+    )
+    client.attach('only-one', 'sma', { length: 20 })
+    client.compute(true)
+    expect(workers[0].terminated).toBe(false)
+
+    client.detach('only-one')
+
+    // A chart left without indicators pays nothing.
+    expect(workers[0].terminated).toBe(true)
+  })
+
   it('serves the catalog from cache instead of asking the worker again', async () => {
     const workers: FakeWorker[] = []
     const client = createIndicatorClient(vi.fn(), () => bars, workerFactory(workers))

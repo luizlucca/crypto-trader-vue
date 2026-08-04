@@ -728,6 +728,12 @@ function computeInstance(
   if (plots) {
     for (const plotId in plots) {
       const points = plots[plotId]
+      // A community port can declare a plot key and leave it unfilled. Skipping
+      // it lets the indicator's other lines draw, where throwing would burn the
+      // instance's whole recovery budget on a plot that will never have data.
+      if (!Array.isArray(points)) {
+        continue
+      }
       // Non-finite values are warm-up gaps and must not reach setData().
       const normalized = normalizePlotPoints(points)
       const trimmedTime = normalized.time

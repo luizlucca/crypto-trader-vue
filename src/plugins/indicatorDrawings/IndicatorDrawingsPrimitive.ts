@@ -309,12 +309,15 @@ export class IndicatorDrawingsPrimitive implements ISeriesPrimitive<Time> {
       if (top + boxHeight < 0 || top > height) {
         continue
       }
+      // Culled against the anchor's own position. Clamping first made this
+      // test unreachable, and a label scrolled far off the pane was pinned to
+      // the edge instead of being discarded.
+      if (placedX + boxWidth < 0 || placedX > width) {
+        continue
+      }
       // A label anchored on the last bar would otherwise run off the pane and
       // lose its last characters — exactly the ones that carry the value.
       const left = Math.max(0, Math.min(placedX, width - boxWidth))
-      if (left + boxWidth < 0 || left > width) {
-        continue
-      }
 
       if (label.color) {
         context.fillStyle = label.color

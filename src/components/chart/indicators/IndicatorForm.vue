@@ -216,6 +216,11 @@ defineExpose({ reset })
       </template>
     </div>
 
+    <!--
+      The notice sits above the rows, never in place of them: picking a colour
+      for a line before turning on the parameter that enables it is exactly the
+      case this panel exists for, and it is the case where nothing is populated.
+    -->
     <p
       v-if="tab === 'style' && drawsNothing"
       class="indicator-draws-nothing"
@@ -226,7 +231,10 @@ defineExpose({ reset })
     </p>
 
     <!-- One row per plotted line: an indicator can draw several. -->
-    <div v-else-if="tab === 'style'" class="indicator-styles">
+    <div
+      v-if="tab === 'style' && stylablePlots.length > 0"
+      class="indicator-styles"
+    >
       <header class="indicator-styles-legend">
         <span />
         <span />

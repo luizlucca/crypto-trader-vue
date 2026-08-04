@@ -171,12 +171,20 @@ export function copyPlotStyles(
  * colour. Hex is expanded to `rgba` only when it is actually needed.
  */
 export function plotColor(style: IndicatorPlotStyle): string {
-  if (style.opacity >= 1) {
+  // Anything that is not hex has no channels to fold opacity into. Without
+  // this guard `parseInt` still returned the leading digits it could read, so
+  // a CSS variable came back as a near-black rgba.
+  if (style.opacity >= 1 || !isHexColor(style.color)) {
     return style.color
   }
-  let hex = style.color.slice(1)
-  if (hex.length === 3) {
-    hex = `${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`
+  const digits = style.color.slice(1)
+  // `#RGB` and `#RGBA` are shorthand: each digit stands for a doubled byte.
+  // Reading `#RGBA` as a six-digit value produced a different colour entirely.
+  const hex = digits.length === 3 || digits.length === 4
+    ? `${digits[0]}${digits[0]}${digits[1]}${digits[1]}${digits[2]}${digits[2]}`
+    : digits
+  if (hex.length < 6) {
+    return style.color
   }
   const value = Number.parseInt(hex.slice(0, 6), 16)
   const [r, g, b] = [(value >> 16) & 255, (value >> 8) & 255, value & 255]
