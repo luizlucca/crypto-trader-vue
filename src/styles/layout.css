@@ -168,15 +168,34 @@
 
 .workspace-grid {
   display: grid;
+  /*
+   * Six tracks, always. A hidden panel collapses its track to zero rather than
+   * leaving the grid, because every child is placed by an explicit column
+   * number and removing a track would renumber all of them.
+   */
   grid-template-columns:
-    44px var(--market-sidebar-width, 250px) 6px
-    minmax(430px, 1fr) 232px 288px;
+    44px
+    var(--market-track, var(--market-sidebar-width, 250px))
+    var(--market-handle-track, 6px)
+    minmax(430px, 1fr)
+    var(--order-book-track, 232px)
+    288px;
   grid-template-rows: minmax(0, 1fr) 204px;
   gap: 2px;
   min-width: 0;
   min-height: 0;
   padding: 2px;
   background: var(--workspace-bg);
+}
+
+/* Chart takes the freed width: that is the whole point of hiding a panel. */
+.workspace-grid[data-market="hidden"] {
+  --market-track: 0px;
+  --market-handle-track: 0px;
+}
+
+.workspace-grid[data-order-book="hidden"] {
+  --order-book-track: 0px;
 }
 
 .navigation-rail {

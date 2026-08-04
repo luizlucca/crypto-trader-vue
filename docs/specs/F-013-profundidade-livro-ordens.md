@@ -28,6 +28,9 @@ seja, poucos baldes. A agregação está correta; falta profundidade na fonte.
 
 - O livro preenche todas as linhas visíveis em qualquer nível de agregação,
   enquanto houver liquidez no mercado para isso.
+- **O livro tem três leituras:** compra e venda, somente venda, somente compra.
+  Com um lado sozinho no painel, ele mostra o dobro de profundidade — 20 linhas
+  em vez de 10.
 - Trocar a agregação não reinicia a conexão nem produz livro vazio.
 - Uma perda de sequência no stream é detectada e se recupera sozinha, sem
   exibir um livro corrompido.
@@ -98,6 +101,25 @@ com a troca de período em relação aos candles.
 liquidez e detecção de icebergs. O livro completo em memória habilita esses
 recursos, mas eles têm spec própria.
 
+### Três leituras, uma só assinatura
+
+Esconder um lado não é filtro de exibição: é outra leitura. Quem olha só a
+venda quer ver mais fundo naquele lado, não o mesmo pedaço com espaço sobrando.
+
+O provider passou a preencher **20 níveis por lado** em vez de 10. O custo é
+apenas o tamanho da fatia: a agregação já percorre até quatro mil níveis brutos
+antes de cortar, então pedir o dobro no fim não muda o trabalho de CPU nem o
+número de mensagens. A alternativa — pedir 10 ou 20 conforme a leitura ativa —
+exigiria um caminho de IPC novo para economizar dez objetos por emissão.
+
+A proporção de compra e venda no rodapé continua pesando os **dez** primeiros
+níveis de cada lado em qualquer leitura: é uma métrica comparável entre modos,
+não um reflexo do que está na tela.
+
+O título e os controles não dividem a mesma linha. Juntos pediam mais largura
+que os 232px do painel, e truncar o nome do próprio painel para caber se lê
+como defeito — os controles ganharam uma linha própria.
+
 ## Testes
 
 - `shared/domain/orderBook.test.ts`: agregação, contagem de linhas por passo e
@@ -123,6 +145,10 @@ recursos, mas eles têm spec própria.
 - [x] O buffer anterior ao snapshot tem crescimento limitado.
 - [x] O payload de IPC por frame não cresce com a profundidade mantida.
 - [x] Spot e Futures usam cada um a sua regra de sincronização.
+- [x] As três leituras trocam sem esperar o próximo tick: verificado com dados
+      ao vivo, 10+10 linhas em compra e venda e 20 linhas preenchidas em cada
+      leitura de lado único.
+- [x] O cabeçalho do painel não vaza da coluna de 232px em nenhuma leitura.
 
 ## Armadilha encontrada na implementação
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Columns3, Rows3 } from '@lucide/vue'
+import { PanelBottom, PanelRight, PanelTop, Rows3 } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type {
   MarketSelection,
@@ -7,16 +7,41 @@ import type {
   OrderBookSnapshot,
 } from '@shared/types/market'
 import { onOrderBook } from '@/services/marketData'
+import { setOrderBookPanelVisible } from '@/services/workspacePanels'
 import { publishRealtimePrice } from '@/services/realtimePrice'
 import { publishStreamLatency } from '@/services/streamLatency'
 import {
+  ORDER_BOOK_ROWS_BOTH_SIDES,
+  ORDER_BOOK_ROWS_PER_SIDE,
   aggregationPrecision,
   createAggregationOptions,
   formatAggregationStep,
 } from '@shared/domain/orderBook'
 import { calculateOrderBookRatio } from '@shared/domain/orderBookRatio'
 
-const ROW_COUNT = 10
+/**
+ * Which sides the book is showing.
+ *
+ * A one-sided view is not a filter, it is a different reading: with the panel
+ * to itself, a side shows twice the depth. The provider already fills the
+ * larger count, so switching costs nothing beyond the rows the renderer writes.
+ */
+type BookView = 'both' | 'asks' | 'bids'
+
+const VIEW_STORAGE_KEY = 'cryptopro.order-book.view.v1'
+
+/** The ratio always weighs the same top levels, whatever the view shows. */
+const ROW_COUNT = ORDER_BOOK_ROWS_BOTH_SIDES
+
+function readStoredView(): BookView {
+  try {
+    const stored = window.localStorage.getItem(VIEW_STORAGE_KEY)
+    return stored === 'asks' || stored === 'bids' ? stored : 'both'
+  } catch {
+    return 'both'
+  }
+}
+
 const props = defineProps<{
   sessionId: string
   selection: MarketSelection
@@ -25,7 +50,29 @@ const props = defineProps<{
 const emit = defineEmits<{
   aggregationStep: [value: number]
 }>()
-const rowIndexes = Array.from({ length: ROW_COUNT }, (_, index) => index)
+const view = ref<BookView>(readStoredView())
+const visibleRows = computed(() => (
+  view.value === 'both' ? ORDER_BOOK_ROWS_BOTH_SIDES : ORDER_BOOK_ROWS_PER_SIDE
+))
+const askIndexes = computed(() => (
+  view.value === 'bids'
+    ? []
+    : Array.from({ length: visibleRows.value }, (_, index) => index)
+))
+const bidIndexes = computed(() => (
+  view.value === 'asks'
+    ? []
+    : Array.from({ length: visibleRows.value }, (_, index) => index)
+))
+
+function selectView(next: BookView): void {
+  view.value = next
+  try {
+    window.localStorage.setItem(VIEW_STORAGE_KEY, next)
+  } catch {
+    // Storage can be unavailable; the choice still holds for this session.
+  }
+}
 const aggregationOptions = computed(() => (
   createAggregationOptions(props.selection.priceTickSize)
 ))
@@ -88,8 +135,9 @@ function renderRows(
   side: 'ask' | 'bid',
   reverse: boolean,
   precision: RowPrecision,
+  rows: number,
 ): void {
-  const visibleLevelCount = Math.min(ROW_COUNT, levels.length)
+  const visibleLevelCount = Math.min(rows, levels.length)
   let maxTotal = 1
   for (let index = 0; index < visibleLevelCount; index += 1) {
     maxTotal = Math.max(maxTotal, levels[index].total)
@@ -132,8 +180,9 @@ function renderSnapshot(snapshot: OrderBookSnapshot): void {
     price: aggregationPrecision(props.aggregationStep),
     quantity: Math.min(props.selection.quantityPrecision, 8),
   }
-  renderRows(askRows, snapshot.asks, 'ask', true, precision)
-  renderRows(bidRows, snapshot.bids, 'bid', false, precision)
+  const rows = visibleRows.value
+  renderRows(askRows, snapshot.asks, 'ask', true, precision, rows)
+  renderRows(bidRows, snapshot.bids, 'bid', false, precision, rows)
   renderRatio(snapshot.bids, snapshot.asks)
   if (midPrice.value) {
     writeText(midPrice.value, formatPrice(snapshot.midPrice))
@@ -268,8 +317,8 @@ function clearBook(): void {
   lastUpdateID = 0
   lastMetricsAt = 0
   const empty: RowPrecision = { price: 0, quantity: 0 }
-  renderRows(askRows, [], 'ask', false, empty)
-  renderRows(bidRows, [], 'bid', false, empty)
+  renderRows(askRows, [], 'ask', false, empty, 0)
+  renderRows(bidRows, [], 'bid', false, empty, 0)
   if (midPrice.value) writeText(midPrice.value, '—')
   if (spread.value) writeText(spread.value, 'Spread —')
   clearRatio()
@@ -296,12 +345,15 @@ watch(
 )
 
 watch(
-  () => props.aggregationStep,
+  [() => props.aggregationStep, view],
   () => {
     if (latestSnapshot) {
+      // The rows that just appeared are empty until the next snapshot, and on
+      // a quiet market that could be seconds away.
       scheduleFrame()
     }
   },
+  { flush: 'post' },
 )
 </script>
 
@@ -309,34 +361,74 @@ watch(
   <section class="order-book panel">
     <header class="panel-header">
       <h2>LIVRO DE ORDENS</h2>
-      <div>
-        <button aria-label="Livro combinado" class="active" title="Livro combinado" type="button">
+      <button
+        aria-label="Ocultar Livro de ordens"
+        class="panel-hide"
+        title="Ocultar Livro de ordens (Ctrl+Shift+B)"
+        type="button"
+        @click="setOrderBookPanelVisible(false)"
+      >
+        <PanelRight aria-hidden="true" />
+      </button>
+    </header>
+
+    <!--
+      Second row on purpose: the title plus every control asked for more width
+      than the 232px panel has, and giving the controls their own line is what
+      lets the panel keep its full name.
+    -->
+    <div class="book-controls">
+      <div class="book-views" role="group" aria-label="Lados exibidos">
+        <button
+          :aria-pressed="view === 'both'"
+          :class="{ active: view === 'both' }"
+          aria-label="Compra e venda"
+          title="Compra e venda"
+          type="button"
+          @click="selectView('both')"
+        >
           <Rows3 aria-hidden="true" />
         </button>
-        <button aria-label="Livro em colunas" title="Livro em colunas" type="button">
-          <Columns3 aria-hidden="true" />
-        </button>
-        <label
-          class="book-aggregation"
-          title="Agrupar preços por intervalo"
+        <button
+          :aria-pressed="view === 'asks'"
+          :class="{ active: view === 'asks' }"
+          aria-label="Somente venda"
+          class="asks"
+          title="Somente venda"
+          type="button"
+          @click="selectView('asks')"
         >
-          <span>Agregação</span>
-          <select
-            :value="aggregationStep"
-            aria-label="Granularidade de preço do livro"
-            @change="changeAggregation"
-          >
-            <option
-              v-for="step in aggregationOptions"
-              :key="step"
-              :value="step"
-            >
-              {{ formatAggregationStep(step) }}
-            </option>
-          </select>
-        </label>
+          <PanelTop aria-hidden="true" />
+        </button>
+        <button
+          :aria-pressed="view === 'bids'"
+          :class="{ active: view === 'bids' }"
+          aria-label="Somente compra"
+          class="bids"
+          title="Somente compra"
+          type="button"
+          @click="selectView('bids')"
+        >
+          <PanelBottom aria-hidden="true" />
+        </button>
       </div>
-    </header>
+      <label class="book-aggregation" title="Agrupar preços por intervalo">
+        <span>Agregação</span>
+        <select
+          :value="aggregationStep"
+          aria-label="Granularidade de preço do livro"
+          @change="changeAggregation"
+        >
+          <option
+            v-for="step in aggregationOptions"
+            :key="step"
+            :value="step"
+          >
+            {{ formatAggregationStep(step) }}
+          </option>
+        </select>
+      </label>
+    </div>
     <div class="book-columns">
       <span>Preço ({{ selection.quoteAsset }})</span>
       <span>Qtd ({{ selection.baseAsset }})</span>
@@ -345,7 +437,7 @@ watch(
 
     <div class="book-side asks">
       <div
-        v-for="index in rowIndexes"
+        v-for="index in askIndexes"
         :key="`ask-${index}`"
         :ref="(element) => registerRow(askRows, element as Element | null, index)"
         class="book-row"
@@ -365,7 +457,7 @@ watch(
 
     <div class="book-side bids">
       <div
-        v-for="index in rowIndexes"
+        v-for="index in bidIndexes"
         :key="`bid-${index}`"
         :ref="(element) => registerRow(bidRows, element as Element | null, index)"
         class="book-row"

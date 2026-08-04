@@ -19,6 +19,12 @@ import { loadFavoriteKeys, saveFavoriteKeys } from '@/services/favorites'
 import { useCatalogCache } from '@/composables/useCatalogCache'
 import { useGlobalShortcuts } from '@/composables/useGlobalShortcuts'
 import { useResizableSidebar } from '@/composables/useResizableSidebar'
+import {
+  marketPanelVisible,
+  orderBookPanelVisible,
+  toggleMarketPanel,
+  toggleOrderBookPanel,
+} from '@/services/workspacePanels'
 import { useWorkspaceTabs } from '@/composables/useWorkspaceTabs'
 import { MAX_WORKSPACE_TABS, type WorkspaceTab } from '@/domain/workspace'
 
@@ -113,6 +119,8 @@ useGlobalShortcuts({
   newTab: requestNewTab,
   openSearch: () => openSymbolSearch(),
   openIndicators: () => marketChart.value?.openIndicatorPicker(),
+  toggleMarketPanel,
+  toggleOrderBookPanel,
   suspended: settingsOpen,
 })
 
@@ -157,9 +165,20 @@ onBeforeUnmount(() => {
       :status="activeTab.status"
       @settings="settingsOpen = !settingsOpen"
     />
-    <main class="workspace-grid" :style="workspaceStyle">
+    <!--
+      Hidden panels collapse their grid track to zero instead of being removed
+      from the template: every child is placed by an explicit column, and
+      dropping a track would renumber all of them.
+    -->
+    <main
+      class="workspace-grid"
+      :data-market="marketPanelVisible ? 'visible' : 'hidden'"
+      :data-order-book="orderBookPanelVisible ? 'visible' : 'hidden'"
+      :style="workspaceStyle"
+    >
       <NavigationRail @settings="settingsOpen = true" />
       <MarketSidebar
+        v-if="marketPanelVisible"
         :connection-state="activeTab.status"
         :favorite-keys="favoriteKeys"
         :loading="symbolsLoading"
@@ -171,6 +190,7 @@ onBeforeUnmount(() => {
         @symbol="workspace.changeSymbol"
       />
       <PanelResizeHandle
+        v-if="marketPanelVisible"
         v-model="sidebarWidth"
         :default-value="SIDEBAR_DEFAULT_WIDTH"
         :max="sidebarMaxWidth"
@@ -197,6 +217,7 @@ onBeforeUnmount(() => {
         />
       </section>
       <OrderBook
+        v-if="orderBookPanelVisible"
         :key="activeTab.id"
         :aggregation-step="activeTab.orderBookAggregation"
         :selection="selection"

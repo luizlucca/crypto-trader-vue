@@ -7,6 +7,10 @@ export interface GlobalShortcutHandlers {
   openSearch: () => void
   /** Ctrl/Cmd+I — open the indicator picker for the active chart. */
   openIndicators: () => void
+  /** Ctrl/Cmd+B — show or hide the market list. */
+  toggleMarketPanel: () => void
+  /** Ctrl/Cmd+Shift+B — show or hide the order book. */
+  toggleOrderBookPanel: () => void
   /** While true every shortcut is ignored: a modal owns the keyboard. */
   suspended: Readonly<Ref<boolean>>
 }
@@ -23,9 +27,20 @@ export function useGlobalShortcuts(handlers: GlobalShortcutHandlers): void {
       return
     }
 
-    const withModifier = (event.ctrlKey || event.metaKey)
-      && !event.altKey
-      && !event.shiftKey
+    const control = (event.ctrlKey || event.metaKey) && !event.altKey
+    const withModifier = control && !event.shiftKey
+
+    // Left panel on Ctrl+B, right panel on Ctrl+Shift+B: the pair mirrors
+    // where each one sits on screen.
+    if (control && event.key.toLowerCase() === 'b') {
+      event.preventDefault()
+      if (event.shiftKey) {
+        handlers.toggleOrderBookPanel()
+      } else {
+        handlers.toggleMarketPanel()
+      }
+      return
+    }
 
     if (withModifier && event.key.toLowerCase() === 't') {
       event.preventDefault()

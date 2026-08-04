@@ -1,7 +1,68 @@
-.order-book .panel-header > div {
+/*
+ * Title and controls do not share a line: together they asked for more width
+ * than the 232px panel has, and truncating the panel's own name to fit reads
+ * as a defect. The controls get their own row instead.
+ */
+.order-book .panel-header {
+  justify-content: space-between;
+}
+
+.book-controls {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 9px 6px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.book-views {
+  display: flex;
   gap: 2px;
+}
+
+.book-views button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.book-views button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.book-views button:hover {
+  background: var(--hover-bg);
+  color: var(--text-strong);
+}
+
+/*
+ * The active side carries its own colour: choosing "somente venda" should look
+ * like the red half of the book, not like a generic selected button.
+ */
+.book-views button.active {
+  border-color: var(--border);
+  background: var(--selected-bg);
+  color: var(--text-strong);
+}
+
+.book-views button.asks.active {
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red);
+}
+
+.book-views button.bids.active {
+  border-color: color-mix(in srgb, var(--green) 45%, var(--border));
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  color: var(--green);
 }
 
 .book-aggregation {
