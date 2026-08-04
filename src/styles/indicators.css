@@ -256,7 +256,7 @@
   align-items: center;
   flex-shrink: 0;
   align-self: center;
-  color: var(--positive);
+  color: var(--green);
 }
 
 .indicator-option-applied svg {
@@ -271,7 +271,7 @@
 }
 
 .indicator-option.on-chart {
-  border-color: color-mix(in srgb, var(--positive) 26%, transparent);
+  border-color: color-mix(in srgb, var(--green) 26%, transparent);
 }
 
 .indicator-option.on-chart .indicator-option-title strong {
@@ -364,16 +364,16 @@
  * through opacity: a destructive action that is hard to see is a trap.
  */
 .indicator-inline-actions .indicator-destructive {
-  border-color: color-mix(in srgb, var(--negative) 42%, var(--border));
-  background: color-mix(in srgb, var(--negative) 10%, var(--control-bg));
-  color: color-mix(in srgb, var(--negative) 78%, var(--text-strong));
+  border-color: color-mix(in srgb, var(--red) 42%, var(--border));
+  background: color-mix(in srgb, var(--red) 10%, var(--control-bg));
+  color: color-mix(in srgb, var(--red) 78%, var(--text-strong));
   font-weight: 500;
 }
 
 .indicator-inline-actions .indicator-destructive:hover {
-  border-color: var(--negative);
-  background: color-mix(in srgb, var(--negative) 20%, var(--control-bg));
-  color: var(--negative);
+  border-color: var(--red);
+  background: color-mix(in srgb, var(--red) 20%, var(--control-bg));
+  color: var(--red);
 }
 
 .indicator-inline-actions button,

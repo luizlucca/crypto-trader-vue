@@ -7,6 +7,7 @@ import type {
   OrderBookSnapshot,
   StreamStatus,
 } from '@shared/types/market'
+import { ORDER_BOOK_ROWS_PER_SIDE } from '@shared/domain/orderBook'
 import type {
   ConnectionState,
   ConnectionStateName,
@@ -14,9 +15,6 @@ import type {
 } from './provider'
 
 type StreamName = 'candles' | 'orderbook'
-
-/** Rows the interface shows per side; the provider fills exactly this many. */
-const ORDER_BOOK_ROWS_PER_SIDE = 10
 
 export class MarketSession {
   private candleSubscription: Subscription | undefined

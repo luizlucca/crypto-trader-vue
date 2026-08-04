@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Search, Star } from '@lucide/vue'
+import { PanelLeft, Search, Star } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { selectTop } from '@/domain/topSelection'
 import { favoriteKey } from '@/services/favorites'
+import { setMarketPanelVisible } from '@/services/workspacePanels'
 import {
   formatMarketPercent,
   formatMarketPrice,
@@ -118,7 +119,18 @@ function selectSymbol(event: MouseEvent, symbol: MarketPair): void {
 <template>
   <aside class="market-sidebar">
     <section class="sidebar-section market-section">
-      <h2>MERCADO</h2>
+      <div class="sidebar-title">
+        <h2>MERCADO</h2>
+        <button
+          aria-label="Ocultar Mercado"
+          class="panel-hide"
+          title="Ocultar Mercado (Ctrl+B)"
+          type="button"
+          @click="setMarketPanelVisible(false)"
+        >
+          <PanelLeft aria-hidden="true" />
+        </button>
+      </div>
       <label class="search-field">
         <Search aria-hidden="true" />
         <input

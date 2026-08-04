@@ -549,3 +549,59 @@ html[data-theme] .symbol-table-row.selected {
     font-size: 10.5px;
   }
 }
+
+/*
+ * Panel visibility controls.
+ *
+ * `panel-hide` lives inside the panel it closes and stays quiet until the
+ * pointer is nearby — it is an escape hatch, not a feature to advertise.
+ * `panel-restore` is the opposite: it only exists while its panel is gone, so
+ * it has to be found immediately, at the edge the panel left free.
+ */
+.panel-hide {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: .55;
+  transition: opacity .12s ease;
+}
+
+.panel-hide svg {
+  width: 14px;
+  height: 14px;
+}
+
+.panel-hide:hover,
+.panel-hide:focus-visible {
+  border-color: var(--border);
+  background: var(--hover-bg);
+  color: var(--text-strong);
+  opacity: 1;
+}
+
+.market-sidebar:hover .panel-hide,
+.order-book:hover .panel-hide {
+  opacity: 1;
+}
+
+.chart-toolbar .panel-restore {
+  color: var(--accent);
+}
+
+.chart-toolbar .panel-restore:hover {
+  background: var(--accent-soft);
+}
+
+.sidebar-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}

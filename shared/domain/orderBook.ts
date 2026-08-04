@@ -1,3 +1,17 @@
+/**
+ * Rows the provider fills per side.
+ *
+ * The interface shows ten of each when both sides are visible, and twice that
+ * when one side has the panel to itself. The provider aggregates from up to
+ * four thousand raw levels either way, so asking for the larger number costs
+ * nothing but the slice — and asking per emission would mean an IPC round trip
+ * every time the view changes.
+ */
+export const ORDER_BOOK_ROWS_PER_SIDE = 20
+
+/** Rows shown per side while both sides share the panel. */
+export const ORDER_BOOK_ROWS_BOTH_SIDES = 10
+
 import type { OrderBookLevel } from '../types/market'
 
 export type OrderBookSide = 'ask' | 'bid'
