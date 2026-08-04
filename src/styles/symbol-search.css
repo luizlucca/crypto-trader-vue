@@ -255,9 +255,16 @@
   margin: 0;
   padding: 9px 22px;
   color: color-mix(in srgb, var(--warning) 80%, var(--chart-text));
-  background: rgba(210, 147, 43, .08);
-  border-bottom: 1px solid rgba(210, 147, 43, .2);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--warning) 20%, transparent);
   font-size: 11.5px;
+}
+
+/* Nothing loaded at all, as opposed to a stale list that still reads. */
+.symbol-catalog-warning.error {
+  color: color-mix(in srgb, var(--red) 80%, var(--chart-text));
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--red) 20%, transparent);
 }
 
 .symbol-table-grid {

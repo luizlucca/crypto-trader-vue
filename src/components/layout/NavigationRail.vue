@@ -41,6 +41,7 @@ const emit = defineEmits<{
     <button
       :aria-expanded="settingsOpen"
       :class="{ active: settingsOpen }"
+      aria-controls="general-settings-panel"
       aria-label="Configurações"
       title="Configurações"
       type="button"

@@ -240,6 +240,7 @@
   align-items: center;
   gap: 16px;
   height: 24px;
+  overflow: hidden;
   padding: 0 12px;
   border-top: 1px solid var(--border);
   background: var(--bg);
@@ -279,8 +280,19 @@
   background: var(--red);
 }
 
+/*
+ * The text here is a provider error message, of no bounded length. Left to
+ * grow it pushed the tab and selection readout off the far end of the bar.
+ * Block display is what makes the ellipsis apply: `.status-bar > span` is a
+ * flex container, and a flex container does not clip its own anonymous text.
+ */
 .status-error {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
   color: color-mix(in srgb, var(--accent-contrast) 20%, var(--red));
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-spacer {

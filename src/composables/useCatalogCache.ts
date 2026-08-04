@@ -20,25 +20,50 @@ export function catalogKey(scope: CatalogScope): string {
 export function useCatalogCache() {
   const catalogs = shallowRef(new Map<string, MarketCatalog>())
   const loadingKeys = shallowRef(new Set<string>())
+  const failedKeys = shallowRef(new Set<string>())
   const inFlight = new Map<string, Promise<MarketCatalog>>()
 
-  function setLoading(key: string, loading: boolean): void {
-    const next = new Set(loadingKeys.value)
-    if (loading) {
+  function toggled(
+    source: Set<string>,
+    key: string,
+    member: boolean,
+  ): Set<string> {
+    const next = new Set(source)
+    if (member) {
       next.add(key)
     } else {
       next.delete(key)
     }
-    loadingKeys.value = next
+    return next
+  }
+
+  function setLoading(key: string, loading: boolean): void {
+    loadingKeys.value = toggled(loadingKeys.value, key, loading)
+  }
+
+  function setFailed(key: string, failed: boolean): void {
+    failedKeys.value = toggled(failedKeys.value, key, failed)
   }
 
   function get(scope: CatalogScope): MarketCatalog | null {
     return catalogs.value.get(catalogKey(scope)) ?? null
   }
 
+  /**
+   * A market nobody ever asked for reads as loading, because that is what the
+   * caller is about to do. A market whose load failed does not: it would leave
+   * the list spinning forever on a request that will never arrive.
+   */
   function isLoading(scope: CatalogScope): boolean {
     const key = catalogKey(scope)
-    return loadingKeys.value.has(key) || !catalogs.value.has(key)
+    return loadingKeys.value.has(key)
+      || (!catalogs.value.has(key) && !failedKeys.value.has(key))
+  }
+
+  /** Failed with nothing to fall back on. A stale list still reads. */
+  function hasFailed(scope: CatalogScope): boolean {
+    const key = catalogKey(scope)
+    return failedKeys.value.has(key) && !catalogs.value.has(key)
   }
 
   async function ensure(
@@ -58,6 +83,8 @@ export function useCatalogCache() {
     }
 
     setLoading(key, true)
+    // A fresh attempt retires the previous verdict, whatever it was.
+    setFailed(key, false)
     const request = loadMarketCatalog(
       scope.provider,
       scope.market,
@@ -71,6 +98,11 @@ export function useCatalogCache() {
       next.set(key, catalog)
       catalogs.value = next
       return catalog
+    } catch (error) {
+      if (inFlight.get(key) === request) {
+        setFailed(key, true)
+      }
+      throw error
     } finally {
       // Only the request that still owns the slot may clear it: a forced
       // refresh may have replaced this one in the meantime.
@@ -81,5 +113,5 @@ export function useCatalogCache() {
     }
   }
 
-  return { get, isLoading, ensure }
+  return { get, isLoading, hasFailed, ensure }
 }

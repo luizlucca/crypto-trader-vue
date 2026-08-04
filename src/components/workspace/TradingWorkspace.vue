@@ -60,6 +60,7 @@ const {
 
 const symbols = computed(() => catalog.get(selection.value)?.items ?? [])
 const symbolsLoading = computed(() => catalog.isLoading(selection.value))
+const symbolsFailed = computed(() => catalog.hasFailed(selection.value))
 const workspaceStyle = computed(() => ({
   '--market-sidebar-width': `${sidebarWidth.value}px`,
 }))
@@ -183,6 +184,7 @@ onBeforeUnmount(() => {
       <MarketSidebar
         v-if="marketPanelVisible"
         :connection-state="activeTab.status"
+        :failed="symbolsFailed"
         :favorite-keys="favoriteKeys"
         :loading="symbolsLoading"
         :selection="selection"
@@ -238,7 +240,12 @@ onBeforeUnmount(() => {
         Latência:
         <StreamLatencyText :session-id="activeTab.id" />
       </span>
-      <span v-if="activeTab.statusMessage" class="status-error">
+      <span
+        v-if="activeTab.statusMessage"
+        class="status-error"
+        role="status"
+        :title="activeTab.statusMessage"
+      >
         {{ activeTab.statusMessage }}
       </span>
       <span class="status-spacer" />

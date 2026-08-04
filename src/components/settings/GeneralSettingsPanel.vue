@@ -76,6 +76,9 @@ const editingTheme = ref(false)
 const pendingDelete = ref<CustomThemeId | null>(null)
 const panel = ref<HTMLElement | null>(null)
 const resizeFrame = ref<HTMLElement | null>(null)
+/** The geometry the user chose, kept whole even when it no longer fits. */
+let preferredRect: WindowRect | undefined
+/** The clamped geometry actually on screen. */
 let currentRect: WindowRect | undefined
 let operation: PointerOperation | undefined
 let animationFrame = 0
@@ -177,7 +180,9 @@ function loadWindowRect(): WindowRect {
     ) {
       return defaultWindowRect()
     }
-    return clampWindowRect(stored as WindowRect)
+    // Returned unclamped: this is the preference, and the current viewport
+    // decides how much of it is shown, not how much of it is remembered.
+    return stored as WindowRect
   } catch {
     return defaultWindowRect()
   }
@@ -207,10 +212,15 @@ function applyWindowRect(rect: WindowRect): void {
   panel.value.style.bottom = 'auto'
 }
 
-function resetWindowRect(): void {
-  const rect = defaultWindowRect()
-  applyWindowRect(rect)
+/** Records a geometry the user asked for and shows as much of it as fits. */
+function commitWindowRect(rect: WindowRect): void {
+  preferredRect = rect
+  applyWindowRect(clampWindowRect(rect))
   persistWindowRect(rect)
+}
+
+function resetWindowRect(): void {
+  commitWindowRect(defaultWindowRect())
 }
 
 function panelRect(): WindowRect {
@@ -375,16 +385,15 @@ function showResizeFrame(rect: WindowRect): void {
   )
 }
 
-function finishPointerOperation(event: PointerEvent): void {
-  if (!operation || event.pointerId !== operation.pointerId) {
+/** Undoes everything `startPointerOperation` put in place, in either exit. */
+function releasePointerOperation(): void {
+  if (!operation) {
     return
   }
   if (animationFrame) {
     cancelAnimationFrame(animationFrame)
     animationFrame = 0
-    renderPointerOperation()
   }
-  const finalRect = operation.nextRect
   if (operation.captureTarget.hasPointerCapture(operation.pointerId)) {
     operation.captureTarget.releasePointerCapture(operation.pointerId)
   }
@@ -399,38 +408,34 @@ function finishPointerOperation(event: PointerEvent): void {
   window.removeEventListener('pointermove', handlePointerMove)
   window.removeEventListener('pointerup', finishPointerOperation)
   window.removeEventListener('pointercancel', finishPointerOperation)
-  applyWindowRect(finalRect)
-  persistWindowRect(finalRect)
 }
 
-function cancelPointerOperation(): void {
-  if (!operation) {
+function finishPointerOperation(event: PointerEvent): void {
+  if (!operation || event.pointerId !== operation.pointerId) {
     return
   }
-  panel.value?.classList.remove(`is-${operation.kind}`)
-  if (panel.value) {
-    panel.value.style.transform = ''
-  }
-  if (resizeFrame.value) {
-    resizeFrame.value.hidden = true
-  }
-  operation = undefined
   if (animationFrame) {
+    // The last move may still be pending: render it so the committed rect is
+    // the one under the pointer, not the one from the previous frame.
     cancelAnimationFrame(animationFrame)
     animationFrame = 0
+    renderPointerOperation()
   }
-  window.removeEventListener('pointermove', handlePointerMove)
-  window.removeEventListener('pointerup', finishPointerOperation)
-  window.removeEventListener('pointercancel', finishPointerOperation)
+  const finalRect = operation.nextRect
+  releasePointerOperation()
+  commitWindowRect(finalRect)
 }
 
 function handleViewportResize(): void {
   if (!props.open || operation) {
     return
   }
-  const rect = clampWindowRect(currentRect ?? panelRect())
-  applyWindowRect(rect)
-  persistWindowRect(rect)
+  // Re-fit only. Persisting the clamped rect here would let a narrowed app
+  // window overwrite the geometry the user chose, and widening it again would
+  // not bring it back — the same rule `useResizableSidebar` follows.
+  applyWindowRect(clampWindowRect(
+    preferredRect ?? currentRect ?? panelRect(),
+  ))
 }
 
 function handleWindowKey(event: KeyboardEvent): void {
@@ -453,11 +458,14 @@ watch(
   (open) => {
     if (open) {
       void nextTick(() => {
-        applyWindowRect(clampWindowRect(currentRect ?? loadWindowRect()))
+        if (!preferredRect) {
+          preferredRect = loadWindowRect()
+        }
+        applyWindowRect(clampWindowRect(preferredRect))
         panel.value?.focus()
       })
     } else {
-      cancelPointerOperation()
+      releasePointerOperation()
     }
   },
 )
@@ -468,13 +476,12 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  cancelPointerOperation()
+  // The pointer listeners only exist while an operation does, and
+  // `releasePointerOperation` owns them.
+  releasePointerOperation()
   window.clearTimeout(deleteConfirmationTimer)
   window.removeEventListener('keydown', handleWindowKey)
   window.removeEventListener('resize', handleViewportResize)
-  window.removeEventListener('pointermove', handlePointerMove)
-  window.removeEventListener('pointerup', finishPointerOperation)
-  window.removeEventListener('pointercancel', finishPointerOperation)
 })
 </script>
 
@@ -485,11 +492,17 @@ onBeforeUnmount(() => {
       class="settings-panel-layer"
       role="presentation"
     >
+      <!--
+        Non-modal on purpose: the layer below lets pointer events through so
+        the chart stays usable. No `aria-modal`, and no focus trap — either
+        would claim the rest of the app is inert when it is not.
+      -->
       <aside
         id="general-settings-panel"
         ref="panel"
         aria-label="Configurações gerais"
         class="settings-panel"
+        role="dialog"
         tabindex="-1"
         @keydown="handlePanelKey"
       >
@@ -592,8 +605,13 @@ onBeforeUnmount(() => {
                   <Plus aria-hidden="true" />
                   Criar tema
                 </button>
-                <div class="theme-mode-switch" aria-label="Luminosidade do tema">
+                <div
+                  class="theme-mode-switch"
+                  aria-label="Luminosidade do tema"
+                  role="group"
+                >
                   <button
+                    :aria-pressed="appTheme === 'dark'"
                     :class="{ active: appTheme === 'dark' }"
                     type="button"
                     @click="setTheme('dark')"
@@ -602,6 +620,7 @@ onBeforeUnmount(() => {
                     Escuro
                   </button>
                   <button
+                    :aria-pressed="appTheme === 'light'"
                     :class="{ active: appTheme === 'light' }"
                     type="button"
                     @click="setTheme('light')"
@@ -695,13 +714,18 @@ onBeforeUnmount(() => {
           </section>
         </div>
 
+        <!--
+          Pointer-only affordances: unreachable by keyboard, and the panel is
+          already resettable from its header button. Announcing eight controls
+          named after a compass point would be noise, not access.
+        -->
         <button
           v-for="edge in ([
             'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw',
           ] as ResizeEdge[])"
           :key="edge"
-          :aria-label="`Redimensionar janela: ${edge}`"
           :class="`edge-${edge}`"
+          aria-hidden="true"
           class="settings-resize-handle"
           tabindex="-1"
           type="button"

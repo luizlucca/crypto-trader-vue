@@ -135,6 +135,7 @@ onBeforeUnmount(() => {
   <main class="symbol-search-window">
     <SymbolSearchModal
       :cached="catalog?.cached ?? false"
+      :error="errorMessage"
       :expires-at="catalog?.expiresAt ?? 0"
       :favorite-keys="favoriteKeys"
       :initial-query="initialQuery"
@@ -149,7 +150,7 @@ onBeforeUnmount(() => {
       :title="intent === 'new-tab'
         ? 'Selecionar ativo para nova aba'
         : 'Selecionar par de moedas'"
-      :warning="catalog?.warning || errorMessage"
+      :warning="catalog?.warning"
       @close="close"
       @favorite="toggleFavorite"
       @refresh="loadCatalog(true)"

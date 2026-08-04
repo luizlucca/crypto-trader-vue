@@ -206,20 +206,29 @@ export function useWorkspaceTabs(
   ): Promise<void> {
     const generation = beginTransition(tab, 'session')
 
-    await stopMarketStream(tab.id)
-    if (!stillOwns(tab, generation)) {
-      return
+    // Everything awaited runs inside the try: the tab is already showing
+    // "connecting", so a rejection anywhere here has to land on its status
+    // instead of leaving it stuck on a transition that never completes.
+    try {
+      await stopMarketStream(tab.id)
+      if (!stillOwns(tab, generation)) {
+        return
+      }
+      Object.assign(tab.selection, patch)
+      if (
+        patch.symbol !== undefined
+        || patch.market !== undefined
+        || patch.priceTickSize !== undefined
+      ) {
+        tab.orderBookAggregation = tab.selection.priceTickSize
+      }
+      tab.renderRevision += 1
+      await startSession(tab, generation)
+    } catch (error) {
+      if (stillOwns(tab, generation)) {
+        reportError(tab, error)
+      }
     }
-    Object.assign(tab.selection, patch)
-    if (
-      patch.symbol !== undefined
-      || patch.market !== undefined
-      || patch.priceTickSize !== undefined
-    ) {
-      tab.orderBookAggregation = tab.selection.priceTickSize
-    }
-    tab.renderRevision += 1
-    await startSession(tab, generation)
   }
 
   async function changeMarket(market: Market): Promise<void> {
@@ -231,13 +240,13 @@ export function useWorkspaceTabs(
     const generation = beginTransition(tab, 'session')
     void window.cryptoPro?.windows.closeSymbolSearch()
 
-    await stopMarketStream(tab.id)
-    if (!stillOwns(tab, generation)) {
-      return
-    }
-    tab.selection.market = market
-
     try {
+      await stopMarketStream(tab.id)
+      if (!stillOwns(tab, generation)) {
+        return
+      }
+      tab.selection.market = market
+
       const catalog = await ensureCatalog(tab.selection)
       if (!stillOwns(tab, generation)) {
         return

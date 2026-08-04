@@ -98,10 +98,42 @@ describe('catalog cache', () => {
 
     await expect(cache.ensure(futures)).rejects.toThrow('Binance indisponível')
 
-    // Still "loading" because no catalog was ever stored, but the in-flight
-    // slot must be free so the next attempt actually reaches the provider.
+    // A failure is a resting state, not a load still under way: the list has
+    // to stop spinning on a request that will never arrive.
+    expect(cache.isLoading(futures)).toBe(false)
+    expect(cache.hasFailed(futures)).toBe(true)
+
+    // The in-flight slot must be free so the next attempt reaches the provider.
     await expect(cache.ensure(futures)).rejects.toThrow()
     expect(getCatalog).toHaveBeenCalledTimes(2)
+  })
+
+  it('retires the failure once a retry succeeds', async () => {
+    const getCatalog = stubCatalogTransport()
+    getCatalog.mockRejectedValueOnce(new Error('Binance indisponível'))
+    getCatalog.mockResolvedValue(catalog('recuperada'))
+    const cache = useCatalogCache()
+
+    await expect(cache.ensure(futures)).rejects.toThrow()
+    await cache.ensure(futures)
+
+    expect(cache.hasFailed(futures)).toBe(false)
+    expect(cache.isLoading(futures)).toBe(false)
+    expect(cache.get(futures)?.warning).toBe('recuperada')
+  })
+
+  it('keeps a usable list when only the refresh fails', async () => {
+    const getCatalog = stubCatalogTransport()
+    getCatalog.mockResolvedValueOnce(catalog('primeira'))
+    getCatalog.mockRejectedValue(new Error('Binance indisponível'))
+    const cache = useCatalogCache()
+
+    await cache.ensure(futures)
+    await expect(cache.ensure(futures, true)).rejects.toThrow()
+
+    // The cached catalog still answers, so the sidebar has something to show.
+    expect(cache.hasFailed(futures)).toBe(false)
+    expect(cache.get(futures)?.warning).toBe('primeira')
   })
 
   it('does not let one market fill another market entry', async () => {

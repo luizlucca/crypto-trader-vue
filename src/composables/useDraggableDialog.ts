@@ -82,15 +82,17 @@ export function useDraggableDialog(options: DraggableDialogOptions = {}) {
   }
 
   function stop(): void {
+    // Also the unmount hook, where no drag is in flight: committing then would
+    // write the untouched `nextLeft`/`nextTop` of 0 over the panel's position.
+    if (pointerId === undefined) {
+      return
+    }
     if (frame) {
       cancelAnimationFrame(frame)
       frame = 0
     }
     commitPosition()
-    if (
-      pointerId !== undefined
-      && captureTarget?.hasPointerCapture(pointerId)
-    ) {
+    if (captureTarget?.hasPointerCapture(pointerId)) {
       captureTarget.releasePointerCapture(pointerId)
     }
     pointerId = undefined

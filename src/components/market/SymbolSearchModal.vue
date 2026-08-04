@@ -43,7 +43,10 @@ const props = defineProps<{
   expiresAt: number
   cached: boolean
   stale: boolean
+  /** Provider-side note: the list reads, but came from a stale cache. */
   warning?: string
+  /** The load itself failed. Whether any list survives depends on `items`. */
+  error?: string
 }>()
 
 const emit = defineEmits<{
@@ -140,6 +143,53 @@ const visibleRows = computed(() => {
   return rows
 })
 const virtualHeight = computed(() => resultCount.value * ROW_HEIGHT)
+
+/** Points the combobox at the row Enter would select. */
+const activeRowId = computed(() => (
+  resultCount.value > 0 ? rowElementId(activeIndex.value) : undefined
+))
+
+function rowElementId(resultIndex: number): string {
+  return `symbol-result-${resultIndex}`
+}
+
+interface CatalogNotice {
+  text: string
+  className: string
+  role?: 'alert'
+}
+
+/**
+ * A failed refresh over a list that is still on screen is not the same event as
+ * a catalog that never loaded. Both used to render as "showing the last cache",
+ * which was plainly false when there was no cache to show.
+ */
+const catalogNotice = computed<CatalogNotice | null>(() => {
+  if (props.error && props.items.length === 0) {
+    return {
+      text: `Não foi possível carregar o catálogo: ${props.error}`,
+      className: 'symbol-catalog-warning error',
+      role: 'alert',
+    }
+  }
+  if (props.error) {
+    return {
+      text: `A atualização falhou. Exibindo os últimos dados carregados: ${
+        props.error
+      }`,
+      className: 'symbol-catalog-warning',
+    }
+  }
+  if (props.warning) {
+    return {
+      text: `A Binance não respondeu à atualização. Exibindo o último cache: ${
+        props.warning
+      }`,
+      className: 'symbol-catalog-warning',
+    }
+  }
+  return null
+})
 
 const cacheLabel = computed(() => {
   if (!props.loadedAt) {
@@ -415,9 +465,11 @@ onBeforeUnmount(() => {
           <Search aria-hidden="true" />
           <input
             ref="queryInput"
+            :aria-activedescendant="activeRowId"
             aria-autocomplete="list"
             aria-controls="symbol-results"
             aria-expanded="true"
+            aria-label="Buscar par de moedas"
             autocomplete="off"
             placeholder="Buscar BTC, ETH/USDT…"
             role="combobox"
@@ -428,7 +480,11 @@ onBeforeUnmount(() => {
             @keydown.up.prevent="moveActiveRow(-1)"
           >
         </label>
-        <div class="symbol-search-help" aria-label="Atalhos de teclado">
+        <div
+          class="symbol-search-help"
+          aria-label="Atalhos de teclado"
+          role="group"
+        >
           <span><kbd>↑</kbd><kbd>↓</kbd> navegar</span>
           <span><kbd>Enter</kbd> selecionar</span>
           <span><kbd>Esc</kbd> fechar</span>
@@ -462,13 +518,16 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <p v-if="warning" class="symbol-catalog-warning">
-      A Binance não respondeu à atualização. Exibindo o último cache:
-      {{ warning }}
+    <p
+      v-if="catalogNotice"
+      :class="catalogNotice.className"
+      :role="catalogNotice.role"
+    >
+      {{ catalogNotice.text }}
     </p>
 
     <div class="symbol-table-header symbol-table-grid">
-      <span aria-label="Favorito" />
+      <span />
       <button type="button" @click="changeSort('symbol')">
         Par{{ sortIndicator('symbol') }}
       </button>
@@ -499,9 +558,11 @@ onBeforeUnmount(() => {
       >
         <div
           v-for="row in visibleRows"
+          :id="rowElementId(row.index)"
           :key="`${row.item.market}:${row.item.symbol}`"
           v-memo="[
             row.item,
+            row.index,
             row.index === activeIndex,
             row.item.symbol === selectedSymbol,
             row.favorite,

@@ -36,18 +36,23 @@ function streamStatusLabel(tab: WorkspaceTab): string {
 
 <template>
   <nav class="instrument-tabs" aria-label="Abas de mercado">
-    <div class="instrument-tab-scroll">
+    <div class="instrument-tab-scroll" role="tablist">
+      <!--
+        The wrapper only groups the two buttons; leaving it transparent keeps
+        the focusable button as the tab the tablist owns.
+      -->
       <div
         v-for="tab in tabs"
         :key="tab.id"
-        :aria-selected="tab.id === activeTabId"
         class="instrument-tab"
         :class="{ active: tab.id === activeTabId }"
-        role="tab"
+        role="presentation"
         @auxclick="closeOnMiddleClick($event, tab.id)"
       >
         <button
+          :aria-selected="tab.id === activeTabId"
           class="instrument-tab-main"
+          role="tab"
           type="button"
           @click="emit('activate', tab.id)"
         >
@@ -56,6 +61,7 @@ function streamStatusLabel(tab: WorkspaceTab): string {
             :class="tab.orderBookState"
             :title="streamStatusLabel(tab)"
             :aria-label="streamStatusLabel(tab)"
+            role="img"
           />
           <span>
             <strong>{{ workspaceTabLabel(tab) }}</strong>

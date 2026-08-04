@@ -59,6 +59,18 @@ sessões longas).
   aplica conteúdo ao soltar, após contorno leve.
 - `ThemePresetPreview.vue` usa a palette do próprio tema na miniatura.
 
+### A geometria guardada é a escolhida, não a que coube
+
+O painel guarda dois retângulos: o que o usuário escolheu e o que cabe na tela
+agora. Só arrastar, redimensionar e restaurar gravam no `localStorage`;
+estreitar a janela do app apenas reencaixa o painel dentro do que sobrou.
+
+Gravar o retângulo já recortado a cada evento de `resize` fazia duas coisas
+erradas ao mesmo tempo: escrevia no `localStorage` a cada quadro de um gesto de
+redimensionar a janela, e apagava para sempre o tamanho escolhido — voltar a
+alargar a janela não trazia o painel de volta ao que era. É a mesma regra que
+`useResizableSidebar` já seguia para a largura do painel de mercados.
+
 Fontes de verdade: `src/services/theme*.ts` e
 `src/components/settings/`.
 
@@ -78,6 +90,7 @@ Fontes de verdade: `src/services/theme*.ts` e
 - [ ] Transparência não prejudica legibilidade de texto/preço.
 - [ ] Abrir, mover ou redimensionar configurações não gera lag em gráfico/livro.
 - [ ] Geometria é restaurada dentro dos limites da tela.
+- [ ] Estreitar e alargar a janela do app devolve o painel ao tamanho escolhido.
 
 ## Evolução
 

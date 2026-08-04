@@ -25,6 +25,8 @@ const props = defineProps<{
   symbols: MarketPair[]
   favoriteKeys: Set<string>
   loading: boolean
+  /** The catalog failed and left nothing to show. */
+  failed: boolean
   connectionState: StreamStatus['state']
 }>()
 
@@ -196,6 +198,13 @@ function selectSymbol(event: MouseEvent, symbol: MarketPair): void {
       </div>
       <div class="market-list">
         <div v-if="loading" class="market-loading">Carregando símbolos…</div>
+        <div
+          v-else-if="failed"
+          class="market-loading market-list-error"
+          role="alert"
+        >
+          Não foi possível carregar os símbolos
+        </div>
         <template v-else>
           <button
             v-for="item in visibleSymbols"
@@ -227,7 +236,10 @@ function selectSymbol(event: MouseEvent, symbol: MarketPair): void {
             </span>
           </button>
         </template>
-        <div v-if="!loading && visibleSymbols.length === 0" class="market-loading">
+        <div
+          v-if="!loading && !failed && visibleSymbols.length === 0"
+          class="market-loading"
+        >
           Nenhum ativo encontrado
         </div>
       </div>

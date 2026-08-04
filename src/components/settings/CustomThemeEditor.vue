@@ -142,8 +142,13 @@ function save(): void {
           <strong>Variante de cores</strong>
           <small>Configure claro e escuro antes de salvar</small>
         </div>
-        <div class="theme-mode-switch">
+        <div
+          class="theme-mode-switch"
+          aria-label="Variante de cores em edição"
+          role="group"
+        >
           <button
+            :aria-pressed="editingMode === 'dark'"
             :class="{ active: editingMode === 'dark' }"
             type="button"
             @click="editingMode = 'dark'"
@@ -152,6 +157,7 @@ function save(): void {
             Escuro
           </button>
           <button
+            :aria-pressed="editingMode === 'light'"
             :class="{ active: editingMode === 'light' }"
             type="button"
             @click="editingMode = 'light'"

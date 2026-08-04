@@ -138,6 +138,12 @@
   min-height: 68px;
   color: color-mix(in srgb, var(--selected-bg) 60%, var(--text-strong));
   font-size: 11px;
+  text-align: center;
+}
+
+.market-list-error {
+  padding-inline: 10px;
+  color: color-mix(in srgb, var(--red) 75%, var(--text));
 }
 
 .market-table {
