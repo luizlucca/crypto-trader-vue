@@ -50,11 +50,3 @@ export function saveFavoriteKeys(keys: ReadonlySet<string>): void {
     // Favorites remain available for the current session when storage is denied.
   }
 }
-
-export function belongsToMarket(
-  key: string,
-  provider: string,
-  market: Market,
-): boolean {
-  return key.startsWith(`${provider}:${market}:`.toLowerCase())
-}

@@ -29,6 +29,7 @@ import { useWorkspaceTabs } from '@/composables/useWorkspaceTabs'
 import {
   MAX_WORKSPACE_TABS,
   sessionStatusLabel,
+  workspaceTabLabel,
   type WorkspaceTab,
 } from '@/domain/workspace'
 
@@ -195,7 +196,16 @@ onBeforeUnmount(() => {
         :min="SIDEBAR_MIN_WIDTH"
         @commit="persistSidebarWidth"
       />
-      <section class="chart-workspace panel">
+      <!--
+        The chart is the panel the tab strip controls. Named and labelled so
+        the tablist above it points at something instead of at nothing.
+      -->
+      <section
+        :id="`chart-panel-${activeTab.id}`"
+        :aria-label="`Gráfico de ${workspaceTabLabel(activeTab)}`"
+        class="chart-workspace panel"
+        role="tabpanel"
+      >
         <WorkspaceTabs
           :active-tab-id="activeTab.id"
           :max-tabs="MAX_WORKSPACE_TABS"

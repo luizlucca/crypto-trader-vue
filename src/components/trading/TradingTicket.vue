@@ -1,4 +1,10 @@
 <script setup lang="ts">
+/**
+ * Scaffolding, not a feature. Every number in the template is hardcoded and no
+ * control does anything: there is no order path behind it yet. Stated here
+ * because it reads as working software on screen, and nobody should trade
+ * against what it shows.
+ */
 import type { MarketSelection } from '@shared/types/market'
 
 defineProps<{ selection: MarketSelection }>()

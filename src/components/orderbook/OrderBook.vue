@@ -147,8 +147,14 @@ function renderRows(
     if (!row) {
       return
     }
+    /*
+     * When fewer levels arrive than there are rows, the blanks belong away
+     * from the mid price. The ask side is drawn bottom-up, so it is shifted by
+     * the missing count: the best ask stays against the spread and the gap
+     * opens at the top, instead of a hole between the asks and the mid.
+     */
     const levelIndex = reverse
-      ? visibleLevelCount - 1 - index
+      ? visibleLevelCount - 1 - (index - (rows - visibleLevelCount))
       : index
     const level = levelIndex >= 0 ? levels[levelIndex] : undefined
 

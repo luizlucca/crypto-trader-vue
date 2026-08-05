@@ -26,8 +26,11 @@ sem que bursts do livro atrasem o canvas, troca de aba ou interface.
 
 - `MarketSessionPool` mantém sessões por `sessionId` em processo utilitário;
   candle e livro são observáveis RxJS independentes.
-- O livro Binance usa `depth20@100ms`. `auditTime(16)` limita a entrega IPC
-  ao máximo de uma por frame.
+- O livro Binance mantém um livro local completo a partir do snapshot REST mais
+  o stream de diferenças, e emite só as linhas agregadas que a interface mostra
+  ([F-013](./F-013-profundidade-livro-ordens.md)). O `@depth20` anterior não
+  conseguia encher as linhas nas agregações largas. `auditTime(16)` limita a
+  entrega IPC ao máximo de uma por frame.
 - `OrderBook.vue` retém só o snapshot mais recente e escreve no DOM por
   `requestAnimationFrame`. Referências de linhas são criadas uma vez.
 - `MarketChart.vue` usa `series.update()` para candle realtime; não há render

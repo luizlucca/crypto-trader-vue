@@ -38,7 +38,7 @@ import { ShortPosition } from '@/plugins/lineTools/short-position'
 import { Measure } from '@/plugins/lineTools/measure'
 import { PriceRange } from '@/plugins/lineTools/price-range'
 import { DateRange } from '@/plugins/lineTools/date-range'
-import { RepaintPump } from '@/plugins/lineTools/repaintPump'
+import { RepaintPump } from '@/plugins/repaintPump'
 import type { LogicalPoint } from '@/plugins/lineTools/base-types'
 
 /**
@@ -932,17 +932,6 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       editable(entry.primitive).setSelected?.(true)
       selected.value = entry.drawing
       pump.request()
-      revision.value += 1
-      persist()
-    },
-
-    /** Removes the most recent drawing, the gesture an operator expects. */
-    undo(): void {
-      const entry = mounted.pop()
-      if (!entry) {
-        return
-      }
-      detach(entry.primitive)
       revision.value += 1
       persist()
     },

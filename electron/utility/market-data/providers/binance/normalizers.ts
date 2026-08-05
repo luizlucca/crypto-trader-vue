@@ -258,21 +258,6 @@ export function normalizeKlineEvent(
   }
 }
 
-export function normalizeLevels(rawLevels: string[][]): OrderBookLevel[] {
-  const levels: OrderBookLevel[] = []
-  let cumulative = 0
-  for (const raw of rawLevels) {
-    if (raw.length < 2) {
-      continue
-    }
-    const price = requiredNumber(raw[0], 'depth.price')
-    const quantity = requiredNumber(raw[1], 'depth.quantity')
-    cumulative += quantity
-    levels.push({ price, quantity, total: cumulative })
-  }
-  return levels
-}
-
 function normalizeDeltas(rawLevels: string[][] | undefined): [number, number][] {
   const deltas: [number, number][] = []
   for (const raw of rawLevels ?? []) {
@@ -334,34 +319,6 @@ export function buildOrderBookSnapshot(
     symbol,
     eventTime,
     lastUpdateId,
-    bids,
-    asks,
-    midPrice: hasSpread ? ((bestBid as number) + (bestAsk as number)) / 2 : 0,
-    spread: hasSpread
-      ? Math.max(0, (bestAsk as number) - (bestBid as number))
-      : 0,
-  }
-}
-
-export function normalizeDepthEvent(
-  raw: unknown,
-  market: Market,
-  fallbackSymbol: string,
-  now = Date.now(),
-): OrderBookSnapshot {
-  const event = raw as BinanceDepthEvent
-  const bids = normalizeLevels(event.bids?.length ? event.bids : event.b ?? [])
-  const asks = normalizeLevels(event.asks?.length ? event.asks : event.a ?? [])
-  const bestBid = bids[0]?.price
-  const bestAsk = asks[0]?.price
-  const hasSpread = Number.isFinite(bestBid) && Number.isFinite(bestAsk)
-
-  return {
-    provider,
-    market,
-    symbol: event.s || fallbackSymbol,
-    eventTime: finiteNumber(event.E, now),
-    lastUpdateId: finiteNumber(event.u || event.lastUpdateId),
     bids,
     asks,
     midPrice: hasSpread ? ((bestBid as number) + (bestAsk as number)) / 2 : 0,

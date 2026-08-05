@@ -1,4 +1,9 @@
 <script setup lang="ts">
+/**
+ * Scaffolding, not a feature. These two positions are hardcoded and the close
+ * buttons do nothing: there is no account path behind them yet. Stated here
+ * because it reads as working software on screen.
+ */
 const positions = [
   ['BTC/USDT', 'Long', '0,050 BTC', '66.500,0', '67.842,1', '10x', '332,50', '+66,05', '+1,99%', true],
   ['ETH/USDT', 'Long', '0,500 ETH', '3.550,00', '3.692,14', '10x', '177,50', '+71,31', '+4,01%', true],

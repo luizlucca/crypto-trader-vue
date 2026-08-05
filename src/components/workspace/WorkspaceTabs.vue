@@ -13,6 +13,33 @@ const emit = defineEmits<{
   close: [tabId: string]
 }>()
 
+/**
+ * Arrow-key navigation, as a tablist owes its user.
+ *
+ * With roving tabindex the strip is one stop in the tab order and the arrows
+ * move between the tabs inside it — otherwise reaching the eighth chart means
+ * eight presses of Tab, and a screen reader announces a list whose keys do
+ * nothing.
+ */
+function moveFocus(event: KeyboardEvent, tabs: WorkspaceTab[], index: number): void {
+  const passo = {
+    ArrowRight: 1,
+    ArrowLeft: -1,
+  }[event.key]
+  const destino = passo === undefined
+    ? { Home: 0, End: tabs.length - 1 }[event.key]
+    : (index + passo + tabs.length) % tabs.length
+  if (destino === undefined) {
+    return
+  }
+  event.preventDefault()
+  const alvo = tabs[destino]
+  emit('activate', alvo.id)
+  const strip = (event.currentTarget as HTMLElement).closest('[role="tablist"]')
+  const botoes = strip?.querySelectorAll<HTMLElement>('[role="tab"]')
+  botoes?.[destino]?.focus()
+}
+
 function closeOnMiddleClick(event: MouseEvent, tabId: string): void {
   if (event.button === 1) {
     event.preventDefault()
@@ -42,7 +69,7 @@ function streamStatusLabel(tab: WorkspaceTab): string {
         the focusable button as the tab the tablist owns.
       -->
       <div
-        v-for="tab in tabs"
+        v-for="(tab, index) in tabs"
         :key="tab.id"
         class="instrument-tab"
         :class="{ active: tab.id === activeTabId }"
@@ -50,11 +77,14 @@ function streamStatusLabel(tab: WorkspaceTab): string {
         @auxclick="closeOnMiddleClick($event, tab.id)"
       >
         <button
+          :aria-controls="`chart-panel-${tab.id}`"
           :aria-selected="tab.id === activeTabId"
+          :tabindex="tab.id === activeTabId ? 0 : -1"
           class="instrument-tab-main"
           role="tab"
           type="button"
           @click="emit('activate', tab.id)"
+          @keydown="moveFocus($event, tabs, index)"
         >
           <i
             class="instrument-tab-status"

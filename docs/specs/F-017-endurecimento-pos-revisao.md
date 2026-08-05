@@ -104,19 +104,25 @@ Por consequência para quem opera, não por facilidade de correção.
 
 - [ ] **RV-015** · O tema claro não tem regra morta: as sobrescritas foram
       removidas ou revividas, por decisão explícita.
-- [ ] **RV-016** · A tira de abas navega por setas e declara `tabpanel`.
-- [ ] **RV-017** · Os cabeçalhos de ordenação têm semântica de grid completa.
+- [x] **RV-016** · A tira de abas navega por setas com roving tabindex, declara
+      `aria-controls` e o gráfico é um `tabpanel` nomeado.
+- [x] **RV-017** · A ordenação chega a quem usa leitor de tela. **Não** por
+      semântica de grid: o papel órfão saiu e a informação foi para o nome
+      acessível do botão. Ver a decisão abaixo.
 - [ ] **RV-018** · O editor de temas avisa quando uma cor escolhida fica
       ilegível contra o fundo escolhido.
-- [ ] **RV-019** · O código morto identificado foi removido, cada remoção
-      conferida contra o typecheck.
+- [x] **RV-019** · Removidos `normalizeDepthEvent`, `normalizeLevels`,
+      `belongsToMarket` e `undo()`, cada um conferido contra os quatro portões.
+      `stopAll()` e `size` do pool ficaram: são costura de teste, não código
+      morto.
 - [ ] **RV-020** · `MarketChart.vue` tem as três responsabilidades separáveis
       extraídas, sem mudar a forma do caminho quente.
 - [ ] **RV-021** · A conversão de cor existe num lugar só.
-- [ ] **RV-022** · A F-003 descreve o livro como ele é hoje.
-- [ ] **RV-023** · `repaintPump.ts` é lintado.
-- [ ] **RV-024** · A boleta e o painel de posições declaram que são andaimes.
-- [ ] **RV-025** · O livro alinha os vazios acima das vendas quando chegam
+- [x] **RV-022** · A F-003 descreve o livro como ele é hoje.
+- [x] **RV-023** · `repaintPump.ts` é lintado — movido para fora da pasta do
+      upstream, que é onde ele nunca deveria ter morado.
+- [x] **RV-024** · A boleta e o painel de posições declaram que são andaimes.
+- [x] **RV-025** · O livro alinha os vazios acima das vendas quando chegam
       menos níveis que linhas.
 
 ### Pendências de verificação
@@ -326,6 +332,36 @@ que preserva. Se isso alcança outra view de painel depende de como a biblioteca
 bracketa as próprias passagens, o que não é garantia em que se apoiar. Um
 `save` e um `restore` por pintura — não por banda — são duas operações de pilha
 num caminho que já percorre todas as bandas.
+
+### RV-017 — a semântica que faltava não era a que estava escrita
+
+`aria-sort` pertence a um `columnheader`, e um `columnheader` pertence a uma
+linha dentro de um grid — que esta lista não é: as linhas abaixo são botões
+simples. Declarar o papel mesmo assim deixava o atributo órfão e descartado
+pela tecnologia assistiva, então o estado de ordenação não chegava a ninguém.
+
+Semântica de grid de verdade, no cabeçalho **e** nas linhas, é a correção que
+vale — e meia correção seria pior que a atual. Até lá a informação foi para
+onde é de fato lida: o nome acessível do botão diz por qual coluna se ordena e
+em que sentido.
+
+### RV-023 — o arquivo estava na pasta errada
+
+`repaintPump.ts` é nosso, mas morava em `src/plugins/lineTools/`, que é
+ignorada por inteiro para manter o código de terceiro byte a byte igual ao
+upstream. A exceção negativa no ESLint não funciona dentro de um diretório
+ignorado, e isso apontou o problema real: o arquivo não pertence ali. Movido
+para `src/plugins/`. O lint achou uma linha longa nele no primeiro passe.
+
+### RV-019 — o que saiu e o que ficou
+
+Saíram `normalizeDepthEvent` e `normalizeLevels` — cinquenta linhas da era
+pré-F-013, alcançáveis só pelo próprio teste —, `belongsToMarket`, sem nenhum
+chamador, e `undo()`, uma afordância pretendida e nunca ligada. Se ela for
+desejada, o caminho é ligá-la a `Ctrl+Z`, não ressuscitar o método solto.
+
+`MarketSessionPool.stopAll()` e `size` **ficaram**: são usados por teste, o que
+os torna costura de teste e não código morto.
 
 **Fontes de verdade:** variam por item; cada um aponta o arquivo no
 [documento da revisão](../roadmap/revisao-de-codigo-2026-08.md).

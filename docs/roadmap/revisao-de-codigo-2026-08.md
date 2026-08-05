@@ -14,7 +14,8 @@ commitada em separado.
 [F-017](../specs/F-017-endurecimento-pos-revisao.md), que tem os critérios de
 aceite e o que cada correção descobriu. Onda 1 fechada por inteiro: RV-001 a RV-005, mais as duas pendências de
 verificação. Onda 2 fechada por inteiro: RV-006 a RV-011. Onda 3: RV-012 e RV-013
-fechados; RV-014 adiado com motivo.
+fechados; RV-014 adiado com motivo. Onda 4: RV-016, RV-017, RV-019, RV-022,
+RV-023, RV-024 e RV-025 fechados.
 
 **Este documento é o que sobrou.** O que era correção segura e defensável já
 foi aplicado nos commits acima. Aqui estão os achados que exigem decisão sua:
@@ -349,14 +350,14 @@ deveria ter *substituído* o bloco claro, e pode ser que a intenção seja
 **reviver** essas regras elevando a especificidade. Isso é uma decisão de
 design sobre o tema claro inteiro, não uma limpeza.
 
-### RV-016 · A tira de abas é um tablist incompleto
+### ✅ RV-016 · A tira de abas é um tablist incompleto
 
 O commit `24ef678` moveu `role="tab"` do `div` não focável para o botão e
 acrescentou o `tablist`. Continua faltando `tabpanel`, `aria-controls` e
 navegação por setas com roving tabindex. É um tablist melhor, não um tablist
 correto.
 
-### RV-017 · Cabeçalhos de ordenação sem semântica de tabela
+### ✅ RV-017 · Cabeçalhos de ordenação sem semântica de tabela
 
 `MarketSidebar.vue:176` declara `role="columnheader"` sem nenhum ancestral de
 linha ou tabela, o que deixa o `aria-sort` órfão. A correção honesta é
@@ -371,7 +372,7 @@ no editor — `contrastRatio` já é exportado por `src/domain/readableColor.ts`
 e não uma correção silenciosa, porque as miniaturas existem justamente para
 mostrar o que foi escolhido. É mudança de produto e precisa de spec.
 
-### RV-019 · Código morto identificado
+### ✅ RV-019 · Código morto identificado
 
 Cada remoção precisa de conferência própria: a `CLAUDE.md` registra que apagar
 código aparentemente morto já quebrou o typecheck neste projeto.
@@ -401,24 +402,24 @@ especificação) e suporte a hex de 3 dígitos só em um. Unificar arrastaria um
 serviço para dentro de um módulo de domínio, cruzando a fronteira que o lint
 impõe — por isso ficou.
 
-### RV-022 · F-003 desatualizada
+### ✅ RV-022 · F-003 desatualizada
 
 A linha 23 ainda diz que o livro usa `depth20@100ms`, que a F-013 substituiu
 pelo livro local completo.
 
-### RV-023 · `repaintPump.ts` fora do alcance do ESLint
+### ✅ RV-023 · `repaintPump.ts` fora do alcance do ESLint
 
 É código nosso, mas mora em `src/plugins/lineTools/`, que é ignorado por
 inteiro para manter o código de terceiro byte a byte igual ao upstream. Não é
 lintado nem formatado. Cobrir exige uma exceção negativa no ignore.
 
-### RV-024 · `TradingTicket.vue` e `PositionsPanel.vue` são mockups
+### ✅ RV-024 · `TradingTicket.vue` e `PositionsPanel.vue` são mockups
 
 São os únicos componentes sem caminho de dados real: valores fixos no template
 e controles que não fazem nada. Não é defeito — é andaime — mas convém que
 esteja escrito em algum lugar antes que alguém confie no que eles mostram.
 
-### RV-025 · Livro de ordens com menos níveis que linhas
+### ✅ RV-025 · Livro de ordens com menos níveis que linhas
 
 Quando chegam menos níveis do que há linhas, o lado de venda invertido fica
 alinhado ao topo, deixando os espaços vazios **entre** as vendas e o preço

@@ -38,7 +38,10 @@ export class RepaintPump implements ISeriesPrimitive<Time> {
     this.requestUpdate = undefined
   }
 
-  /** Asks for one frame. Safe to call per pointer move: extra calls coalesce. */
+  /**
+   * Asks for one frame. Safe to call per pointer move: extra calls
+   * coalesce into the frame already requested.
+   */
   request(): void {
     if (this.frame !== 0 || !this.requestUpdate) {
       return

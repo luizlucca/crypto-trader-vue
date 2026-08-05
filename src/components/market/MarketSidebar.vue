@@ -102,11 +102,22 @@ function sortIndicator(key: SidebarSortKey): string {
   return sortDirection.value === 'asc' ? '↑' : '↓'
 }
 
-function ariaSort(key: SidebarSortKey): 'ascending' | 'descending' | 'none' {
+/**
+ * Says the sort in the button's own name.
+ *
+ * `aria-sort` belongs on a `columnheader`, and a `columnheader` belongs inside
+ * a row inside a grid — which this list is not: the rows below are plain
+ * buttons. Declaring the role anyway left the attribute orphaned and dropped by
+ * assistive technology, so the sort state reached nobody. Real grid semantics
+ * across the header *and* the rows is the fix worth doing; until then the
+ * information lives where it is actually read.
+ */
+function sortLabel(key: SidebarSortKey, column: string): string {
   if (sortKey.value !== key) {
-    return 'none'
+    return `Ordenar por ${column}`
   }
-  return sortDirection.value === 'asc' ? 'ascending' : 'descending'
+  const order = sortDirection.value === 'asc' ? 'crescente' : 'decrescente'
+  return `Ordenar por ${column}, ${order} agora`
 }
 
 function selectSymbol(event: MouseEvent, symbol: MarketPair): void {
@@ -172,24 +183,21 @@ function selectSymbol(event: MouseEvent, symbol: MarketPair): void {
       </div>
       <div class="market-table market-table-header">
         <button
-          :aria-sort="ariaSort('symbol')"
-          role="columnheader"
+          :aria-label="sortLabel('symbol', 'símbolo')"
           type="button"
           @click="changeSort('symbol')"
         >
           Símbolo <i>{{ sortIndicator('symbol') }}</i>
         </button>
         <button
-          :aria-sort="ariaSort('lastPrice')"
-          role="columnheader"
+          :aria-label="sortLabel('lastPrice', 'último preço')"
           type="button"
           @click="changeSort('lastPrice')"
         >
           Último <i>{{ sortIndicator('lastPrice') }}</i>
         </button>
         <button
-          :aria-sort="ariaSort('priceChangePercent')"
-          role="columnheader"
+          :aria-label="sortLabel('priceChangePercent', 'variação de 24h')"
           type="button"
           @click="changeSort('priceChangePercent')"
         >

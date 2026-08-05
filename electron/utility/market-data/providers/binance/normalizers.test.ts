@@ -4,7 +4,6 @@ import {
   isKlineEvent,
   mergeCatalog,
   normalizeCandleRow,
-  normalizeDepthEvent,
   normalizeExchangeSymbols,
   precisionFromIncrement,
 } from './normalizers'
@@ -103,21 +102,6 @@ describe('Binance normalizers', () => {
     expect(candle.time).toBe(1_700_000_000)
     expect(candle.closeTime).toBe(1_700_000_059)
     expect(candle.closed).toBe(true)
-  })
-
-  it('computes cumulative depth, mid price and spread', () => {
-    const snapshot = normalizeDepthEvent({
-      E: 123,
-      s: 'BTCUSDT',
-      u: 456,
-      b: [['100', '2'], ['99', '3']],
-      a: [['101', '1'], ['102', '4']],
-    }, 'futures', 'FALLBACK')
-
-    expect(snapshot.bids.map((level) => level.total)).toEqual([2, 5])
-    expect(snapshot.asks.map((level) => level.total)).toEqual([1, 5])
-    expect(snapshot.midPrice).toBe(100.5)
-    expect(snapshot.spread).toBe(1)
   })
 })
 
