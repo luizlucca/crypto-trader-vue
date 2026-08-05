@@ -14,8 +14,8 @@ commitada em separado.
 [F-017](../specs/F-017-endurecimento-pos-revisao.md), que tem os critérios de
 aceite e o que cada correção descobriu. Onda 1 fechada por inteiro: RV-001 a RV-005, mais as duas pendências de
 verificação. Onda 2 fechada por inteiro: RV-006 a RV-011. Onda 3: RV-012 e RV-013
-fechados; RV-014 adiado com motivo. Onda 4: RV-016, RV-017, RV-019, RV-022,
-RV-023, RV-024 e RV-025 fechados.
+fechados; RV-014 adiado com motivo. Onda 4: fechados RV-016 a RV-019 e
+RV-021 a RV-025. Aguardam decisão sua: RV-015 e RV-020, mais o RV-014 adiado.
 
 **Este documento é o que sobrou.** O que era correção segura e defensável já
 foi aplicado nos commits acima. Aqui estão os achados que exigem decisão sua:
@@ -364,7 +364,7 @@ linha ou tabela, o que deixa o `aria-sort` órfão. A correção honesta é
 semântica de grid no cabeçalho **e** nas linhas; meia correção fica pior que a
 atual.
 
-### RV-018 · O editor de temas deixa salvar candles invisíveis
+### ✅ RV-018 · O editor de temas deixa salvar candles invisíveis
 
 Nada impede o usuário de escolher uma cor de candle que desaparece contra o
 próprio fundo que ele escolheu. A correção honesta é um **aviso de contraste**
@@ -394,7 +394,7 @@ literal de opções da criação do chart (~110, que é configuração disfarça
 código). Sobrariam ~350 linhas de núcleo real — carga de histórico, callback de
 realtime e legenda —, que é tamanho revisável.
 
-### RV-021 · Duplicação entre `themeCatalog.ts` e `readableColor.ts`
+### ✅ RV-021 · Duplicação entre `themeCatalog.ts` e `readableColor.ts`
 
 `hexChannels`, `channelHex` e `relativeLuminance` existem nos dois, com
 **limiares sRGB diferentes** (`0.03928` contra `0.04045`, ambos legítimos pela

@@ -1,4 +1,4 @@
-import type { Market, MarketSymbol } from '@shared/types/market'
+import type { MarketSymbol } from '@shared/types/market'
 
 const storageKey = 'cryptopro.market-favorites.v1'
 

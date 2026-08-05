@@ -1014,3 +1014,12 @@
 .settings-placeholder p {
   max-width: 390px;
 }
+
+/* O aviso de contraste do editor de temas: informa, não corrige. */
+.theme-contrast-warning {
+  display: block;
+  margin-top: 4px;
+  color: var(--warning);
+  font-size: 10.5px;
+  line-height: 1.35;
+}

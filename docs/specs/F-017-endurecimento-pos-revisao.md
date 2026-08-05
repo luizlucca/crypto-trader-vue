@@ -102,22 +102,27 @@ Por consequência para quem opera, não por facilidade de correção.
 
 ### Onda 4 — qualidade, acessibilidade e dívida
 
-- [ ] **RV-015** · O tema claro não tem regra morta: as sobrescritas foram
-      removidas ou revividas, por decisão explícita.
+- [ ] **RV-015** · O tema claro não tem regra morta. **Aguarda sua decisão:**
+      apagar é no-op comprovado, reviver é redesenhar o tema claro. Não é
+      escolha que eu deva fazer sozinho.
 - [x] **RV-016** · A tira de abas navega por setas com roving tabindex, declara
       `aria-controls` e o gráfico é um `tabpanel` nomeado.
 - [x] **RV-017** · A ordenação chega a quem usa leitor de tela. **Não** por
       semântica de grid: o papel órfão saiu e a informação foi para o nome
       acessível do botão. Ver a decisão abaixo.
-- [ ] **RV-018** · O editor de temas avisa quando uma cor escolhida fica
-      ilegível contra o fundo escolhido.
+- [x] **RV-018** · O editor de temas avisa quando uma cor de candle fica
+      ilegível contra o fundo escolhido — avisa, não corrige.
 - [x] **RV-019** · Removidos `normalizeDepthEvent`, `normalizeLevels`,
       `belongsToMarket` e `undo()`, cada um conferido contra os quatro portões.
       `stopAll()` e `size` do pool ficaram: são costura de teste, não código
       morto.
 - [ ] **RV-020** · `MarketChart.vue` tem as três responsabilidades separáveis
-      extraídas, sem mudar a forma do caminho quente.
-- [ ] **RV-021** · A conversão de cor existe num lugar só.
+      extraídas. **Aguarda sua decisão:** é o arquivo mais quente do app e a
+      regra do projeto pede instrução explícita antes de refatorá-lo.
+- [x] **RV-021** · A conversão de cor existe num lugar só, em
+      `src/domain/color.ts`. A unificação é comprovadamente neutra: os dois
+      limiares sRGB só discordam para canais entre 10,016 e 10,315, e nenhum
+      inteiro de 8 bits cai ali — há teste varrendo os 256.
 - [x] **RV-022** · A F-003 descreve o livro como ele é hoje.
 - [x] **RV-023** · `repaintPump.ts` é lintado — movido para fora da pasta do
       upstream, que é onde ele nunca deveria ter morado.
@@ -362,6 +367,28 @@ desejada, o caminho é ligá-la a `Ctrl+Z`, não ressuscitar o método solto.
 
 `MarketSessionPool.stopAll()` e `size` **ficaram**: são usados por teste, o que
 os torna costura de teste e não código morto.
+
+### RV-018 — avisar, nunca corrigir
+
+Nada impedia salvar um candle que some contra o fundo escolhido. O aviso usa
+`contrastRatio`, que já existia, e o limiar de 3:1 que a WCAG pede de objetos
+gráficos — o mesmo que `readableOn` aplica à paleta de indicadores.
+
+É aviso e não correção porque as miniaturas existem justamente para mostrar o
+que o operador escolheu; ajustar a escolha em silêncio seria pior que o
+problema.
+
+### RV-021 — a fronteira estava ao contrário
+
+A revisão registrou que unificar arrastaria um serviço para dentro do domínio.
+É o inverso: aritmética de cor **é** domínio, e serviço importar domínio é a
+direção normal, que o lint permite.
+
+O que de fato exigia cuidado era o limiar sRGB diferente nos dois lugares,
+`0.03928` e `0.04045`. Eles só discordam para canais entre 10,016 e 10,315, e
+**nenhum inteiro de 8 bits cai nessa faixa** — as duas implementações sempre
+concordaram, e unificar é aritmeticamente neutro. Um teste varre os 256 canais
+comparando as duas fórmulas, para que isso não vire suposição depois.
 
 **Fontes de verdade:** variam por item; cada um aponta o arquivo no
 [documento da revisão](../roadmap/revisao-de-codigo-2026-08.md).

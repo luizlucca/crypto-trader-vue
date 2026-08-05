@@ -17,6 +17,7 @@ import {
   type ThemePresetId,
   type ThemeVariantCustomization,
 } from '@/services/themeCatalog'
+import { contrastRatio } from '@/domain/readableColor'
 import ThemePresetPreview from './ThemePresetPreview.vue'
 
 const emit = defineEmits<{
@@ -68,6 +69,29 @@ function save(): void {
   })
   emit('saved')
 }
+/**
+ * Warns when a chosen candle colour disappears against the chosen background.
+ *
+ * A warning and not a correction: the previews exist precisely to show what
+ * the operator picked, and silently adjusting a decision would be worse than
+ * the problem. Three to one is the ratio WCAG asks of graphical objects, and
+ * the same one `readableOn` uses for the indicator palette.
+ */
+const MINIMUM_CANDLE_CONTRAST = 3
+
+function candleContrast(color: string): number | null {
+  return contrastRatio(color, currentVariant.value.chartBackground)
+}
+
+function contrastWarning(color: string): string {
+  const ratio = candleContrast(color)
+  if (ratio === null || ratio >= MINIMUM_CANDLE_CONTRAST) {
+    return ''
+  }
+  return `Contraste ${ratio.toFixed(1)}:1 contra o fundo do gráfico.`
+    + ` Abaixo de ${MINIMUM_CANDLE_CONTRAST}:1 o candle some.`
+}
+
 </script>
 
 <template>
@@ -182,6 +206,11 @@ function save(): void {
             <input v-model="currentVariant.candleUp" type="color">
             <code>{{ currentVariant.candleUp }}</code>
           </div>
+          <small
+            v-if="contrastWarning(currentVariant.candleUp)"
+            class="theme-contrast-warning"
+            role="status"
+          >{{ contrastWarning(currentVariant.candleUp) }}</small>
         </label>
         <label class="theme-color-field">
           <span>Candle de baixa</span>
@@ -189,6 +218,11 @@ function save(): void {
             <input v-model="currentVariant.candleDown" type="color">
             <code>{{ currentVariant.candleDown }}</code>
           </div>
+          <small
+            v-if="contrastWarning(currentVariant.candleDown)"
+            class="theme-contrast-warning"
+            role="status"
+          >{{ contrastWarning(currentVariant.candleDown) }}</small>
         </label>
         <label class="theme-color-field">
           <span>Fundo do gráfico</span>

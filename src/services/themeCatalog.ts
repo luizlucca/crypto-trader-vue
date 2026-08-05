@@ -1,3 +1,9 @@
+import {
+  channelHex,
+  hexChannels,
+  relativeLuminance,
+} from '@/domain/color'
+
 export interface ThemePalette {
   background: string
   panel: string
@@ -685,29 +691,6 @@ export interface CustomThemeDefinition {
   light: ThemeVariantCustomization
 }
 
-function hexChannels(hex: string): [number, number, number] {
-  const value = hex.replace('#', '')
-  return [
-    Number.parseInt(value.slice(0, 2), 16),
-    Number.parseInt(value.slice(2, 4), 16),
-    Number.parseInt(value.slice(4, 6), 16),
-  ]
-}
-
-function channelHex(value: number): string {
-  return Math.round(Math.max(0, Math.min(255, value)))
-    .toString(16)
-    .padStart(2, '0')
-}
-
-/** sRGB channel to linear light, for luminance that matches perception. */
-function toLinear(channel: number): number {
-  const scaled = channel / 255
-  return scaled <= 0.04045
-    ? scaled / 12.92
-    : ((scaled + 0.055) / 1.055) ** 2.4
-}
-
 function fromLinear(value: number): number {
   const scaled = value <= 0.0031308
     ? value * 12.92
@@ -717,12 +700,7 @@ function fromLinear(value: number): number {
 
 /** Grey with the same perceived lightness as the source colour. */
 function grayValue(hex: string): number {
-  const [red, green, blue] = hexChannels(hex)
-  return fromLinear(
-    (0.2126 * toLinear(red))
-    + (0.7152 * toLinear(green))
-    + (0.0722 * toLinear(blue)),
-  )
+  return fromLinear(luminanceOf(hex))
 }
 
 /**
@@ -754,7 +732,7 @@ function toned(hex: string, tone: SurfaceTone | undefined): string {
    */
   const attenuated = Math.min(1, Math.max(0.5, gray / 48))
   const amount = (tone.amount ?? 0.4) * attenuated
-  const [hueR, hueG, hueB] = hexChannels(tone.hue)
+  const [hueR, hueG, hueB] = hexChannels(tone.hue) ?? [0, 0, 0]
   const hueGray = grayValue(tone.hue)
   return `#${channelHex(gray + ((hueR - hueGray) * amount))}${
     channelHex(gray + ((hueG - hueGray) * amount))
@@ -762,27 +740,26 @@ function toned(hex: string, tone: SurfaceTone | undefined): string {
 }
 
 function mix(base: string, overlay: string, amount: number): string {
-  const [baseR, baseG, baseB] = hexChannels(base)
-  const [overlayR, overlayG, overlayB] = hexChannels(overlay)
+  const [baseR, baseG, baseB] = hexChannels(base) ?? [0, 0, 0]
+  const [overlayR, overlayG, overlayB] = hexChannels(overlay) ?? [0, 0, 0]
   return `#${channelHex(baseR + ((overlayR - baseR) * amount))}${
     channelHex(baseG + ((overlayG - baseG) * amount))
   }${channelHex(baseB + ((overlayB - baseB) * amount))}`
 }
 
 function rgba(hex: string, alpha: number): string {
-  const [red, green, blue] = hexChannels(hex)
+  const [red, green, blue] = hexChannels(hex) ?? [0, 0, 0]
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`
 }
 
-function relativeLuminance(hex: string): number {
-  const [red, green, blue] = hexChannels(hex)
-  return (0.2126 * toLinear(red))
-    + (0.7152 * toLinear(green))
-    + (0.0722 * toLinear(blue))
+/** The catalog works in hex strings; the domain works in channels. */
+function luminanceOf(hex: string): number {
+  const channels = hexChannels(hex)
+  return channels ? relativeLuminance(channels) : 0
 }
 
 function accentContrast(accent: string): string {
-  return relativeLuminance(accent) > 0.46 ? '#071117' : '#ffffff'
+  return luminanceOf(accent) > 0.46 ? '#071117' : '#ffffff'
 }
 
 function darkPalette(definition: ThemeDefinition): ThemePalette {

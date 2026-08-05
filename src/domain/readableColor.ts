@@ -13,67 +13,21 @@
  * happens to work looks exactly as its author intended.
  */
 
+import {
+  contrastRatio,
+  hexChannels,
+  luminanceContrast,
+  relativeLuminance,
+  toHex,
+  type RgbChannels,
+} from './color'
+
+export { contrastRatio }
+
 /** WCAG 1.4.11 asks 3:1 for graphical objects; a thin line needs every bit. */
 export const MIN_GRAPHIC_CONTRAST = 3
 
-const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i
-
-type RgbChannels = [number, number, number]
 type HslChannels = [number, number, number]
-
-function channels(color: string): RgbChannels | null {
-  const match = HEX.exec(color.trim())
-  if (!match) {
-    return null
-  }
-  const hex = match[1].length === 3
-    ? `${match[1][0]}${match[1][0]}${match[1][1]}${match[1][1]}`
-    + `${match[1][2]}${match[1][2]}`
-    : match[1]
-  const value = Number.parseInt(hex, 16)
-  return [(value >> 16) & 255, (value >> 8) & 255, value & 255]
-}
-
-function channelHex(channel: number): string {
-  return Math.round(Math.max(0, Math.min(255, channel)))
-    .toString(16)
-    .padStart(2, '0')
-}
-
-function toHex([red, green, blue]: RgbChannels): string {
-  return `#${channelHex(red)}${channelHex(green)}${channelHex(blue)}`
-}
-
-function linearChannel(channel: number): number {
-  const scaled = channel / 255
-  return scaled <= 0.03928
-    ? scaled / 12.92
-    : ((scaled + 0.055) / 1.055) ** 2.4
-}
-
-function relativeLuminance([red, green, blue]: RgbChannels): number {
-  return (0.2126 * linearChannel(red))
-    + (0.7152 * linearChannel(green))
-    + (0.0722 * linearChannel(blue))
-}
-
-function luminanceContrast(first: number, second: number): number {
-  const lighter = Math.max(first, second)
-  const darker = Math.min(first, second)
-  return (lighter + 0.05) / (darker + 0.05)
-}
-
-export function contrastRatio(first: string, second: string): number | null {
-  const left = channels(first)
-  const right = channels(second)
-  if (!left || !right) {
-    return null
-  }
-  return luminanceContrast(
-    relativeLuminance(left),
-    relativeLuminance(right),
-  )
-}
 
 function toHsl(
   [red, green, blue]: RgbChannels,
@@ -145,8 +99,8 @@ export function readableOn(
   background: string,
   minimum: number = MIN_GRAPHIC_CONTRAST,
 ): string {
-  const source = channels(color)
-  const surface = channels(background)
+  const source = hexChannels(color)
+  const surface = hexChannels(background)
   if (!source || !surface) {
     return color
   }
@@ -179,7 +133,7 @@ export function readableOn(
         return null
       }
       const next = toHex(fromHsl([hue, saturation, candidate]))
-      const nextChannels = channels(next)
+      const nextChannels = hexChannels(next)
       if (nextChannels && luminanceContrast(
         relativeLuminance(nextChannels),
         surfaceLuminance,
