@@ -78,6 +78,27 @@ let catalogCache: IndicatorDefinition[] | undefined
 let catalogInFlight: Promise<IndicatorDefinition[]> | undefined
 
 /**
+ * How long the catalog round trip may take before it is declared dead.
+ *
+ * Generous: it covers loading a 2 MB worker bundle on a cold module cache.
+ * What it must not do is wait forever, because the promise is shared.
+ */
+const CATALOG_TIMEOUT_MS = 20_000
+
+/**
+ * The catalog round trip is shared across charts while its waiters belong to
+ * one client, so a chart disposed mid-round rejects everyone who joined it.
+ * That failure is not the other callers' own, and only that one is worth a
+ * second try — a timeout retried is just two timeouts.
+ */
+class CatalogOwnerGone extends Error {
+  constructor() {
+    super('O cliente que pediu o catálogo foi descartado')
+    this.name = 'CatalogOwnerGone'
+  }
+}
+
+/**
  * Client for the indicator worker, created on demand and terminated when the
  * last indicator is removed. A chart without indicators pays nothing, and one
  * client serves one chart.
@@ -474,6 +495,27 @@ export function createIndicatorClient(
     })
   }
 
+  /**
+   * Lets go of the worker without retiring the client.
+   *
+   * Listing the catalog needs a worker, and opening the picker without
+   * applying anything used to leave that worker alive for the chart's whole
+   * life — a 2 MB bundle per tab, holding the whole indicator library, doing
+   * nothing. `dispose` cannot serve here: it marks the client retired for
+   * good.
+   */
+  function releaseIdleWorker(): void {
+    if (!worker || registered.size > 0 || activeRound) {
+      return
+    }
+    const current = worker
+    worker = undefined
+    current.onmessage = null
+    current.onerror = null
+    current.onmessageerror = null
+    current.terminate()
+  }
+
   function dispose(): void {
     if (disposed) {
       return
@@ -492,7 +534,55 @@ export function createIndicatorClient(
     applicationRetries.clear()
     instanceRecoveries.clear()
     registered.clear()
-    rejectCatalogWaiters(new Error('Cliente de indicadores descartado'))
+    rejectCatalogWaiters(new CatalogOwnerGone())
+  }
+
+  /**
+   * Asks the worker for the catalog, sharing one round trip across every chart.
+   *
+   * Bounded in time on purpose. A worker that starts and never answers used to
+   * leave this promise pending forever, and because it is shared, every later
+   * open of the picker returned that same dead promise — the selector was
+   * broken until the app restarted. `onerror`/`onmessageerror` only cover a
+   * worker that fails loudly.
+   */
+  function requestCatalog(): Promise<IndicatorDefinition[]> {
+    if (catalogInFlight) {
+      return catalogInFlight
+    }
+    const request = new Promise<IndicatorDefinition[]>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        rejectCatalogWaiters(
+          new Error('O catálogo de indicadores não respondeu a tempo'),
+        )
+      }, CATALOG_TIMEOUT_MS)
+      catalogWaiters.push({
+        resolve: (definitions) => {
+          clearTimeout(timer)
+          resolve(definitions)
+        },
+        reject: (error) => {
+          clearTimeout(timer)
+          reject(error)
+        },
+      })
+      send({ kind: 'catalog' })
+    }).then(
+      (definitions) => {
+        catalogCache = definitions
+        catalogInFlight = undefined
+        releaseIdleWorker()
+        return definitions
+      },
+      (error: unknown) => {
+        // A failed fetch must not be cached: the next open tries again.
+        catalogInFlight = undefined
+        releaseIdleWorker()
+        throw error
+      },
+    )
+    catalogInFlight = request
+    return request
   }
 
   return {
@@ -500,26 +590,16 @@ export function createIndicatorClient(
       if (catalogCache) {
         return Promise.resolve(catalogCache)
       }
-      if (catalogInFlight) {
-        return catalogInFlight
-      }
-      const request = new Promise<IndicatorDefinition[]>((resolve, reject) => {
-        catalogWaiters.push({ resolve, reject })
-        send({ kind: 'catalog' })
-      }).then(
-        (definitions) => {
-          catalogCache = definitions
-          catalogInFlight = undefined
-          return definitions
-        },
-        (error: unknown) => {
-          // A failed fetch must not be cached: the next open tries again.
-          catalogInFlight = undefined
+      return requestCatalog().catch((error: unknown) => {
+        if (catalogCache) {
+          return catalogCache
+        }
+        // Only the owner-disposed case is retried; see `CatalogOwnerGone`.
+        if (disposed || !(error instanceof CatalogOwnerGone)) {
           throw error
-        },
-      )
-      catalogInFlight = request
-      return request
+        }
+        return requestCatalog()
+      })
     },
 
     /** Resends the full history after it changed underneath the worker. */

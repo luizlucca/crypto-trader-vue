@@ -76,12 +76,15 @@ Por consequência para quem opera, não por facilidade de correção.
 - [x] **RV-008** · Falha na carga inicial não faz os desenhos do ativo
       desaparecerem da sessão — nem do armazenamento, que era a perda de
       verdade escondida atrás do sintoma.
-- [ ] **RV-009** · Rolar para trás não é desabilitado em definitivo por uma
-      falha. Medido antes: quantas vezes ocorre página cheia com deduplicação
-      zerada, em sessão real.
-- [ ] **RV-010** · Uma falha transitória do provedor não descarta uma página
-      inteira de candles nem derruba a carga.
-- [ ] **RV-011** · Abrir o seletor de indicadores e não aplicar nada não deixa
+- [x] **RV-009** · Rolar para trás não é desabilitado em definitivo por uma
+      anomalia: página vazia é fim do histórico e latcha; página cheia toda
+      deduplicada suspende só o disparo automático, e o botão continua sendo a
+      volta.
+- [x] **RV-010** · Uma falha transitória do provedor não derruba a carga: 429 e
+      5xx são retentados com `Retry-After` honrado, onde não há retentativa por
+      fora. Uma linha malformada **continua** derrubando a página, por decisão
+      registrada abaixo — e agora diz qual candle.
+- [x] **RV-011** · Abrir o seletor de indicadores e não aplicar nada não deixa
       Worker ocioso; o pedido de catálogo tem tempo limite; e um cliente
       descartado não propaga sua falha aos demais.
 
@@ -243,6 +246,60 @@ medir. A restauração passou a acontecer nos dois caminhos de `loadHistory`, e 
 primeira vela que chega a um gráfico vazio dispara um `rebuild`.
 
 Três testes novos, todos verificados falhando sem a correção.
+
+### RV-009 — nem toda página inútil é fim de histórico
+
+Duas situações respondem sem nada aproveitável, e só uma significa que o ativo
+acabou. Página **vazia** é o provedor dizendo que não há mais nada, e latchar
+está certo. Página **cheia** cujos candles já estavam todos no gráfico é
+anomalia — cursor mal convertido, relógio fora de sincronia — e latchar ali
+desabilita a rolagem para trás pelo resto da sessão por causa de um transitório.
+
+Tirar o latch de vez também não serve: o cursor não avançou, então a
+retentativa automática entraria em laço. A correção separa os dois casos e, no
+segundo, suspende **só o disparo automático** — o botão ao lado da mensagem
+continua sendo a volta.
+
+Isso dispensou a medição que o item pedia: a correção é segura nos dois
+sentidos, então contar ocorrências deixou de ser pré-requisito.
+
+### RV-010 — retentar onde ninguém retenta, e falhar alto onde é preciso
+
+`fetchJSON` ganhou retentativa com `Retry-After` honrado (limitado a 10s, para
+um cabeçalho ruim não estacionar a carga), mas **por chamada, não por padrão**.
+Os testes existentes pegaram a razão: o snapshot do livro já agenda a própria
+retentativa com backoff, e retentar por baixo multiplicava as requisições e
+atrasava o momento em que o livro admite estar reconectando. Histórico e
+catálogo, que não têm ninguém retentando por fora, optam por ela.
+
+Só 429, 5xx e falha de rede são repetidos. Um 4xx que não seja 429 é pedido
+errado deste código, e repetir gasta orçamento à toa.
+
+**A linha malformada continua derrubando a página inteira, e é deliberado.**
+Pular a linha deixaria um buraco idêntico a um gap de mercado: todo indicador
+calcularia por cima dele como se fosse real, e nada na tela diria que falta um
+candle. Falha alta é recuperável — a requisição acima retenta e o operador tem
+botão —, buraco silencioso é número errado apresentado como certo. O que mudou
+é que a mensagem agora diz **qual** candle.
+
+### RV-011 — três problemas no mesmo caminho
+
+**Tempo limite.** Um worker que sobe e nunca responde deixava a promessa
+compartilhada pendente para sempre, e como ela é compartilhada, toda abertura
+seguinte do seletor recebia essa mesma promessa morta — o seletor ficava
+quebrado até reiniciar o app. `onerror` e `onmessageerror` só cobrem o worker
+que falha alto.
+
+**Worker ocioso.** Listar o catálogo exige um worker, e abrir o seletor sem
+aplicar nada deixava esse worker vivo pela vida inteira do gráfico: um bundle
+de 2 MB por aba, segurando a biblioteca, sem fazer nada. `releaseIdleWorker`
+larga o worker sem aposentar o cliente, que é o que `dispose` faria.
+
+**Rejeição cruzada.** A promessa é compartilhada entre gráficos, mas os
+interessados pertencem a um cliente: um gráfico descartado no meio da rodada
+rejeitava todos que tinham entrado nela. Só esse caso é retentado, e é por isso
+que ele tem um erro próprio — retentar um tempo limite seriam dois tempos
+limite, que foi exatamente o que o primeiro teste pegou.
 
 **Fontes de verdade:** variam por item; cada um aponta o arquivo no
 [documento da revisão](../roadmap/revisao-de-codigo-2026-08.md).

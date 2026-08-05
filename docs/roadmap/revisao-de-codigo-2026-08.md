@@ -13,7 +13,7 @@ commitada em separado.
 **Andamento:** o trabalho é acompanhado pela
 [F-017](../specs/F-017-endurecimento-pos-revisao.md), que tem os critérios de
 aceite e o que cada correção descobriu. Onda 1 fechada por inteiro: RV-001 a RV-005, mais as duas pendências de
-verificação. Onda 2 em andamento: RV-006, RV-007 e RV-008 fechados.
+verificação. Onda 2 fechada por inteiro: RV-006 a RV-011.
 
 **Este documento é o que sobrou.** O que era correção segura e defensável já
 foi aplicado nos commits acima. Aqui estão os achados que exigem decisão sua:
@@ -207,7 +207,7 @@ quando um tick de realtime já tiver populado as barras.
 
 **Custo:** baixo.
 
-### RV-009 · `historyExhausted` latcha e só solta recarregando
+### ✅ RV-009 · `historyExhausted` latcha e só solta recarregando
 
 **O que acontece.** Duas situações legítimas travam a rolagem para trás pelo
 resto da sessão: uma página **cheia** cuja deduplicação zerou (400 barras
@@ -228,7 +228,7 @@ deixe como está e feche o item.
 
 **Custo:** baixo se a medição disser que não acontece.
 
-### RV-010 · Sem retentativa em `fetchJSON`, e uma linha ruim descarta a página
+### ✅ RV-010 · Sem retentativa em `fetchJSON`, e uma linha ruim descarta a página
 
 **O que acontece.** Duas coisas na mesma superfície. `fetchJSON` não trata 429
 nem `Retry-After`, então `getCandles` falha direto num 5xx transitório — e
@@ -245,7 +245,7 @@ A decisão é sua; a revisão marcou o item em vez de escolher sozinha.
 
 **Custo:** médio.
 
-### RV-011 · Worker ocioso por aba, e o catálogo sem tempo limite
+### ✅ RV-011 · Worker ocioso por aba, e o catálogo sem tempo limite
 
 **O que acontece.** Três problemas do mesmo caminho:
 

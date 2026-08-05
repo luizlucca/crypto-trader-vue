@@ -11,6 +11,8 @@ import {
   BinanceProvider,
   MAX_ORDER_BOOK_DEPTH,
   orderBookDepthFor,
+  retryAfterMs,
+  worthRetrying,
 } from './provider'
 
 interface WebSocketHarness {
@@ -345,5 +347,28 @@ describe('profundidade lida do livro', () => {
   it('não divide por zero quando o catálogo não traz o tick', () => {
     expect(orderBookDepthFor(rows, 10, 0)).toBe(80)
     expect(Number.isFinite(orderBookDepthFor(rows, 10, Number.NaN))).toBe(true)
+  })
+})
+
+describe('retentativa de requisição', () => {
+  it('só repete o que vale a pena repetir', () => {
+    // 429 é alcançável: rolar o histórico para trás martela /klines. 5xx é a
+    // corretora passando mal. Um 4xx que não seja 429 é pedido errado deste
+    // código, e repetir só gasta o orçamento.
+    expect(worthRetrying(429)).toBe(true)
+    expect(worthRetrying(500)).toBe(true)
+    expect(worthRetrying(503)).toBe(true)
+    expect(worthRetrying(undefined)).toBe(true)
+    expect(worthRetrying(400)).toBe(false)
+    expect(worthRetrying(404)).toBe(false)
+    expect(worthRetrying(418)).toBe(false)
+  })
+
+  it('honra o Retry-After sem deixar um cabeçalho ruim nos estacionar', () => {
+    expect(retryAfterMs('2')).toBe(2_000)
+    expect(retryAfterMs('600')).toBe(10_000)
+    expect(retryAfterMs('abacaxi')).toBeUndefined()
+    expect(retryAfterMs('-1')).toBeUndefined()
+    expect(retryAfterMs(null)).toBeUndefined()
   })
 })

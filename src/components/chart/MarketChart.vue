@@ -614,7 +614,25 @@ async function loadOlderHistory(): Promise<void> {
     const olderCandles = uniqueSortedCandles(page, oldest.time)
 
     if (olderCandles.length === 0) {
-      historyExhausted = true
+      /*
+       * Two different situations answer with nothing usable, and only one of
+       * them means the asset has no more history.
+       *
+       * An empty page is the provider saying there is nothing older, and
+       * latching is right. A full page whose every candle was already on the
+       * chart is an anomaly — a badly converted cursor, clock skew — and
+       * latching there disables scrolling back for the rest of the session
+       * over a transient. Removing the latch outright is not the answer
+       * either: the cursor did not advance, so an automatic retry would loop
+       * forever. Only the automatic prefetch is suspended; the button beside
+       * the message is still the way back.
+       */
+      if (page.length === 0) {
+        historyExhausted = true
+      } else {
+        historyRetryBlocked = true
+        historyErrorMessage.value = 'Nenhum candle novo veio nesta página.'
+      }
       return
     }
 
