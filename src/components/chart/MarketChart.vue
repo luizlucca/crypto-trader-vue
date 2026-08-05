@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  nextTick,
   onBeforeUnmount,
   onMounted,
   ref,
@@ -35,6 +36,13 @@ import { useChartDrawings } from '@/composables/useChartDrawings'
 import { useIndicatorPanel } from '@/composables/useIndicatorPanel'
 import { useChartTheme, volumePoint } from '@/composables/useChartTheme'
 import type { DrawingToolId } from '@/domain/chartDrawings'
+import { defaultDrawingText } from '@/domain/chartDrawings'
+import type { TextAppearance } from '@/domain/textAppearance'
+import {
+  DEFAULT_TEXT_APPEARANCE,
+  normalizeTextAppearance,
+  sameTextAppearance,
+} from '@/domain/textAppearance'
 import { readDrawings, writeDrawings } from '@/services/drawingStore'
 import type { IndicatorBars } from '@/services/indicators'
 import { loadCandles, onCandle } from '@/services/marketData'
@@ -42,6 +50,7 @@ import { publishRealtimePrice } from '@/services/realtimePrice'
 import { appThemePalette } from '@/services/theme'
 import ChartToolbar from './ChartToolbar.vue'
 import DrawingStyleBar from './DrawingStyleBar.vue'
+import DrawingTextInlineEditor from './DrawingTextInlineEditor.vue'
 import DrawingToolbar from './DrawingToolbar.vue'
 import AppliedIndicators from './indicators/AppliedIndicators.vue'
 import IndicatorPicker from './indicators/IndicatorPicker.vue'
@@ -59,6 +68,8 @@ const emit = defineEmits<{
 }>()
 
 const container = ref<HTMLElement | null>(null)
+const chartStage = ref<HTMLElement | null>(null)
+const drawingStyleBar = ref<{ openProperties: () => void } | null>(null)
 const legend = ref<HTMLElement | null>(null)
 const legendOpen = ref<HTMLElement | null>(null)
 const legendHigh = ref<HTMLElement | null>(null)
@@ -200,6 +211,93 @@ const drawings = useChartDrawings({
   onChange: (list) => writeDrawings(props.selection, list),
 })
 
+interface InlineTextEditor {
+  drawingId: string
+  originalText: string
+  originalAppearance: TextAppearance
+  left: number
+  top: number
+}
+
+const inlineTextEditor = shallowRef<InlineTextEditor | null>(null)
+
+function closeInlineTextEditor(): void {
+  inlineTextEditor.value = null
+}
+
+function openInlineTextEditor(event: MouseEvent): boolean {
+  const pane = candleSeries.value?.getPane().getHTMLElement()
+  const stage = chartStage.value
+  if (!pane || !stage) {
+    return false
+  }
+  const paneBounds = pane.getBoundingClientRect()
+  const drawing = drawings.selectTextAt(
+    event.clientX - paneBounds.left,
+    event.clientY - paneBounds.top,
+  )
+  if (!drawing) {
+    return false
+  }
+  const bounds = stage.getBoundingClientRect()
+  const editorWidth = Math.min(320, Math.max(220, bounds.width - 16))
+  const editorHeight = 142
+  const left = Math.max(8, Math.min(
+    event.clientX - bounds.left + 10,
+    bounds.width - editorWidth - 8,
+  ))
+  const top = Math.max(8, Math.min(
+    event.clientY - bounds.top + 10,
+    bounds.height - editorHeight - 8,
+  ))
+  inlineTextEditor.value = {
+    drawingId: drawing.id,
+    originalText: drawing.configuration?.text
+      ?? defaultDrawingText(drawing.tool),
+    originalAppearance: normalizeTextAppearance(
+      drawing.configuration?.textAppearance ?? DEFAULT_TEXT_APPEARANCE,
+    ),
+    left,
+    top,
+  }
+  return true
+}
+
+function saveInlineText(
+  value: { text: string, appearance: TextAppearance },
+  openSettings = false,
+): void {
+  const editor = inlineTextEditor.value
+  if (!editor) {
+    return
+  }
+  if (
+    drawings.selected.value?.id === editor.drawingId
+    && (
+      value.text !== editor.originalText
+      || !sameTextAppearance(value.appearance, editor.originalAppearance)
+    )
+  ) {
+    drawings.configureSelected({
+      text: value.text,
+      textAppearance: value.appearance,
+    })
+  }
+  closeInlineTextEditor()
+  if (openSettings) {
+    void nextTick(() => drawingStyleBar.value?.openProperties())
+  }
+}
+
+watch(() => drawings.selected.value?.id, (selectedId) => {
+  if (
+    inlineTextEditor.value
+    && inlineTextEditor.value.drawingId !== selectedId
+  ) {
+    closeInlineTextEditor()
+  }
+})
+
 const diagnostics = import.meta.env.DEV
   ? {
       ind: indicators,
@@ -239,6 +337,7 @@ async function initializeChartData(): Promise<void> {
  * drawing mode, and leaving it armed after a mistaken click is a trap.
  */
 function selectDrawingTool(tool: DrawingToolId | null): void {
+  closeInlineTextEditor()
   drawings.select(tool)
 }
 
@@ -252,6 +351,10 @@ function cancelDrawingOnEscape(event: KeyboardEvent): void {
     && (event.target.isContentEditable
       || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName))
   if (typing) {
+    return
+  }
+  if (event.key === 'Enter' && drawings.finishActive()) {
+    event.preventDefault()
     return
   }
   if (event.key === 'Escape' && drawings.activeTool.value) {
@@ -755,7 +858,19 @@ onMounted(() => {
   const onDrawingPointerUp = (event: MouseEvent) => {
     drawings.handlePointerUp(event)
   }
+  const onDrawingDoubleClick = (event: MouseEvent) => {
+    if (drawings.finishActive(true)) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    if (!drawings.activeTool.value && openInlineTextEditor(event)) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }
   host.addEventListener('mousedown', onDrawingPointerDown)
+  host.addEventListener('dblclick', onDrawingDoubleClick, true)
   /*
    * The release listens on the document, not on the chart. A button let go
    * outside the plot — over the order book, over the drawing toolbar — never
@@ -768,6 +883,7 @@ onMounted(() => {
   document.addEventListener('mouseup', onDrawingPointerUp)
   releaseDrawingPointer = () => {
     host.removeEventListener('mousedown', onDrawingPointerDown)
+    host.removeEventListener('dblclick', onDrawingDoubleClick, true)
     document.removeEventListener('mouseup', onDrawingPointerUp)
   }
 
@@ -858,22 +974,42 @@ watch(appThemePalette, chartTheme.apply, { flush: 'sync' })
       @indicators="openIndicatorPicker"
       @interval="emit('interval', $event)"
     />
-    <div class="chart-stage">
+    <div
+      ref="chartStage"
+      class="chart-stage"
+      :class="{ 'drawing-mode-active': drawings.activeTool.value }"
+    >
       <DrawingToolbar
         :active-tool="drawings.activeTool.value"
         :drawing-count="drawings.count()"
         :drawings-visible="drawings.visible.value"
+        :drawings-locked="drawings.locked.value"
         @clear="drawings.clear()"
         @select="selectDrawingTool"
+        @toggle-lock="drawings.toggleLock()"
         @toggle-visibility="drawings.toggleVisibility()"
       />
       <div ref="container" class="chart-container" />
       <DrawingStyleBar
         v-if="drawings.selected.value"
+        ref="drawingStyleBar"
         :drawing="drawings.selected.value"
         @close="drawings.deselect()"
         @remove="drawings.removeSelected()"
         @restyle="drawings.restyleSelected($event)"
+        @configure="drawings.configureSelected($event)"
+      />
+      <DrawingTextInlineEditor
+        v-if="inlineTextEditor"
+        :text="inlineTextEditor.originalText"
+        :appearance="inlineTextEditor.originalAppearance"
+        :style="{
+          left: `${inlineTextEditor.left}px`,
+          top: `${inlineTextEditor.top}px`,
+        }"
+        @cancel="closeInlineTextEditor"
+        @save="saveInlineText"
+        @settings="saveInlineText($event, true)"
       />
       <div ref="legend" class="chart-legend">
         <strong>{{ displaySymbol() }} · {{ selection.interval }}</strong>

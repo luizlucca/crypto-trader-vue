@@ -1,4 +1,4 @@
-# lineTools — código de terceiro, copiado
+# lineTools — primitivas com procedência externa e adaptações locais
 
 Primitivas de desenho do plugin `line-tools`, copiadas em **2026-08-03**.
 
@@ -16,6 +16,18 @@ Só os **primitivos**: cada ferramenta é um `ISeriesPrimitive<Time>` autocontid
 que depende apenas de `base-types.ts`, `geometry.ts`, `lightweight-charts` e
 `fancy-canvas`.
 
+Em 2026-08-05, `cross-line.ts` e `date-price-range.ts` foram acrescentados a
+partir do mesmo commit. O catálogo do app passou de quinze para dezessete
+ferramentas sem incorporar o manager ou a interface do exemplo.
+
+Depois da importação, parte das primitives foi simplificada localmente:
+`CrossLine`, as medições e as posições adotam o padrão TypeScript do app,
+encapsulam estado e reutilizam pane view, renderer e coordenadas entre
+repaints. `SignedRangeDrawing` reúne régua e faixas; `PositionDrawing` reúne
+long e short e acrescenta métricas de valor/percentual. Os wrappers preservam
+os nomes públicos usados pelo manager. A procedência e o contrato visual
+continuam rastreáveis, mas esses arquivos não são cópias byte a byte.
+
 O `LineToolManager` do upstream (2.027 linhas) **não foi copiado**. Ele traz
 junto uma barra flutuante própria, controles de gráfico e um CSS de 13 KB —
 uma segunda interface de desenho, que competiria com o `DrawingToolbar.vue` e
@@ -23,18 +35,23 @@ com os tokens de tema deste app. O gerente daqui é
 `src/composables/useChartDrawings.ts`, escrito para este projeto: liga-se à
 barra existente e persiste por aba, como os indicadores.
 
-## Regras para mexer aqui
+## Regras para atualizar
 
-**Estes arquivos são mantidos byte a byte iguais ao upstream**, para que
-atualizar seja um `diff` e não uma arqueologia. A única alteração até hoje:
+Não se deve assumir igualdade byte a byte com o upstream. Antes de atualizar,
+compare cada primitive com o commit de origem e preserve deliberadamente as
+adaptações locais de performance, hit test, métricas e opções. Arquivos que
+continuam próximos da referência devem permanecer fáceis de comparar.
+
+Uma adaptação histórica ainda relevante:
 
 - `horizontal-line.ts`: o import `'./utils'` virou `'./base-types'`. No
   upstream esse arquivo vive em `tools/horizontal-line/` e importa um
   `utils.ts` que é **cópia byte a byte** de `tools/base-types.ts`; manter as
   duas seria duplicar 219 linhas.
 
-Estão fora do ESLint por isso: o estilo é o do upstream — ponto e vírgula,
-indentação de 4 espaços, `any` — e reformatá-los inviabilizaria o `diff`.
+Os arquivos herdados permanecem fora do ESLint para conservar a comparação.
+Novos módulos locais (`signed-range.ts`, `position-drawing.ts` e os wrappers)
+seguem o padrão de legibilidade do app mesmo dentro desse diretório.
 
 Para atualizar:
 

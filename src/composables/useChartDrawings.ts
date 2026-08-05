@@ -12,21 +12,35 @@ import type {
   AnchorEdit,
   ChartDrawing,
   DrawingAnchor,
+  DrawingConfiguration,
+  DrawingLineStyle,
   DrawingToolId,
 } from '@/domain/chartDrawings'
 import {
+  CATALOG_DRAWING_TOOL_IDS,
   DRAWING_ANCHORS,
   DRAWING_DEFAULT_COLOR,
+  DRAWING_DEFAULT_LINE_STYLE,
+  DRAWING_DEFAULT_NEGATIVE_COLOR,
+  DRAWING_DEFAULT_POSITIVE_COLOR,
   DRAWING_DEFAULT_WIDTH,
+  DRAWING_MAX_ANCHORS,
   anchorEditAt,
   createDrawingId,
+  defaultDrawingLevels,
+  defaultDrawingText,
+  drawingStyleCapabilities,
+  isCatalogDrawingTool,
+  isVariablePointDrawing,
   logicalForTime,
   timeForLogical,
 } from '@/domain/chartDrawings'
+import { CatalogDrawing } from '@/plugins/catalogDrawings/catalog-drawing'
 import { TrendLine } from '@/plugins/lineTools/trend-line'
 import { HorizontalLine } from '@/plugins/lineTools/horizontal-line'
 import { HorizontalRay } from '@/plugins/lineTools/horizontal-ray'
 import { VerticalLine } from '@/plugins/lineTools/vertical-line'
+import { CrossLine } from '@/plugins/lineTools/cross-line'
 import { FibRetracement } from '@/plugins/lineTools/fib-retracement'
 import { FibExtension } from '@/plugins/lineTools/fib-extension'
 import { Rectangle } from '@/plugins/lineTools/rectangle'
@@ -38,8 +52,16 @@ import { ShortPosition } from '@/plugins/lineTools/short-position'
 import { Measure } from '@/plugins/lineTools/measure'
 import { PriceRange } from '@/plugins/lineTools/price-range'
 import { DateRange } from '@/plugins/lineTools/date-range'
+import { DatePriceRange } from '@/plugins/lineTools/date-price-range'
 import { RepaintPump } from '@/plugins/repaintPump'
 import type { LogicalPoint } from '@/plugins/lineTools/base-types'
+import {
+  DEFAULT_TEXT_APPEARANCE,
+  copyTextAppearance,
+  estimateTextWidth,
+  normalizeTextAppearance,
+  textBoxHeight,
+} from '@/domain/textAppearance'
 
 /**
  * Owns the drawings on one chart: the active tool, the clicks that build a
@@ -50,9 +72,10 @@ import type { LogicalPoint } from '@/plugins/lineTools/base-types'
  * primitives and nothing else, because the app already has a toolbar, a theme
  * and a persistence model — see `src/plugins/lineTools/README.md`.
  *
- * Nothing here is reactive except the two values the toolbar renders. A
- * drawing is created by a click and repainted by the chart's own paint pass;
- * neither belongs in Vue's render queue (ADR-0003).
+ * Reactivity is limited to low-frequency interface state: active tool,
+ * visibility, lock, selection and list revision. A drawing is created by a
+ * click and repainted by the chart's own paint pass; neither belongs in Vue's
+ * render queue (ADR-0003).
  */
 
 export interface ChartDrawingsOptions {
@@ -72,9 +95,10 @@ export interface ChartDrawingsOptions {
 
 /** The shape of every vendored tool that takes more than one point. */
 interface MutablePreview {
-  _p1: LogicalPoint
+  _p1?: LogicalPoint
   _p2?: LogicalPoint
   _p3?: LogicalPoint
+  updatePoints?: (...points: LogicalPoint[]) => void
   updateAllViews(): void
 }
 
@@ -95,17 +119,24 @@ interface EditableTool {
   updatePrice?: (price: number) => void
   updatePoint?: (point: LogicalPoint) => void
   updatePosition?: (logical: Logical) => void
-  updatePoints?: (
-    p1: LogicalPoint,
-    p2: LogicalPoint,
-    p3?: LogicalPoint,
-  ) => void
+  updatePoints?: (...points: LogicalPoint[]) => void
 }
 
 interface MountedDrawing {
   drawing: ChartDrawing
   primitive: ISeriesPrimitive<Time>
 }
+
+const SECOND_ANCHOR_TEXT_TOOLS = new Set<DrawingToolId>([
+  'callout',
+  'anchored-text',
+])
+
+const DIRECT_TEXT_TOOLS = new Set<DrawingToolId>([
+  'text-annotation',
+  'price-note',
+  'price-label',
+])
 
 /** Pane coordinates plus the values they map to, as the chart resolved them. */
 interface CursorPosition {
@@ -117,10 +148,12 @@ interface CursorPosition {
 
 /** A drag in progress: where it started and the anchors it started from. */
 interface DragState {
-  id: string
+  entry: MountedDrawing
   logical: number
   price: number
   anchors: readonly DrawingAnchor[]
+  /** Reused result buffer; one drag must not allocate on every pointer move. */
+  movedAnchors: DrawingAnchor[]
   /** Which anchor each axis belongs to, or null to slide the whole shape. */
   edit: AnchorEdit | null
   moved: boolean
@@ -141,23 +174,36 @@ interface DragState {
  * compile until someone states which pair it answers to, where a `default`
  * branch would guess.
  */
+const catalogStyleOptionNames = Object.fromEntries(
+  CATALOG_DRAWING_TOOL_IDS.map((tool) => [
+    tool,
+    { color: 'lineColor', width: 'width' },
+  ]),
+) as Record<
+  typeof CATALOG_DRAWING_TOOL_IDS[number],
+  { color: string, width: string }
+>
+
 const STYLE_OPTION_NAMES: Record<
   DrawingToolId,
   { color: string | null, width: string }
 > = {
+  ...catalogStyleOptionNames,
   'trend-line': { color: 'lineColor', width: 'width' },
   'horizontal-line': { color: 'lineColor', width: 'width' },
   'horizontal-ray': { color: 'lineColor', width: 'width' },
   'vertical-line': { color: 'lineColor', width: 'width' },
+  'cross-line': { color: 'lineColor', width: 'width' },
   'rectangle': { color: 'lineColor', width: 'width' },
   'circle': { color: 'lineColor', width: 'width' },
   'triangle': { color: 'lineColor', width: 'width' },
   'parallel-channel': { color: 'lineColor', width: 'width' },
   'long-position': { color: 'lineColor', width: 'lineWidth' },
   'short-position': { color: 'lineColor', width: 'lineWidth' },
-  'measure': { color: 'borderColor', width: 'borderWidth' },
-  'price-range': { color: 'borderColor', width: 'borderWidth' },
+  'measure': { color: null, width: 'borderWidth' },
+  'price-range': { color: null, width: 'borderWidth' },
   'date-range': { color: 'borderColor', width: 'borderWidth' },
+  'date-price-range': { color: null, width: 'borderWidth' },
   // Fibonacci carries a colour per level; a single colour has nowhere to go.
   'fib-retracement': { color: null, width: 'width' },
   'fib-extension': { color: null, width: 'width' },
@@ -166,9 +212,34 @@ const STYLE_OPTION_NAMES: Record<
 /** Translates a drawing into the vocabulary of the tool that renders it. */
 export function styleFor(drawing: ChartDrawing): Record<string, unknown> {
   const names = STYLE_OPTION_NAMES[drawing.tool]
+  const capabilities = drawingStyleCapabilities(drawing.tool)
   const style: Record<string, unknown> = { [names.width]: drawing.lineWidth }
   if (names.color !== null) {
     style[names.color] = drawing.color
+  }
+  if (capabilities.lineStyle) {
+    style.lineStyle = drawing.lineStyle ?? DRAWING_DEFAULT_LINE_STYLE
+  }
+  if (capabilities.signedColors) {
+    style.positiveColor = drawing.configuration?.positiveColor
+      ?? DRAWING_DEFAULT_POSITIVE_COLOR
+    style.negativeColor = drawing.configuration?.negativeColor
+      ?? DRAWING_DEFAULT_NEGATIVE_COLOR
+  }
+  if (capabilities.levels) {
+    const levels = drawing.configuration?.levels
+      ?? defaultDrawingLevels(drawing.tool)
+    style.levels = drawing.tool === 'fib-retracement'
+      || drawing.tool === 'fib-extension'
+      ? levels.map(({ value, color }) => ({ coeff: value, color }))
+      : levels
+  }
+  if (capabilities.text) {
+    style.text = drawing.configuration?.text
+      ?? defaultDrawingText(drawing.tool)
+    style.textAppearance = normalizeTextAppearance(
+      drawing.configuration?.textAppearance ?? DEFAULT_TEXT_APPEARANCE,
+    )
   }
   return style
 }
@@ -187,7 +258,9 @@ interface PrimitiveSpec {
    * is the one tool with no horizontal anchor at all, so it still has to build
    * when its instant cannot be placed among the loaded bars.
    */
-  points: 0 | 1 | 2 | 3
+  points: number
+  /** Reads every persisted anchor instead of truncating to `points`. */
+  variablePoints?: boolean
   create: (
     context: PrimitiveContext,
     points: readonly LogicalPoint[],
@@ -202,7 +275,25 @@ interface PrimitiveSpec {
  * `default` and quietly return null, which reads on screen as a drawing that
  * refuses to appear.
  */
+const catalogPrimitiveSpecs = Object.fromEntries(
+  CATALOG_DRAWING_TOOL_IDS.map((tool) => [
+    tool,
+    {
+      points: DRAWING_ANCHORS[tool],
+      variablePoints: isVariablePointDrawing(tool),
+      create: (
+        { chart, series, style }: PrimitiveContext,
+        points: readonly LogicalPoint[],
+      ) => new CatalogDrawing(chart, series, tool, points, style),
+    },
+  ]),
+) as unknown as Record<
+  typeof CATALOG_DRAWING_TOOL_IDS[number],
+  PrimitiveSpec
+>
+
 const PRIMITIVE_SPECS: Record<DrawingToolId, PrimitiveSpec> = {
+  ...catalogPrimitiveSpecs,
   'horizontal-line': {
     points: 0,
     create: ({ chart, series, drawing, style }) =>
@@ -217,6 +308,11 @@ const PRIMITIVE_SPECS: Record<DrawingToolId, PrimitiveSpec> = {
     points: 1,
     create: ({ chart, series, style }, [p1]) =>
       new VerticalLine(chart, series, p1.logical as Logical, style),
+  },
+  'cross-line': {
+    points: 1,
+    create: ({ chart, series, style }, [p1]) =>
+      new CrossLine(chart, series, p1, style),
   },
   'trend-line': {
     points: 2,
@@ -253,6 +349,11 @@ const PRIMITIVE_SPECS: Record<DrawingToolId, PrimitiveSpec> = {
     create: ({ chart, series, style }, [p1, p2]) =>
       new DateRange(chart, series, p1, p2, style),
   },
+  'date-price-range': {
+    points: 2,
+    create: ({ chart, series, style }, [p1, p2]) =>
+      new DatePriceRange(chart, series, p1, p2, style),
+  },
   'fib-extension': {
     points: 3,
     create: ({ chart, series, style }, [p1, p2, p3]) =>
@@ -284,6 +385,12 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
   const mounted: MountedDrawing[] = []
   /** Anchors already clicked for the shape being drawn. */
   let pending: DrawingAnchor[] = []
+  /** Same clicks in the renderer's coordinate system, without re-searching. */
+  let pendingPoints: LogicalPoint[] = []
+  /** Reused on every preview frame to avoid allocating per pointer pixel. */
+  const previewPoints: LogicalPoint[] = []
+  /** Reused while a selected primitive follows the pointer. */
+  const dragPoints: LogicalPoint[] = []
   /**
    * Every tool exposes its points as `_p1`, `_p2`, `_p3` and rebuilds its
    * views on demand, so the preview can drive any of them without knowing
@@ -327,6 +434,7 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
 
   const activeTool = shallowRef<DrawingToolId | null>(null)
   const visible = shallowRef(true)
+  const locked = shallowRef(false)
   /** Bumped when the list changes, so the toolbar can show a count. */
   const revision = shallowRef(0)
   /** The drawing under edit, or null. Read by the style bar. */
@@ -346,7 +454,7 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
     // the primitives answer `toolHitTest` whether or not they are attached. A
     // click on apparently empty chart would pick a shape nobody can see, open
     // the style bar on it and let it be dragged blind.
-    if (!visible.value) {
+    if (!visible.value || locked.value) {
       return null
     }
     for (let index = mounted.length - 1; index >= 0; index -= 1) {
@@ -358,10 +466,71 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
     return null
   }
 
+  /**
+   * Text labels are wider than their anchor. Primitive hit tests know the
+   * shape, but most imported tools only test a small radius around the point;
+   * double-clicking the visible end of a label would otherwise miss it.
+   */
+  function textDrawingAt(x: number, y: number): MountedDrawing | null {
+    if (!visible.value || locked.value) {
+      return null
+    }
+    for (let index = mounted.length - 1; index >= 0; index -= 1) {
+      const entry = mounted[index]
+      if (!drawingStyleCapabilities(entry.drawing.tool).text) {
+        continue
+      }
+      const primitiveHit = editable(entry.primitive)
+        .toolHitTest?.(x, y)?.hit
+      if (primitiveHit || textLabelContains(entry.drawing, x, y)) {
+        return entry
+      }
+    }
+    return null
+  }
+
+  function textLabelContains(
+    drawing: ChartDrawing,
+    x: number,
+    y: number,
+  ): boolean {
+    const points = paneCoordinates(drawing)
+    const pointIndex = SECOND_ANCHOR_TEXT_TOOLS.has(drawing.tool) ? 1 : 0
+    const point = points[pointIndex]
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      return false
+    }
+    const direct = DIRECT_TEXT_TOOLS.has(drawing.tool)
+      || SECOND_ANCHOR_TEXT_TOOLS.has(drawing.tool)
+    const originX = point.x + (direct ? 0 : 18)
+    const originY = point.y + (direct ? 0 : -18)
+    const text = drawing.configuration?.text
+      ?? defaultDrawingText(drawing.tool)
+    const appearance = normalizeTextAppearance(
+      drawing.configuration?.textAppearance ?? DEFAULT_TEXT_APPEARANCE,
+    )
+    const priceWidth = drawing.tool === 'price-note'
+      || drawing.tool === 'price-label'
+      ? 92
+      : 0
+    // Renderer uses 11px Inter. This deliberately errs a few pixels wide so
+    // the full painted box remains easy to acquire at different font metrics.
+    const estimatedWidth = estimateTextWidth(text, appearance)
+      + 12
+      + priceWidth * appearance.fontSize / 12
+    const width = Math.min(340, Math.max(42, estimatedWidth))
+    const height = textBoxHeight(appearance)
+    return x >= originX - 10
+      && x <= originX + width + 5
+      && y >= originY - height / 2 - 6
+      && y <= originY + height / 2 + 6
+  }
+
   function markSelected(id: string | null): void {
+    const targetId = locked.value ? null : id
     let found: ChartDrawing | null = null
     for (const entry of mounted) {
-      const isTarget = entry.drawing.id === id
+      const isTarget = entry.drawing.id === targetId
       editable(entry.primitive).setSelected?.(isTarget)
       if (isTarget) {
         found = entry.drawing
@@ -407,12 +576,10 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
    */
   function moveDragged(position: CursorPosition): void {
     const current = drag
-    const entry = current
-      ? mounted.find((item) => item.drawing.id === current.id)
-      : undefined
-    if (!current || !entry) {
+    if (!current) {
       return
     }
+    const entry = current.entry
     const bars = options.bars()
     const deltaLogical = position.logical - current.logical
     const deltaPrice = position.price - current.price
@@ -423,8 +590,8 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
      * shape slides rigid.
      */
     const edit = current.edit
-    const anchors: DrawingAnchor[] = []
-    for (const [index, anchor] of current.anchors.entries()) {
+    for (let index = 0; index < current.anchors.length; index += 1) {
+      const anchor = current.anchors[index]
       const movesTime = !edit || edit.time === index
       const movesPrice = !edit || edit.price === index
       const logical = movesTime ? logicalForTime(bars, anchor.time) : null
@@ -434,12 +601,11 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       if (time === null) {
         return
       }
-      anchors.push({
-        time,
-        price: movesPrice ? anchor.price + deltaPrice : anchor.price,
-      })
+      const moved = current.movedAnchors[index]
+      moved.time = time
+      moved.price = movesPrice ? anchor.price + deltaPrice : anchor.price
     }
-    entry.drawing.anchors = anchors
+    entry.drawing.anchors = current.movedAnchors
     current.moved = true
     if (movePrimitive(entry)) {
       pump.request()
@@ -453,28 +619,41 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
    * chart's model, and a drag does this once per pointer move (ADR-0003).
    */
   function movePrimitive(entry: MountedDrawing): boolean {
-    const points: LogicalPoint[] = []
-    for (const anchor of entry.drawing.anchors) {
-      const point = toPoint(anchor)
-      if (!point) {
+    dragPoints.length = entry.drawing.anchors.length
+    for (let index = 0; index < entry.drawing.anchors.length; index += 1) {
+      const anchor = entry.drawing.anchors[index]
+      const logical = toLogical(anchor.time)
+      if (logical === null) {
+        dragPoints.length = 0
         return false
       }
-      points.push(point)
+      const point = dragPoints[index]
+      if (point) {
+        point.logical = logical
+        point.price = anchor.price
+      } else {
+        dragPoints[index] = { logical, price: anchor.price }
+      }
     }
-    const [p1, p2, p3] = points
+    const [p1] = dragPoints
     const tool = editable(entry.primitive)
+    if (isCatalogDrawingTool(entry.drawing.tool)) {
+      tool.updatePoints?.(...dragPoints)
+      return true
+    }
     switch (entry.drawing.tool) {
       case 'horizontal-line':
         tool.updatePrice?.(entry.drawing.anchors[0].price)
         break
       case 'horizontal-ray':
+      case 'cross-line':
         tool.updatePoint?.(p1)
         break
       case 'vertical-line':
         tool.updatePosition?.(p1.logical as Logical)
         break
       default:
-        tool.updatePoints?.(p1, p2, p3)
+        tool.updatePoints?.(...dragPoints)
     }
     return true
   }
@@ -520,7 +699,10 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
     }
     const spec = PRIMITIVE_SPECS[drawing.tool]
     const points: LogicalPoint[] = []
-    for (let index = 0; index < spec.points; index += 1) {
+    const pointCount = spec.variablePoints
+      ? drawing.anchors.length
+      : spec.points
+    for (let index = 0; index < pointCount; index += 1) {
       const point = toPoint(drawing.anchors[index])
       if (!point) {
         return null
@@ -636,6 +818,7 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       anchors,
       color: DRAWING_DEFAULT_COLOR,
       lineWidth: DRAWING_DEFAULT_WIDTH,
+      lineStyle: DRAWING_DEFAULT_LINE_STYLE,
     })
     if (built && attach(built)) {
       preview = built as unknown as MutablePreview
@@ -664,9 +847,65 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
     })
   }
 
+  function finishVariableDrawing(removeDuplicateEnd = false): boolean {
+    const tool = activeTool.value
+    if (!tool || !isVariablePointDrawing(tool)) {
+      return false
+    }
+    if (removeDuplicateEnd && pending.length > DRAWING_ANCHORS[tool]) {
+      pending.pop()
+      pendingPoints.pop()
+    }
+    if (pending.length < DRAWING_ANCHORS[tool]) {
+      return false
+    }
+    clearPreview()
+    commit({
+      id: createDrawingId(),
+      tool,
+      anchors: pending,
+      color: DRAWING_DEFAULT_COLOR,
+      lineWidth: DRAWING_DEFAULT_WIDTH,
+      lineStyle: DRAWING_DEFAULT_LINE_STYLE,
+    })
+    pending = []
+    pendingPoints = []
+    activeTool.value = null
+    return true
+  }
+
+  function updateSelectedDrawing(
+    update: (drawing: ChartDrawing) => ChartDrawing,
+  ): void {
+    const id = selected.value?.id
+    const index = mounted.findIndex((entry) => entry.drawing.id === id)
+    if (index < 0) {
+      return
+    }
+    const entry = mounted[index]
+    entry.drawing = update(entry.drawing)
+    const tool = editable(entry.primitive)
+    if (tool.applyOptions) {
+      tool.applyOptions(styleFor(entry.drawing))
+    } else {
+      const rebuilt = buildPrimitive(entry.drawing)
+      if (rebuilt) {
+        detach(entry.primitive)
+        entry.primitive = rebuilt
+        attachIfVisible(rebuilt)
+      }
+    }
+    editable(entry.primitive).setSelected?.(true)
+    selected.value = entry.drawing
+    pump.request()
+    revision.value += 1
+    persist()
+  }
+
   return {
     activeTool,
     visible,
+    locked,
     revision,
 
     selected,
@@ -674,6 +913,7 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
     select(tool: DrawingToolId | null): void {
       activeTool.value = tool
       pending = []
+      pendingPoints = []
       clearPreview()
       if (tool) {
         markSelected(null)
@@ -704,10 +944,11 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       const grabbed = editable(entry.primitive)
         .toolHitTest?.(position.x, position.y)
       drag = {
-        id: entry.drawing.id,
+        entry,
         logical: position.logical,
         price: position.price,
         anchors: entry.drawing.anchors.map((anchor) => ({ ...anchor })),
+        movedAnchors: entry.drawing.anchors.map((anchor) => ({ ...anchor })),
         edit: grabbed?.type === 'point'
           ? anchorEditAt(paneCoordinates(entry.drawing), position.x, position.y)
           : null,
@@ -776,7 +1017,16 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
         return
       }
       pending.push({ time, price: position.price })
+      pendingPoints.push({ logical: position.logical, price: position.price })
 
+      if (isVariablePointDrawing(tool)) {
+        if (pending.length >= DRAWING_MAX_ANCHORS) {
+          finishVariableDrawing()
+        } else {
+          showPreview(tool)
+        }
+        return
+      }
       if (pending.length < DRAWING_ANCHORS[tool]) {
         showPreview(tool)
         return
@@ -788,8 +1038,10 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
         anchors: pending,
         color: DRAWING_DEFAULT_COLOR,
         lineWidth: DRAWING_DEFAULT_WIDTH,
+        lineStyle: DRAWING_DEFAULT_LINE_STYLE,
       })
       pending = []
+      pendingPoints = []
       // One shape per activation, like every charting platform: the tool stays
       // armed only while the operator is placing it.
       activeTool.value = null
@@ -811,9 +1063,16 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       const price = series && param.point
         ? series.coordinateToPrice(param.point.y)
         : null
-      cursor = logical === undefined || price === null || !param.point
-        ? null
-        : { logical, price, x: param.point.x, y: param.point.y }
+      if (logical === undefined || price === null || !param.point) {
+        cursor = null
+      } else if (cursor) {
+        cursor.logical = logical
+        cursor.price = price
+        cursor.x = param.point.x
+        cursor.y = param.point.y
+      } else {
+        cursor = { logical, price, x: param.point.x, y: param.point.y }
+      }
       if (drag && cursor) {
         moveDragged(cursor)
         return
@@ -826,15 +1085,35 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
        * every point beyond it follows: a three-point tool has to stay a
        * coherent shape while only its first corner is fixed.
        */
-      if (pending.length <= 1) {
-        preview._p2 = { logical: cursor.logical, price: cursor.price }
+      const tool = activeTool.value
+      if (!tool) {
+        return
       }
-      if (pending.length <= 2 && preview._p3 !== undefined) {
-        // A fresh object, never the one just written to `_p2`: the tools keep
-        // the points they are given, and two aliased corners are one corner.
-        preview._p3 = { logical: cursor.logical, price: cursor.price }
+      const expected = isVariablePointDrawing(tool)
+        ? pendingPoints.length + 1
+        : DRAWING_ANCHORS[tool]
+      previewPoints.length = expected
+      for (let index = 0; index < expected; index += 1) {
+        const source = pendingPoints[index] ?? cursor
+        const point = previewPoints[index]
+        if (point) {
+          point.logical = source.logical
+          point.price = source.price
+        } else {
+          previewPoints[index] = {
+            logical: source.logical,
+            price: source.price,
+          }
+        }
       }
-      preview.updateAllViews()
+      if (preview.updatePoints) {
+        preview.updatePoints(...previewPoints)
+      } else {
+        preview._p1 = previewPoints[0]
+        preview._p2 = previewPoints[1]
+        preview._p3 = previewPoints[2]
+        preview.updateAllViews()
+      }
       /*
        * The frame has to be asked for here too. The crosshair paints on its own
        * layer, so a pointer move does not repaint the pane the primitives live
@@ -869,6 +1148,7 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
     restore(drawings: readonly ChartDrawing[]): void {
       // Whatever was half-drawn belonged to the data being replaced.
       pending = []
+      pendingPoints = []
       clearPreview()
       selected.value = null
       mountAll(drawings)
@@ -878,6 +1158,23 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
     /** Everything this chart knows about, whether it could be placed or not. */
     drawings(): ChartDrawing[] {
       return allDrawings()
+    },
+
+    /** Finishes a variable-point tool with Enter or a final double-click. */
+    finishActive(removeDuplicateEnd = false): boolean {
+      return finishVariableDrawing(removeDuplicateEnd)
+    },
+
+    selectTextAt(x: number, y: number): ChartDrawing | null {
+      if (activeTool.value) {
+        return null
+      }
+      const entry = textDrawingAt(x, y)
+      if (!entry) {
+        return null
+      }
+      markSelected(entry.drawing.id)
+      return entry.drawing
     },
 
     /** Lets go of the drawing under edit, leaving it on the chart. */
@@ -906,34 +1203,32 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
      * their anchors — a rebuild is fine here because restyling happens on a
      * click, never per pointer move.
      */
-    restyleSelected(style: { color?: string, lineWidth?: number }): void {
-      const id = selected.value?.id
-      const index = mounted.findIndex((entry) => entry.drawing.id === id)
-      if (index < 0) {
-        return
-      }
-      const entry = mounted[index]
-      entry.drawing = {
-        ...entry.drawing,
-        ...(style.color === undefined ? {} : { color: style.color }),
-        ...(style.lineWidth === undefined ? {} : { lineWidth: style.lineWidth }),
-      }
-      const tool = editable(entry.primitive)
-      if (tool.applyOptions) {
-        tool.applyOptions(styleFor(entry.drawing))
-      } else {
-        const rebuilt = buildPrimitive(entry.drawing)
-        if (rebuilt) {
-          detach(entry.primitive)
-          entry.primitive = rebuilt
-          attachIfVisible(rebuilt)
-        }
-      }
-      editable(entry.primitive).setSelected?.(true)
-      selected.value = entry.drawing
-      pump.request()
-      revision.value += 1
-      persist()
+    restyleSelected(style: {
+      color?: string
+      lineWidth?: number
+      lineStyle?: DrawingLineStyle
+    }): void {
+      updateSelectedDrawing((drawing) => ({ ...drawing, ...style }))
+    },
+
+    configureSelected(configuration: DrawingConfiguration): void {
+      updateSelectedDrawing((drawing) => ({
+        ...drawing,
+        configuration: {
+          ...drawing.configuration,
+          ...configuration,
+          ...(configuration.levels
+            ? { levels: configuration.levels.map((level) => ({ ...level })) }
+            : {}),
+          ...(configuration.textAppearance
+            ? {
+                textAppearance: copyTextAppearance(
+                  configuration.textAppearance,
+                ),
+              }
+            : {}),
+        },
+      }))
     },
 
     clear(): void {
@@ -941,7 +1236,9 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       mounted.length = 0
       unbuilt.length = 0
       pending = []
+      pendingPoints = []
       selected.value = null
+      locked.value = false
       clearPreview()
       revision.value += 1
       persist()
@@ -959,6 +1256,13 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       mounted.forEach((entry) => detach(entry.primitive))
     },
 
+    toggleLock(): void {
+      locked.value = !locked.value
+      if (locked.value) {
+        markSelected(null)
+      }
+    },
+
     count(): number {
       // Read so the toolbar re-renders on the next change: `mounted` is a
       // plain array on purpose, and cannot report its own length (ADR-0003).
@@ -974,8 +1278,10 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       mounted.length = 0
       unbuilt.length = 0
       pending = []
+      pendingPoints = []
       drag = null
       selected.value = null
+      locked.value = false
       pump.cancel()
       if (pumpAttached) {
         try {

@@ -160,6 +160,14 @@ export function resetCanvasState(ctx: CanvasRenderingContext2D): void {
     ctx.setLineDash([]);
 }
 
+const LINE_DASH_PATTERNS: number[][] = [
+    [],
+    [2, 2],
+    [6, 6],
+    [10, 10],
+    [2, 10],
+];
+
 /**
  * Sets the line dash pattern based on the style index.
  * 0: Solid
@@ -171,14 +179,7 @@ export function resetCanvasState(ctx: CanvasRenderingContext2D): void {
  * @param style - Style index (0-4)
  */
 export function setLineStyle(ctx: CanvasRenderingContext2D, style: number): void {
-    const dashPatterns = [
-        [],             // 0: Solid
-        [2, 2],         // 1: Dotted
-        [6, 6],         // 2: Dashed
-        [10, 10],       // 3: Large Dashed
-        [2, 10],        // 4: Sparse Dotted
-    ];
-    const pattern = dashPatterns[style] || dashPatterns[0];
+    const pattern = LINE_DASH_PATTERNS[style] || LINE_DASH_PATTERNS[0];
     ctx.setLineDash(pattern);
 }
 
