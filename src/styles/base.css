@@ -181,40 +181,15 @@ body.panel-resizing * {
   padding: 0 11px;
 }
 
-html[data-theme="light"] .app-header,
-html[data-theme="light"] .instrument-tabs {
-  background: var(--header-bg);
-}
-
-html[data-theme="light"] .workspace-grid {
-  background: var(--workspace-bg);
-}
-
-html[data-theme="light"] .navigation-rail,
-html[data-theme="light"] .market-sidebar,
-html[data-theme="light"] .panel-resize-handle,
-html[data-theme="light"] .chart-toolbar,
-html[data-theme="light"] .drawing-toolbar {
-  background: var(--panel-raised);
-}
-
-html[data-theme="light"] .chart-stage {
-  background: var(--panel);
-}
-
-html[data-theme="light"] .brand,
-html[data-theme="light"] .sidebar-section h2,
-html[data-theme="light"] .panel-header h2,
-html[data-theme="light"] .instrument-tab.active,
-html[data-theme="light"] .chart-legend strong,
-html[data-theme="light"] .ticket-tabs button.active,
-html[data-theme="light"] .positions-tabs button.active,
-html[data-theme="light"] .position-row strong,
-html[data-theme="light"] .symbol-modal-header h2,
-html[data-theme="light"] .symbol-table-row strong {
-  color: var(--text-strong);
-}
-
+/*
+ * O que sobrou do bloco claro: só o que o bloco genérico abaixo não define.
+ *
+ * Os dois têm especificidade idêntica — `html[data-theme="light"] .x` e
+ * `html[data-theme] .x` valem (0,2,1) — e o genérico vem depois, então ele
+ * vencia toda propriedade que ambos declaravam. Eram vinte e seis declarações
+ * que nunca pintaram nada, quatorze delas pedindo um valor diferente do que a
+ * tela de fato mostrava.
+ */
 html[data-theme="light"] .ticker > span,
 html[data-theme="light"] .ticker strong,
 html[data-theme="light"] .market-row,
@@ -231,56 +206,9 @@ html[data-theme="light"] .symbol-table-row {
   color: color-mix(in srgb, var(--text) 30%, var(--chart-text));
 }
 
-html[data-theme="light"] .exchange-selector,
-html[data-theme="light"] .search-field,
-html[data-theme="light"] .ticket-field div,
-html[data-theme="light"] .estimate-fields input,
-html[data-theme="light"] .symbol-search-input {
-  border-color: color-mix(in srgb, var(--selected-bg) 80%, var(--text-strong));
-  background: var(--control-bg);
-}
-
 html[data-theme="light"] .search-field input,
 html[data-theme="light"] .symbol-search-input input {
   color: var(--text);
-}
-
-html[data-theme="light"] .window-actions button:hover,
-html[data-theme="light"] .navigation-rail button:hover,
-html[data-theme="light"] .navigation-rail button.active,
-html[data-theme="light"] .market-row:hover,
-html[data-theme="light"] .market-row.selected,
-html[data-theme="light"] .instrument-tab:hover,
-html[data-theme="light"] .instrument-tab-close:hover,
-html[data-theme="light"] .chart-toolbar button:hover,
-html[data-theme="light"] .chart-toolbar button.active,
-html[data-theme="light"] .drawing-toolbar button:hover,
-html[data-theme="light"] .drawing-toolbar button.active,
-html[data-theme="light"] .positions-tabs button.active {
-  background: var(--hover-bg);
-}
-
-html[data-theme="light"] .market-kind button,
-html[data-theme="light"] .instrument-tab.active,
-html[data-theme="light"] .position-row button,
-html[data-theme="light"] .preset-grid button {
-  background: var(--panel-raised);
-}
-
-html[data-theme="light"] .market-kind button.active,
-html[data-theme="light"] .quote-tabs button.active,
-html[data-theme="light"] .preset-grid button.active {
-  color: var(--text);
-  background: var(--hover-bg);
-}
-
-html[data-theme="light"] .instrument-tabs .new-tab {
-  background: var(--bg);
-}
-
-html[data-theme="light"] .instrument-tabs .new-tab:hover:not(:disabled) {
-  color: var(--accent-hover);
-  background: var(--selected-bg);
 }
 
 html[data-theme="light"] .chart-message {
@@ -311,53 +239,9 @@ html[data-theme="light"] .status-bar {
   color: var(--muted);
 }
 
-html[data-theme="light"] .status-bar {
-  background: var(--panel-raised);
-}
-
-html[data-theme="light"] .symbol-modal,
-html[data-theme="light"] .symbol-search-window,
-html[data-theme="light"] .symbol-virtual-viewport,
-html[data-theme="light"] .symbol-table-row {
-  background: var(--panel);
-}
-
 html[data-theme="light"] .symbol-modal {
   border-color: color-mix(in srgb, var(--selected-bg) 80%, var(--text-strong));
   box-shadow: 0 8px 22px rgb(32 58 70 / 18%);
-}
-
-html[data-theme="light"] .symbol-modal-header,
-html[data-theme="light"] .symbol-table-header {
-  background: var(--bg);
-}
-
-html[data-theme="light"] .symbol-modal-filters,
-html[data-theme="light"] .symbol-modal-footer {
-  background: var(--panel-raised);
-}
-
-html[data-theme="light"] .symbol-modal-cache button,
-html[data-theme="light"] .symbol-quote-filters button,
-html[data-theme="light"] .symbol-search-help kbd {
-  border-color: color-mix(in srgb, var(--selected-bg) 80%, var(--text-strong));
-  color: var(--chart-text);
-  background: var(--panel);
-}
-
-html[data-theme="light"] .symbol-modal-cache button:hover,
-html[data-theme="light"] .symbol-quote-filters button:hover,
-html[data-theme="light"] .symbol-table-row:hover,
-html[data-theme="light"] .symbol-table-row.active {
-  color: var(--text);
-  border-color: #82aec0;
-  background: var(--hover-bg);
-}
-
-html[data-theme="light"] .symbol-quote-filters button.active,
-html[data-theme="light"] .symbol-table-row.selected {
-  color: color-mix(in srgb, var(--text) 75%, var(--accent-hover));
-  background: var(--selected-bg);
 }
 
 html[data-theme="light"] .symbol-table-row {
@@ -375,12 +259,6 @@ html[data-theme="light"] .crypto-asset-icon.fallback {
   background: linear-gradient(135deg, var(--selected-bg), #bdd8e1);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 85%, var(--accent-hover));
 }
-
-/*
- * Theme presets write these semantic tokens once on <html>. Keeping the
- * selectors here declarative means palette changes do not traverse Vue's
- * component tree or recreate either realtime canvas.
- */
 
 html[data-theme] .app-header,
 html[data-theme] .instrument-tabs {

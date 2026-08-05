@@ -13,9 +13,8 @@ commitada em separado.
 **Andamento:** o trabalho é acompanhado pela
 [F-017](../specs/F-017-endurecimento-pos-revisao.md), que tem os critérios de
 aceite e o que cada correção descobriu. Onda 1 fechada por inteiro: RV-001 a RV-005, mais as duas pendências de
-verificação. Onda 2 fechada por inteiro: RV-006 a RV-011. Onda 3: RV-012 e RV-013
-fechados; RV-014 adiado com motivo. Onda 4: fechados RV-016 a RV-019 e
-RV-021 a RV-025. Aguardam decisão sua: RV-015 e RV-020, mais o RV-014 adiado.
+verificação. Onda 2 fechada por inteiro: RV-006 a RV-011. Onda 3 fechada por inteiro. Onda 4: fechados RV-016 a RV-019 e
+RV-021 a RV-025. **Os 25 itens estão fechados.**
 
 **Este documento é o que sobrou.** O que era correção segura e defensável já
 foi aplicado nos commits acima. Aqui estão os achados que exigem decisão sua:
@@ -312,7 +311,7 @@ por quadro entra no caminho de pintura.
 
 **Custo:** trivial.
 
-### RV-014 · `previous` retém `subarray` prendendo o buffer inteiro
+### ✅ RV-014 · `previous` retém `subarray` prendendo o buffer inteiro
 
 **O que acontece.** `normalizePlotPoints` aloca um `Float64Array` do tamanho
 total e devolve `subarray(0, count)`. A view retém o buffer completo: uma média
@@ -334,7 +333,7 @@ medição mostrar que a retenção pesa.
 
 ## Onda 4 — qualidade, acessibilidade e dívida
 
-### RV-015 · ~90 linhas de CSS morto no tema claro
+### ✅ RV-015 · ~90 linhas de CSS morto no tema claro
 
 O bloco `html[data-theme="light"]` (linhas 184–377 de `src/styles/base.css`) e
 o bloco `html[data-theme]` (385–512) têm **especificidade idêntica**, e o
@@ -385,7 +384,7 @@ código aparentemente morto já quebrou o typecheck neste projeto.
 | `useChartDrawings.ts:917` | `undo()` sem chamador — parece afordância pretendida e não ligada |
 | `useChartDrawings.ts` | `drawings()` sem chamador, e `styleFor` exportado sem consumidor externo |
 
-### RV-020 · Extração de `MarketChart.vue`
+### ✅ RV-020 · Extração de `MarketChart.vue`
 
 O arquivo tem ~1.130 linhas e três responsabilidades separáveis **sem tocar na
 forma do caminho quente**: ciclo de vida dos indicadores (~190 linhas, estado

@@ -212,6 +212,13 @@ function normalizePlotPoints(
   }
 
   if (ordered) {
+    /*
+     * A view, not a copy. It pins the full backing buffer, and that was
+     * measured before being kept: the waste is the indicator's warm-up and
+     * does not grow with history — 3,2 KB per plot for a 200-period average,
+     * about 100 KB across eight indicators. Copying instead costs between 6,7
+     * and 64 times more per call, on the path that runs every tick.
+     */
     return {
       time: time.subarray(0, count),
       value: value.subarray(0, count),

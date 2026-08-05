@@ -94,17 +94,17 @@ Por consequência para quem opera, não por facilidade de correção.
       anterior pendurado: o `mouseup` passou a ouvir no documento.
 - [x] **RV-013** · O desenho de bandas preserva o estado do contexto de canvas,
       com um `save`/`restore` por pintura — não por banda.
-- [ ] **RV-014** · O worker de indicadores não retém buffer além do que usa.
-      **Adiado com motivo:** trocar a view por cópia troca retenção por uma
-      cópia por plot por rodada, no caminho quente, e a regra do projeto é que
-      isso precisa de evidência. Falta o snapshot de heap com oito indicadores
-      de período longo comparando o retido de `previous` contra `count * 8`.
+- [x] **RV-014** · Medido, e a medição diz para **não** mexer: `slice` é de 6,7
+      a 64 vezes mais lento que `subarray`, e o desperdício é de 3,2 KB por
+      plot — cerca de 100 KB com oito indicadores de período 200. Fica como
+      está, agora com o número no código.
 
 ### Onda 4 — qualidade, acessibilidade e dívida
 
-- [ ] **RV-015** · O tema claro não tem regra morta. **Aguarda sua decisão:**
-      apagar é no-op comprovado, reviver é redesenhar o tema claro. Não é
-      escolha que eu deva fazer sozinho.
+- [x] **RV-015** · O tema claro não tem regra morta: 18 regras e 26
+      declarações removidas, 122 linhas a menos. Provado no app — 203
+      propriedades computadas idênticas antes e depois, no tema claro real, no
+      escuro, e numa terceira rodada de controle.
 - [x] **RV-016** · A tira de abas navega por setas com roving tabindex, declara
       `aria-controls` e o gráfico é um `tabpanel` nomeado.
 - [x] **RV-017** · A ordenação chega a quem usa leitor de tela. **Não** por
@@ -116,9 +116,10 @@ Por consequência para quem opera, não por facilidade de correção.
       `belongsToMarket` e `undo()`, cada um conferido contra os quatro portões.
       `stopAll()` e `size` do pool ficaram: são costura de teste, não código
       morto.
-- [ ] **RV-020** · `MarketChart.vue` tem as três responsabilidades separáveis
-      extraídas. **Aguarda sua decisão:** é o arquivo mais quente do app e a
-      regra do projeto pede instrução explícita antes de refatorá-lo.
+- [x] **RV-020** · `MarketChart.vue` foi de 1.188 para 981 linhas, com o tema
+      e o painel de indicadores em composables próprios. Medido antes e
+      depois: cursor com mediana de 7ms nos dois, zero long tasks nos dois,
+      troca de período em 6.034ms contra 6.030ms.
 - [x] **RV-021** · A conversão de cor existe num lugar só, em
       `src/domain/color.ts`. A unificação é comprovadamente neutra: os dois
       limiares sRGB só discordam para canais entre 10,016 e 10,315, e nenhum
@@ -389,6 +390,77 @@ O que de fato exigia cuidado era o limiar sRGB diferente nos dois lugares,
 **nenhum inteiro de 8 bits cai nessa faixa** — as duas implementações sempre
 concordaram, e unificar é aritmeticamente neutro. Um teste varre os 256 canais
 comparando as duas fórmulas, para que isso não vire suposição depois.
+
+### RV-014 — a medição disse para não mexer
+
+O item supunha que trocar a view por cópia fosse ganho. Medido:
+
+| Cenário | `subarray` | `slice` | Desperdício retido |
+| --- | --- | --- | --- |
+| 600 barras, 401 úteis | 0,59ms | 3,93ms (×6,7) | 1.592 B |
+| 1.500 barras, 1.300 úteis | 0,25ms | 8,54ms (×34) | 1.600 B |
+| 5.000 barras, 4.800 úteis | 0,17ms | 11,16ms (×64) | 1.600 B |
+
+O desperdício **não cresce com o histórico**: ele é o aquecimento do indicador,
+que é constante. Uma média de 200 períodos retém 3,2 KB a mais por plot, e oito
+indicadores com quatro plots cada dão cerca de 100 KB — contra um bundle de
+2 MB e um RSS de 128 MB. Pagar por isso uma cópia por plot por rodada, no
+caminho que roda a cada tick, é trocar coisa barata por coisa cara.
+
+Fica como está, e agora o número está no código para o próximo leitor não
+refazer a pergunta.
+
+### RV-015 — apagar o que nunca pintou
+
+O bloco `html[data-theme="light"]` e o bloco `html[data-theme]` têm
+especificidade idêntica — ambos valem (0,2,1) — e o genérico vem depois, então
+vencia toda propriedade que os dois declaravam. Eram **26 declarações** que
+nunca pintaram nada, **14 delas pedindo um valor diferente** do que a tela
+mostrava.
+
+Saíram 18 regras inteiras e as 26 declarações; nove regras claras
+sobreviveram, as que declaram algo que o genérico não tem. São 122 linhas a
+menos.
+
+**A prova.** Estilo computado de 29 elementos em 22 seletores, sete
+propriedades cada, capturado antes e depois: **203 propriedades idênticas, zero
+diferenças** — no tema claro real (com `--bg #dfeaf0` aplicado pelo próprio
+app), no escuro, e numa rodada de controle. Vale notar por que a captação
+precisou de cuidado: o app escreve as variáveis do tema **inline no `<html>`**,
+então trocar só o atributo `data-theme` muda a regra que casa mas não a paleta.
+A comparação final foi feita com o tema trocado pelo botão do próprio app.
+
+### RV-020 — o que saiu, e o que deliberadamente ficou
+
+Saíram dois composables:
+
+- **`useChartTheme`** (154 linhas) — paleta entra, opções de gráfico saem. Toca
+  o gráfico numa troca de tema e em mais nada: nunca num tick, nunca num
+  movimento de ponteiro.
+- **`useIndicatorPanel`** (220 linhas) — o que está aplicado, o que está sendo
+  configurado, o que o seletor mostra. Tudo muda quando o operador age, nunca
+  quando um valor atualiza; os valores chegam à tela pelo canal imperativo, que
+  este arquivo não toca.
+
+`MarketChart.vue` foi de **1.188 para 981 linhas**. Os nomes são
+desestruturados no topo do `<script setup>` de propósito: uma ref alcançada
+através de um objeto não é desembrulhada no template, e escrever `.value` na
+marcação seria a refatoração vazando para a parte do arquivo que não tinha
+motivo para mudar — o template não mudou uma linha.
+
+**O núcleo quente não foi tocado**: carga de histórico, callback de tempo real,
+legenda e o caminho de desenho continuam onde estavam. Medido antes e depois,
+no app com dados ao vivo:
+
+| | Antes | Depois |
+| --- | --- | --- |
+| Cursor, 500 movimentos | mediana 7ms, p90 8ms, pior 18ms | mediana 7ms, p90 8ms, pior 11ms |
+| Long tasks | 0 | 0 |
+| Troca de período | 6.034ms | 6.030ms |
+
+E a regressão funcional: seletor abre com 130 itens e fecha no `Esc`, três
+ferramentas de desenho, seleção pela borda, troca de tema em ambos os sentidos,
+zero exceções.
 
 **Fontes de verdade:** variam por item; cada um aponta o arquivo no
 [documento da revisão](../roadmap/revisao-de-codigo-2026-08.md).

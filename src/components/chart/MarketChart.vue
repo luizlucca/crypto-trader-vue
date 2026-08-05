@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {
-  computed,
   onBeforeUnmount,
   onMounted,
   ref,
@@ -13,7 +12,6 @@ import {
   HistogramSeries,
   createChart,
   createTextWatermark,
-  type HistogramData,
   type IChartApi,
   type ISeriesApi,
   type LogicalRangeChangeEventHandler,
@@ -21,36 +19,28 @@ import {
   type MouseEventHandler,
   type SeriesType,
   type Time,
-  type UTCTimestamp,
 } from 'lightweight-charts'
 import {
   RoundedCandleSeries,
   type RoundedCandleSeriesApi,
 } from '@/plugins/roundedCandles/RoundedCandleSeries'
-import type { RoundedCandleData } from '@/plugins/roundedCandles/data'
 import type { Candle, MarketSelection } from '@shared/types/market'
 import { uniqueSortedCandles } from '@/domain/candles'
 import { marketSelectionFingerprint } from '@/domain/marketSelection'
 import { useChartIndicators } from '@/composables/useChartIndicators'
 import { useChartDrawings } from '@/composables/useChartDrawings'
+import { useIndicatorPanel } from '@/composables/useIndicatorPanel'
+import {
+  candlePoint,
+  useChartTheme,
+  volumePoint,
+} from '@/composables/useChartTheme'
 import type { DrawingToolId } from '@/domain/chartDrawings'
 import { readDrawings, writeDrawings } from '@/services/drawingStore'
 import type { IndicatorBars } from '@/services/indicators'
-import {
-  readIndicatorLayout,
-  writeIndicatorLayout,
-} from '@/services/indicatorLayout'
 import { loadCandles, onCandle } from '@/services/marketData'
 import { publishRealtimePrice } from '@/services/realtimePrice'
 import { appThemePalette } from '@/services/theme'
-import type { ThemePalette } from '@/services/themeCatalog'
-import type {
-  IndicatorDefinition,
-  IndicatorInputs,
-  IndicatorPlotStyle,
-  AppliedIndicator,
-} from '@/domain/indicators'
-import type { PresentedIndicator } from '@/domain/indicatorLegend'
 import ChartToolbar from './ChartToolbar.vue'
 import DrawingStyleBar from './DrawingStyleBar.vue'
 import DrawingToolbar from './DrawingToolbar.vue'
@@ -157,6 +147,54 @@ const indicators = useChartIndicators({
  * Drawings live on the candle series and are saved per asset: a trend line is
  * manual work, and losing it on restart would be losing the analysis.
  */
+const panel = useIndicatorPanel({
+  indicators,
+  sessionId: () => props.sessionId,
+  onError: showIndicatorError,
+})
+
+/*
+ * Named at the top level so the template keeps unwrapping them. A ref reached
+ * through an object is not unwrapped in a template, and writing `.value` in
+ * markup would be the refactor leaking into the part of the file that had no
+ * reason to change.
+ */
+const {
+  presented: presentedIndicators,
+  hoveredId: hoveredIndicatorId,
+  pickerOpen,
+  configuringId,
+  configuring,
+  editing,
+  configuringCalculated,
+  configuringPopulatedPlots,
+  editingCalculated,
+  editingPopulatedPlots,
+  catalog: loadIndicatorCatalog,
+  openPicker: openIndicatorPicker,
+  add: addIndicator,
+  remove: removeIndicator,
+  collapseEditing,
+  removeEditing,
+  closePicker,
+  editingInputs,
+  editingStyles,
+  previewReadout: previewIndicatorReadout,
+  applyInputs: applyIndicatorInputs,
+  applyStyles: applyIndicatorStyles,
+} = panel
+
+const chartTheme = useChartTheme({
+  chart: () => chart.value,
+  candleSeries: () => candleSeries.value,
+  volumeSeries: () => volumeSeries.value,
+  watermark: () => watermark,
+  candles: () => displayedCandles,
+  symbol: displaySymbol,
+  interval: () => props.selection.interval,
+  onRetheme: () => indicators.retheme(),
+})
+
 const drawings = useChartDrawings({
   chart: () => chart.value,
   series: () => candleSeries.value,
@@ -169,29 +207,15 @@ const drawings = useChartDrawings({
  * path never touches it: the list changes when the user adds or removes one,
  * not when values update.
  */
-const appliedIndicators = shallowRef<AppliedIndicator[]>([])
 /**
  * Low-frequency presentation metadata. `populatedRevision` inside the
  * composable invalidates this only when a plot produces its first data, never
  * for realtime values or crosshair movement.
  */
-const presentedIndicators = computed<PresentedIndicator[]>(() => (
-  appliedIndicators.value.map((entry) => {
-    const instanceId = entry.instance.instanceId
-    return {
-      ...entry,
-      calculated: indicators.hasCalculated(instanceId),
-      populatedPlots: indicators.populatedPlots(instanceId),
-    }
-  })
-))
 /**
  * Changes only when the pointer enters or leaves an indicator series. Values
  * themselves bypass Vue through the imperative readout channel.
  */
-const hoveredIndicatorId = shallowRef<string>()
-const pickerOpen = ref(false)
-const configuringId = ref<string | null>(null)
 /**
  * The instance whose settings are expanded inside the picker.
  *
@@ -200,7 +224,6 @@ const configuringId = ref<string | null>(null)
  * it since the click — and a gesture as ordinary as closing a panel must never
  * be what destroys it.
  */
-const editingId = ref<string | null>(null)
 const diagnostics = import.meta.env.DEV
   ? {
       ind: indicators,
@@ -221,77 +244,13 @@ if (diagnostics) {
   ;(window as unknown as Record<string, unknown>).__diag = diagnostics
 }
 
-function findApplied(instanceId: string | null): AppliedIndicator | undefined {
-  if (!instanceId) {
-    return undefined
-  }
-  return appliedIndicators.value.find(
-    (entry) => entry.instance.instanceId === instanceId,
-  )
-}
-
-const configuring = computed(() => findApplied(configuringId.value))
-const editing = computed(() => findApplied(editingId.value) ?? null)
-const configuringCalculated = computed(() => configuring.value
-  ? indicators.hasCalculated(configuring.value.instance.instanceId)
-  : false)
-const configuringPopulatedPlots = computed(() => configuring.value
-  ? indicators.populatedPlots(configuring.value.instance.instanceId)
-  : [])
-const editingCalculated = computed(() => editing.value
-  ? indicators.hasCalculated(editing.value.instance.instanceId)
-  : false)
-const editingPopulatedPlots = computed(() => editing.value
-  ? indicators.populatedPlots(editing.value.instance.instanceId)
-  : [])
-
-function loadIndicatorCatalog(): Promise<IndicatorDefinition[]> {
-  return indicators.catalog()
-}
-
-function openIndicatorPicker(): void {
-  pickerOpen.value = true
-}
-
-function syncAppliedIndicators(): void {
-  appliedIndicators.value = indicators.applied()
-  writeIndicatorLayout(
-    props.sessionId,
-    appliedIndicators.value.map((entry) => entry.instance),
-  )
-}
-
-/**
- * Reapplies what the tab had before the chart was rebuilt. Changing pair or
- * interval replaces this component, and without this the indicators would be
- * silently dropped along with it.
- */
-async function restoreIndicatorLayout(): Promise<void> {
-  const saved = readIndicatorLayout(props.sessionId)
-  if (saved.length === 0) {
-    return
-  }
-  const catalog = await indicators.catalog()
-  const byId = new Map<string, IndicatorDefinition>()
-  for (const definition of catalog) {
-    byId.set(definition.id, definition)
-  }
-  for (const instance of saved) {
-    const definition = byId.get(instance.definitionId)
-    if (definition) {
-      indicators.add(definition, instance.inputs, instance)
-    }
-  }
-  syncAppliedIndicators()
-}
-
 async function initializeChartData(): Promise<void> {
   await loadHistory()
   if (!chart.value || errorMessage.value) {
     return
   }
   try {
-    await restoreIndicatorLayout()
+    await panel.restoreLayout()
   } catch (error) {
     showIndicatorError(
       error instanceof Error ? error.message : String(error),
@@ -338,77 +297,6 @@ function cancelDrawingOnEscape(event: KeyboardEvent): void {
   }
 }
 
-/** Puts the indicator on the chart and expands its settings. */
-function addIndicator(definition: IndicatorDefinition): void {
-  const instance = indicators.add(definition)
-  if (instance) {
-    editingId.value = instance.instanceId
-    syncAppliedIndicators()
-  }
-}
-
-/** Collapses the settings. The indicator stays exactly as it is. */
-function collapseEditing(): void {
-  editingId.value = null
-}
-
-function removeEditing(): void {
-  if (editingId.value) {
-    removeIndicator(editingId.value)
-  }
-}
-
-function closePicker(): void {
-  editingId.value = null
-  pickerOpen.value = false
-}
-
-function editingInputs(inputs: IndicatorInputs): void {
-  if (editingId.value) {
-    applyIndicatorInputs(editingId.value, inputs)
-  }
-}
-
-function editingStyles(styles: Record<string, IndicatorPlotStyle>): void {
-  if (editingId.value) {
-    applyIndicatorStyles(editingId.value, styles)
-  }
-}
-
-function removeIndicator(instanceId: string): void {
-  indicators.remove(instanceId)
-  if (hoveredIndicatorId.value === instanceId) {
-    hoveredIndicatorId.value = undefined
-  }
-  if (configuringId.value === instanceId) {
-    configuringId.value = null
-  }
-  if (editingId.value === instanceId) {
-    editingId.value = null
-  }
-  syncAppliedIndicators()
-}
-
-function previewIndicatorReadout(instanceId: string): void {
-  indicators.previewReadout(instanceId)
-}
-
-function applyIndicatorInputs(
-  instanceId: string,
-  inputs: IndicatorInputs,
-): void {
-  indicators.updateInputs(instanceId, inputs)
-  syncAppliedIndicators()
-}
-
-function applyIndicatorStyles(
-  instanceId: string,
-  styles: Record<string, IndicatorPlotStyle>,
-): void {
-  indicators.updateStyles(instanceId, styles)
-  syncAppliedIndicators()
-}
-
 defineExpose({
   /** Ctrl/Cmd+I, forwarded from the workspace shortcut handler. */
   openIndicatorPicker,
@@ -433,29 +321,6 @@ const enabledScrollInteractions = {
   horzTouchDrag: true,
   vertTouchDrag: true,
 } as const
-
-function candlePoint(candle: Candle): RoundedCandleData<UTCTimestamp> {
-  return {
-    time: candle.time as UTCTimestamp,
-    open: candle.open,
-    high: candle.high,
-    low: candle.low,
-    close: candle.close,
-  }
-}
-
-function volumePoint(
-  candle: Candle,
-  palette = appThemePalette.value,
-): HistogramData<UTCTimestamp> {
-  return {
-    time: candle.time as UTCTimestamp,
-    value: candle.volume,
-    color: candle.close >= candle.open
-      ? palette.volumeUp
-      : palette.volumeDown,
-  }
-}
 
 function rememberDisplayedCandle(candle: Candle): void {
   const lastIndex = displayedCandles.length - 1
@@ -534,7 +399,7 @@ async function loadHistory(): Promise<void> {
       && history.length < INITIAL_HISTORY_SIZE
     displayedCandles = candles
     candleSeries.value.setData(candles.map(candlePoint))
-    volumeSeries.value.setData(candles.map((candle) => volumePoint(candle)))
+    volumeSeries.value.setData(candles.map((candle) => volumePoint(candle, appThemePalette.value)))
     const lastCandle = candles.at(-1)
     if (lastCandle) {
       lastTimestamp = lastCandle.time
@@ -543,7 +408,7 @@ async function loadHistory(): Promise<void> {
     const latestPendingCandle = readPendingCandle()
     if (latestPendingCandle && latestPendingCandle.time >= lastTimestamp) {
       candleSeries.value.update(candlePoint(latestPendingCandle))
-      volumeSeries.value.update(volumePoint(latestPendingCandle))
+      volumeSeries.value.update(volumePoint(latestPendingCandle, appThemePalette.value))
       lastTimestamp = latestPendingCandle.time
       rememberDisplayedCandle(latestPendingCandle)
       updateLegend(latestPendingCandle)
@@ -641,7 +506,7 @@ async function loadOlderHistory(): Promise<void> {
     // the REST request runs in Electron's utility process.
     displayedCandles = [...olderCandles, ...displayedCandles]
     candles.setData(displayedCandles.map(candlePoint))
-    volume.setData(displayedCandles.map((candle) => volumePoint(candle)))
+    volume.setData(displayedCandles.map((candle) => volumePoint(candle, appThemePalette.value)))
 
     // Prepending shifts every previous logical index by the inserted count.
     // Restoring that shifted range keeps the same candles under the cursor.
@@ -721,78 +586,6 @@ function readPendingCandle(): Candle | undefined {
 
 function displaySymbol(): string {
   return `${props.selection.baseAsset}/${props.selection.quoteAsset}`
-}
-
-function watermarkLines(palette: ThemePalette) {
-  return [
-    {
-      text: displaySymbol(),
-      color: palette.watermarkPrimary,
-      fontSize: 46,
-      lineHeight: 54,
-      fontFamily: '"Inter Variable", Inter, sans-serif',
-      fontStyle: '700',
-    },
-    {
-      text: props.selection.interval.toUpperCase(),
-      color: palette.watermarkSecondary,
-      fontSize: 22,
-      lineHeight: 30,
-      fontFamily: '"JetBrains Mono Variable", monospace',
-      fontStyle: '600',
-    },
-  ]
-}
-
-function applyChartTheme(palette: ThemePalette): void {
-  chart.value?.applyOptions({
-    layout: {
-      background: {
-        type: ColorType.Solid,
-        color: palette.chartBackground,
-      },
-      textColor: palette.chartText,
-    },
-    grid: {
-      vertLines: { color: palette.chartGrid },
-      horzLines: { color: palette.chartGrid },
-    },
-    crosshair: {
-      vertLine: {
-        color: palette.chartCrosshair,
-        labelBackgroundColor: palette.chartCrosshairLabel,
-      },
-      horzLine: {
-        color: palette.chartCrosshair,
-        labelBackgroundColor: palette.chartCrosshairLabel,
-      },
-    },
-    rightPriceScale: { borderColor: palette.chartBorder },
-    timeScale: { borderColor: palette.chartBorder },
-  })
-  candleSeries.value?.applyOptions({
-    color: palette.candleUp,
-    upColor: palette.candleUp,
-    downColor: palette.candleDown,
-    wickUpColor: palette.candleUp,
-    wickDownColor: palette.candleDown,
-    priceLineColor: palette.positive,
-  })
-  watermark?.applyOptions({ lines: watermarkLines(palette) })
-
-  if (volumeSeries.value && displayedCandles.length > 0) {
-    const visibleRange = chart.value?.timeScale().getVisibleLogicalRange()
-    volumeSeries.value.setData(
-      displayedCandles.map((candle) => volumePoint(candle, palette)),
-    )
-    if (visibleRange) {
-      chart.value?.timeScale().setVisibleLogicalRange(visibleRange)
-    }
-  }
-
-  // The catalog's own colours are resolved against the surface they land on,
-  // so a new theme can turn a readable line into an invisible one.
-  indicators.retheme()
 }
 
 function updateLegend(candle: Candle): void {
@@ -913,7 +706,7 @@ onMounted(() => {
       visible: true,
       horzAlign: 'center',
       vertAlign: 'center',
-      lines: watermarkLines(palette),
+      lines: chartTheme.watermarkLines(palette),
     })
 
     const paneElement = mainPane.getHTMLElement()
@@ -963,8 +756,8 @@ onMounted(() => {
       param.seriesData as unknown as Map<ISeriesApi<SeriesType>, unknown>,
       param.hoveredInfo?.series as ISeriesApi<SeriesType> | undefined,
     )
-    if (hoveredIndicatorId.value !== nextIndicatorId) {
-      hoveredIndicatorId.value = nextIndicatorId
+    if (panel.hoveredId.value !== nextIndicatorId) {
+      panel.hoveredId.value = nextIndicatorId
     }
     drawings.handleMove(param)
   }
@@ -1011,7 +804,7 @@ onMounted(() => {
     const wasEmpty = displayedCandles.length === 0
     // Direct incremental writes bypass Vue rendering and preserve the viewport.
     candles.update(candlePoint(candle))
-    volume.update(volumePoint(candle))
+    volume.update(volumePoint(candle, appThemePalette.value))
     lastTimestamp = candle.time
     rememberDisplayedCandle(candle)
     updateLegend(candle)
@@ -1067,14 +860,14 @@ onBeforeUnmount(() => {
   chart.value = null
 })
 
-watch(appThemePalette, applyChartTheme, { flush: 'sync' })
+watch(appThemePalette, chartTheme.apply, { flush: 'sync' })
 
 </script>
 
 <template>
   <section class="chart-panel">
     <ChartToolbar
-      :indicator-count="appliedIndicators.length"
+      :indicator-count="panel.applied.value.length"
       :interval="selection.interval"
       @indicators="openIndicatorPicker"
       @interval="emit('interval', $event)"
@@ -1171,7 +964,7 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
       </small>
     </div>
     <IndicatorPicker
-      :applied="appliedIndicators"
+      :applied="panel.applied.value"
       :load="loadIndicatorCatalog"
       :open="pickerOpen"
       :calculated="editingCalculated"
