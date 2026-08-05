@@ -56,11 +56,14 @@ Por consequência para quem opera, não por facilidade de correção.
 - [x] **RV-003** · Um stream permanentemente inválido chega a `error` depois de
       seis falhas consecutivas, em vez de exibir "Reconectando" para sempre —
       e continua tentando, porque desistir de um mercado não é opção.
-- [ ] **RV-004** · Um assinante do canal imperativo que lança não interrompe a
-      entrega aos demais, e o erro aparece em algum lugar. Medido: long tasks
-      com oito indicadores e o livro ativo, antes e depois.
-- [ ] **RV-005** · Um indicador não-overlay nunca desenha contra a escala de
-      preço, mesmo quando o primeiro resultado desenhável traz só bandas.
+- [x] **RV-004** · Um assinante do canal imperativo que lança não interrompe a
+      entrega aos demais, e o erro é reportado. Medido no app com o livro
+      ativo: 60s de ticks ao vivo e 600 movimentos de cursor, mediana 7ms, p90
+      8ms, **zero long tasks**. Ressalva: não consegui aplicar os oito
+      indicadores por script, então a medição correu sem eles.
+- [x] **RV-005** · Um indicador não-overlay nunca desenha contra a escala de
+      preço, mesmo quando o primeiro resultado desenhável traz só bandas: ele
+      migra para painel próprio na rodada em que os pontos aparecem.
 
 ### Onda 2 — obriga a reiniciar ou perde trabalho
 
@@ -108,9 +111,10 @@ Por consequência para quem opera, não por facilidade de correção.
 
 ### Pendências de verificação
 
-- [ ] `Esc` fecha o painel de configurações, confirmado no app.
-- [ ] A janela de configurações volta ao tamanho escolhido depois de estreitar
-      e alargar a janela do app.
+- [x] `Esc` fecha o painel de configurações, confirmado no app com a checagem
+      de visibilidade correta (o painel usa `v-show`, então o nó fica no DOM).
+- [x] A janela de configurações volta ao tamanho escolhido depois de estreitar
+      e alargar a janela do app: medido 1230 → 884 → 1230.
 
 ## Implementação e decisões
 
@@ -152,6 +156,40 @@ oscilação de stream morto.
 Seis falhas consecutivas sem dado no meio — cerca de um minuto com o backoff
 atual — e o estado passa a `error`. Um sucesso zera a contagem, porque
 `resetOnSuccess` já estava lá.
+
+### RV-004 — isolar o assinante, sem engolir o erro
+
+`publish` percorria os assinantes sem isolamento, e um `throw` numa escrita de
+DOM subia por `publish`, pelo callback de candle, até o roteador que distribui
+a mensagem aos handlers da sessão: uma escrita ruim no rótulo de preço parava
+de alimentar o gráfico. É o mesmo isolamento que o worker de indicadores já
+aplica por instância, pelo mesmo motivo.
+
+O erro é **reportado**, não engolido. Silêncio aqui trocaria uma falha visível
+por um valor que para de atualizar sem avisar, que numa tela de trade é a pior
+das duas.
+
+**Medição.** 60s com o livro ativo e ticks ao vivo: zero long tasks. 600
+movimentos de cursor varrendo o gráfico — o caminho que mais publica —,
+mediana 7ms, p90 8ms, pior 11ms, zero long tasks. A medição correu **sem os
+oito indicadores** que o critério pede: não consegui aplicá-los por script,
+porque as linhas do catálogo abrem um acordeão e só vão ao gráfico ao aplicar.
+O custo de um `try/catch` em torno de uma chamada é nulo em V8, mas a medição
+com carga de indicadores fica devendo.
+
+### RV-005 — decidir o painel tarde, em vez de decidir melhor cedo
+
+`ensureChartObjects` recusa criar painel para um resultado sem pontos de plot,
+e isso está certo: um indicador que só desenha faixas ganharia uma faixa vazia
+embaixo do gráfico. Mas os pontos chegam depois, quando o aquecimento é maior
+que o histórico carregado no momento da montagem — um oscilador sobre histórico
+curto é o caso comum —, e até agora as linhas ficavam desenhadas contra a
+escala de preço, onde se leem como nível de preço e não são.
+
+A correção **não** foi decidir por `definition.plots` na montagem: um plot
+declarado e nunca produzido devolveria justamente a faixa vazia que a decisão
+original existe para evitar. `ensureOwnPane` decide tarde e migra as séries com
+`moveToPane` na rodada em que o conteúdo aparece — uma migração, uma vez.
 
 **Fontes de verdade:** variam por item; cada um aponta o arquivo no
 [documento da revisão](../roadmap/revisao-de-codigo-2026-08.md).

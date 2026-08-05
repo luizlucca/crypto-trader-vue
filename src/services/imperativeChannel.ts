@@ -28,7 +28,25 @@ export function createImperativeChannel<T>(): ImperativeChannel<T> {
       latest.set(key, value)
       // Iterated without copying: allocating a snapshot array here would run
       // on every frame. Deleting from a Set during iteration is safe.
-      subscribers.get(key)?.forEach((callback) => callback(value))
+      subscribers.get(key)?.forEach((callback) => {
+        /*
+         * One subscriber's failure is its own. Without this, a throw from a
+         * DOM write climbs out of `publish`, through the candle callback, and
+         * into the router that fans a message out to a session's handlers —
+         * so a bad write to the price label stops the chart from being fed.
+         * The same isolation the indicator worker already applies per
+         * instance, for the same reason.
+         *
+         * Reported rather than swallowed: silence here would turn a visible
+         * crash into a value that quietly stops updating, which on a trading
+         * screen is the worse of the two.
+         */
+        try {
+          callback(value)
+        } catch (error) {
+          console.error(`Assinante de "${key}" falhou ao receber:`, error)
+        }
+      })
     },
 
     subscribe(key, callback) {

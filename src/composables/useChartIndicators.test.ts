@@ -66,6 +66,12 @@ class FakeSeries {
   }
 
   applyOptions(): void {}
+
+  moveToPane(index: number): void {
+    this.movedTo = index
+  }
+
+  movedTo: number | undefined
 }
 
 class FakePane {
@@ -469,5 +475,54 @@ describe('chart indicator visual lifecycle', () => {
     expect(onError).toHaveBeenCalledOnce()
     expect(onError.mock.calls[0][0]).toContain('MFI/RSI Bollinger Bands')
     expect(onError.mock.calls[0][0]).toContain('linhas livres e caixas')
+  })
+
+  it('migra para painel próprio quando os pontos só chegam depois', () => {
+    // Aquecimento maior que o histórico carregado: o primeiro resultado
+    // desenhável traz só faixas de fundo. Criar painel para conteúdo que não
+    // veio deixaria uma faixa vazia, então ele fica no painel de preço — e as
+    // linhas ficavam desenhadas contra a escala de preço, onde se leem como
+    // nível de preço e não são.
+    const { chart, api, panes } = chartHarness()
+    let apply!: IndicatorPatchHandler
+    const client = stubClient()
+    const indicators = useChartIndicators({
+      chart: () => chart,
+      candleSeries: () => null,
+      bars: () => ({
+        time: [], open: [], high: [], low: [], close: [], volume: [],
+      }),
+      createClient: (handler) => {
+        apply = handler
+        return client
+      },
+    })
+
+    const instance = indicators.add(definition)
+    // Primeiro resultado: faixas, nenhum ponto de plot.
+    apply(instance!.instanceId, {
+      patches: definition.plots.map((plot) => ({
+        plotId: plot.id,
+        full: true,
+        from: 0,
+        time: new Float64Array(0),
+        value: new Float64Array(0),
+      })),
+      drawings: {
+        lines: [],
+        boxes: [],
+        labels: [],
+        bands: [{ time1: 1, time2: 2, color: '#f00' }],
+      },
+    })
+    expect(api.addPane).not.toHaveBeenCalled()
+    expect(panes[0].series.length).toBeGreaterThan(0)
+
+    // Mais histórico chega e o indicador finalmente produz pontos.
+    apply(instance!.instanceId, { patches: patches() })
+
+    expect(api.addPane).toHaveBeenCalledOnce()
+    const destino = panes[2].paneIndex()
+    expect(panes[0].series.every((s) => s.movedTo === destino)).toBe(true)
   })
 })

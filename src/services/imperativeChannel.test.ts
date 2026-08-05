@@ -58,4 +58,27 @@ describe('imperative channel', () => {
     expect(() => channel.publish('a', 1)).not.toThrow()
     expect(survivor).toHaveBeenCalledWith(1)
   })
+
+  it('um assinante que lança não interrompe a entrega aos demais', () => {
+    // Sem isolamento, o throw sobe por `publish`, pelo callback de candle, e
+    // chega ao roteador que distribui a mensagem aos handlers da sessão —
+    // uma escrita ruim no rótulo de preço parava de alimentar o gráfico.
+    const channel = createImperativeChannel<number>()
+    const recebidos: number[] = []
+    const erros = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    channel.subscribe('btc', () => {
+      throw new Error('nó de DOM sumiu')
+    })
+    channel.subscribe('btc', (value) => recebidos.push(value))
+
+    expect(() => channel.publish('btc', 42)).not.toThrow()
+    expect(recebidos).toEqual([42])
+    expect(erros).toHaveBeenCalledOnce()
+
+    // E a próxima publicação continua chegando.
+    channel.publish('btc', 43)
+    expect(recebidos).toEqual([42, 43])
+    erros.mockRestore()
+  })
 })

@@ -12,8 +12,8 @@ commitada em separado.
 
 **Andamento:** o trabalho é acompanhado pela
 [F-017](../specs/F-017-endurecimento-pos-revisao.md), que tem os critérios de
-aceite e o que cada correção descobriu. Itens já fechados: RV-001, RV-002,
-RV-003.
+aceite e o que cada correção descobriu. Onda 1 fechada por inteiro: RV-001 a RV-005, mais as duas pendências de
+verificação.
 
 **Este documento é o que sobrou.** O que era correção segura e defensável já
 foi aplicado nos commits acima. Aqui estão os achados que exigem decisão sua:
@@ -103,7 +103,7 @@ retentativa indefinida enquanto houver sinal de vida.
 
 **Custo:** baixo.
 
-### RV-004 · ⚠ Um assinante que lança derruba a entrega dos demais
+### ✅ RV-004 · Um assinante que lança derruba a entrega dos demais
 
 **O que acontece.** `publish` percorre os assinantes sem isolamento. Um `throw`
 em `RealtimePriceText` sobe por `publishRealtimePrice` → `updateLegend` →
@@ -126,7 +126,7 @@ descrito na F-014, antes e depois de acrescentar o `try/catch` por assinante.
 
 **Custo:** baixo de código, exige a medição.
 
-### RV-005 · Indicador não-overlay preso no painel de preço
+### ✅ RV-005 · Indicador não-overlay preso no painel de preço
 
 **O que acontece.** Se o primeiro resultado desenhável de um indicador tiver
 apenas `bgColors`, `ownPaneContent` é falso e o painel próprio não é criado —
@@ -431,7 +431,6 @@ O servidor do renderer parou de subir na máquina onde a revisão correu, então
 dois itens do commit `24ef678` não foram confirmados no app. O caminho de
 código dos dois foi conferido e está correto; falta o olho.
 
-| O quê | Como conferir |
-| --- | --- |
-| `Esc` fecha o painel de configurações | Abrir configurações e apertar `Esc`, com foco dentro e fora do painel |
-| Geometria da janela de configurações | Abrir configurações, estreitar a janela do app, alargar de volta: o painel deve voltar ao tamanho escolhido, não ao limitado |
+Ambos foram confirmados no app depois que a trava de instância única foi
+removida: o `Esc` fecha (a checagem anterior olhava a presença do nó, e o
+painel usa `v-show`), e a janela restaurou 1230 → 884 → 1230.

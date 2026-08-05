@@ -535,6 +535,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     }
     const { patches, markers, candles, drawings } = result
     const createdNow = ensureChartObjects(entry, patches, candles, drawings)
+    ensureOwnPane(entry, patches)
     const newlyPopulated = entry.pendingPopulated
     newlyPopulated.length = 0
     try {
@@ -762,6 +763,44 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       removeChartObjects(chart, entry)
       throw error
     }
+  }
+
+  /**
+   * Moves an indicator into its own pane once it finally has content for one.
+   *
+   * `ensureChartObjects` refuses to create a pane for a result that carries no
+   * plot points, and that is right: an indicator drawing only vertical bands
+   * would get an empty strip below the chart. But the points do arrive later
+   * when the warm-up is longer than the history loaded at mount — an
+   * oscillator over a short history is the ordinary case — and until now its
+   * lines stayed drawn against the price scale, where they read as price
+   * levels and are not.
+   *
+   * Deliberately not solved by deciding from `definition.plots` at mount: a
+   * plot that is declared and never produced would then leave the empty pane
+   * the original decision exists to avoid. Deciding late costs one migration,
+   * once, on the round where the content shows up.
+   */
+  function ensureOwnPane(
+    entry: MountedIndicator,
+    patches: readonly IndicatorPlotPatch[],
+  ): void {
+    if (
+      entry.definition.overlay
+      || entry.pane
+      || entry.series.size === 0
+      || !patches.some((patch) => patch.time.length > 0)
+    ) {
+      return
+    }
+    const chart = options.chart()
+    if (!chart) {
+      return
+    }
+    const pane = chart.addPane(true)
+    entry.pane = pane
+    const index = pane.paneIndex()
+    entry.series.forEach((series) => series.moveToPane(index))
   }
 
   function removeChartObjects(
