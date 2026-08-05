@@ -13,7 +13,7 @@ commitada em separado.
 **Andamento:** o trabalho é acompanhado pela
 [F-017](../specs/F-017-endurecimento-pos-revisao.md), que tem os critérios de
 aceite e o que cada correção descobriu. Onda 1 fechada por inteiro: RV-001 a RV-005, mais as duas pendências de
-verificação.
+verificação. Onda 2 em andamento: RV-006 fechado.
 
 **Este documento é o que sobrou.** O que era correção segura e defensável já
 foi aplicado nos commits acima. Aqui estão os achados que exigem decisão sua:
@@ -152,7 +152,7 @@ período e conferir o `paneIndex()`.
 
 ## Onda 2 — obriga a reiniciar ou perde trabalho
 
-### RV-006 · ⚠ `bestLevels` é adaptativo só na aparência
+### ✅ RV-006 · `bestLevels` é adaptativo só na aparência
 
 **O que acontece.** `Math.max(rows, Math.min(rows * 200, 4_000))` resolve
 **sempre para exatamente 4000**, porque `rowsPerSide()` devolve a constante 20.

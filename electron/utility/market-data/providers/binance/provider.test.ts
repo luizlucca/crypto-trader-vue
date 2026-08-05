@@ -7,7 +7,11 @@ import type {
   ConnectionState,
   ConnectionStateHandler,
 } from '../../provider'
-import { BinanceProvider } from './provider'
+import {
+  BinanceProvider,
+  MAX_ORDER_BOOK_DEPTH,
+  orderBookDepthFor,
+} from './provider'
 
 interface WebSocketHarness {
   state?: ConnectionStateHandler
@@ -315,5 +319,31 @@ describe('BinanceProvider order-book bootstrap', () => {
     expect(books[0].lastUpdateId).toBe(201)
     expect(states.at(-1)?.state).toBe('connected')
     stop()
+  })
+})
+
+describe('profundidade lida do livro', () => {
+  const rows = 20
+  const tick = 0.1
+
+  it('na agregação padrão lê um múltiplo pequeno das linhas', () => {
+    // Antes eram sempre 4000 níveis ordenados dez vezes por segundo para
+    // mostrar vinte linhas: 19,2% de um núcleo por aba, 1,8% depois disso.
+    expect(orderBookDepthFor(rows, tick, tick)).toBe(80)
+  })
+
+  it('cresce com o quanto a agregação alarga o balde', () => {
+    expect(orderBookDepthFor(rows, 1, tick)).toBe(400)
+    expect(orderBookDepthFor(rows, 5, tick)).toBe(2000)
+  })
+
+  it('respeita o teto na agregação mais larga', () => {
+    expect(orderBookDepthFor(rows, 10, tick)).toBe(MAX_ORDER_BOOK_DEPTH)
+    expect(orderBookDepthFor(rows, 100, tick)).toBe(MAX_ORDER_BOOK_DEPTH)
+  })
+
+  it('não divide por zero quando o catálogo não traz o tick', () => {
+    expect(orderBookDepthFor(rows, 10, 0)).toBe(80)
+    expect(Number.isFinite(orderBookDepthFor(rows, 10, Number.NaN))).toBe(true)
   })
 })

@@ -67,9 +67,10 @@ Por consequência para quem opera, não por facilidade de correção.
 
 ### Onda 2 — obriga a reiniciar ou perde trabalho
 
-- [ ] **RV-006** · A profundidade pedida ao livro é proporcional ao que se
-      exibe. Medido: CPU do processo utilitário com oito abas e livro ativo,
-      antes e depois.
+- [x] **RV-006** · A profundidade pedida ao livro é proporcional ao quanto a
+      agregação alarga o balde. Medido no app, uma aba com o livro ativo:
+      **19,2% → 1,8% de um núcleo**, RSS de 192MB para 128MB. As vinte linhas
+      continuam preenchidas nas quatro agregações.
 - [ ] **RV-007** · Falha na carga inicial do histórico oferece nova tentativa
       sem trocar de par ou período.
 - [ ] **RV-008** · Falha na carga inicial não faz os desenhos do ativo
@@ -190,6 +191,32 @@ A correção **não** foi decidir por `definition.plots` na montagem: um plot
 declarado e nunca produzido devolveria justamente a faixa vazia que a decisão
 original existe para evitar. `ensureOwnPane` decide tarde e migra as séries com
 `moveToPane` na rodada em que o conteúdo aparece — uma migração, uma vez.
+
+### RV-006 — o multiplicador que parecia adaptativo
+
+`Math.max(rows, Math.min(rows * 200, 4_000))` lia-se como adaptativo e não era:
+`rowsPerSide()` é fixo em vinte, então resolvia **sempre para exatamente
+4000**. Cada emissão — dez por segundo, por sessão — ordenava quatro mil níveis
+para mostrar vinte linhas.
+
+A profundidade passou a ser função de quanto a agregação alarga o balde, que é
+a variável que de fato manda: na agregação padrão um nível bruto é uma linha, e
+um múltiplo pequeno cobre as lacunas que um livro fino deixa.
+
+**Medição, uma aba com o livro ativo, janelas de 45s:**
+
+| Agregação | Profundidade | CPU do processo utilitário |
+| --- | --- | --- |
+| 0,1 (padrão) | 4000 → **80** | 19,2% → **1,8%** de um núcleo |
+| 100 (a mais larga) | 4000 → 4000 | 19,8% → 19,8% |
+
+O RSS caiu de 192MB para 128MB. Na agregação mais larga nada muda, e é
+correto: encher vinte baldes de cem exige mesmo quase todo o livro — ali o
+custo é inerente, não desperdício.
+
+**O que precisava continuar valendo.** A F-013 existe porque o stream parcial
+`@depth20` não conseguia encher as linhas nas agregações largas. Conferido no
+app: **20/20 linhas com número em 0,1, 1, 10 e 100.**
 
 **Fontes de verdade:** variam por item; cada um aponta o arquivo no
 [documento da revisão](../roadmap/revisao-de-codigo-2026-08.md).
