@@ -267,6 +267,15 @@
   z-index: 4;
   top: 14px;
   left: 54px;
+  /*
+   * A failed initial load carries a retry button beside its text. Laid out as
+   * a row so the button sits next to the reason instead of under it, and
+   * bounded so a long provider message cannot push it off the chart.
+   */
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: calc(100% - 120px);
   padding: 6px 9px;
   border: 1px solid #1f4859;
   border-radius: 4px;
@@ -314,6 +323,28 @@
   background: rgba(24, 197, 143, .08);
   font-size: 9px;
   font-style: normal;
+}
+
+.chart-message span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chart-message button {
+  flex-shrink: 0;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-strong);
+  background: var(--control-bg);
+  font-size: 11px;
+}
+
+.chart-message button:hover {
+  border-color: var(--accent-hover);
+  color: var(--accent-hover);
 }
 
 .chart-message.error {

@@ -302,6 +302,16 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
   let pressedAt: { x: number, y: number } | null = null
   /** Set while a selected drawing is being dragged. */
   let drag: DragState | null = null
+  /*
+   * Drawings that belong to this asset but have no place on the chart yet.
+   *
+   * A drawing resolves its instants against the loaded bars, and the chart may
+   * have none — the history request failed, or has not answered. Dropping them
+   * would be worse than invisible: `persist` writes what it knows, so the next
+   * shape the operator drew would erase from storage every drawing that could
+   * not be placed. They are kept here and retried by `rebuild`.
+   */
+  const unbuilt: ChartDrawing[] = []
   /** Holds the chart's repaint signal; the vendored tools do not take it. */
   const pump = new RepaintPump()
   let pumpAttached = false
@@ -327,7 +337,7 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
   }
 
   function persist(): void {
-    options.onChange?.(mounted.map((entry) => entry.drawing))
+    options.onChange?.(allDrawings())
   }
 
   /** The topmost drawing under a pane coordinate, newest first. */
@@ -577,13 +587,21 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
   function mountAll(drawings: readonly ChartDrawing[]): void {
     mounted.forEach((entry) => detach(entry.primitive))
     mounted.length = 0
+    unbuilt.length = 0
     drawings.forEach((drawing) => {
       const primitive = buildPrimitive(drawing)
       if (primitive) {
         mounted.push({ drawing, primitive })
         attachIfVisible(primitive)
+        return
       }
+      unbuilt.push(drawing)
     })
+  }
+
+  /** Everything that belongs to this asset, placed or not, in stored order. */
+  function allDrawings(): ChartDrawing[] {
+    return [...mounted.map((entry) => entry.drawing), ...unbuilt]
   }
 
   /**
@@ -838,7 +856,7 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
      */
     rebuild(): void {
       const before = mounted.length
-      mountAll(mounted.map((entry) => entry.drawing))
+      mountAll(allDrawings())
       markSelected(selected.value?.id ?? null)
       // A drawing the new indexing cannot place left the list; the count the
       // toolbar shows must not keep claiming it.
@@ -855,6 +873,11 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       selected.value = null
       mountAll(drawings)
       revision.value += 1
+    },
+
+    /** Everything this chart knows about, whether it could be placed or not. */
+    drawings(): ChartDrawing[] {
+      return allDrawings()
     },
 
     /** Lets go of the drawing under edit, leaving it on the chart. */
@@ -927,6 +950,7 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
     clear(): void {
       mounted.forEach((entry) => detach(entry.primitive))
       mounted.length = 0
+      unbuilt.length = 0
       pending = []
       selected.value = null
       clearPreview()
@@ -950,17 +974,16 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       // Read so the toolbar re-renders on the next change: `mounted` is a
       // plain array on purpose, and cannot report its own length (ADR-0003).
       void revision.value
-      return mounted.length
-    },
-
-    drawings(): ChartDrawing[] {
-      return mounted.map((entry) => entry.drawing)
+      // Inclui o que ainda não pôde ser colocado: são desenhos do operador,
+      // só sem barras contra as quais se posicionar.
+      return mounted.length + unbuilt.length
     },
 
     dispose(): void {
       clearPreview()
       mounted.forEach((entry) => detach(entry.primitive))
       mounted.length = 0
+      unbuilt.length = 0
       pending = []
       drag = null
       selected.value = null

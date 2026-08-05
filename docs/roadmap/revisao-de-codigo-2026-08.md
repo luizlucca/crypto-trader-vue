@@ -13,7 +13,7 @@ commitada em separado.
 **Andamento:** o trabalho é acompanhado pela
 [F-017](../specs/F-017-endurecimento-pos-revisao.md), que tem os critérios de
 aceite e o que cada correção descobriu. Onda 1 fechada por inteiro: RV-001 a RV-005, mais as duas pendências de
-verificação. Onda 2 em andamento: RV-006 fechado.
+verificação. Onda 2 em andamento: RV-006, RV-007 e RV-008 fechados.
 
 **Este documento é o que sobrou.** O que era correção segura e defensável já
 foi aplicado nos commits acima. Aqui estão os achados que exigem decisão sua:
@@ -173,7 +173,7 @@ profundidade muito menor — 4000 níveis para exibir 20 é desproporcional.
 
 **Custo:** médio.
 
-### RV-007 · Falha na carga inicial é terminal para a aba
+### ✅ RV-007 · Falha na carga inicial é terminal para a aba
 
 **O que acontece.** Se `loadHistory` rejeita, a mensagem de erro aparece e
 **não há botão de tentar de novo** — só trocar de par ou de período.
@@ -188,7 +188,7 @@ a ter guarda no commit `69f0876`.
 **Custo:** baixo — cerca de seis linhas de template e uma de CSS. O que segura
 é validar o layout de `.chart-message.error` com um botão dentro.
 
-### RV-008 · Falha na carga inicial descarta os desenhos
+### ✅ RV-008 · Falha na carga inicial descarta os desenhos
 
 **O que acontece.** `drawings.restore(readDrawings(...))` é a última linha do
 `try`. Se a chamada REST falha, os desenhos do ativo não aparecem naquela

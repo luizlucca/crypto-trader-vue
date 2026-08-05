@@ -71,10 +71,11 @@ Por consequência para quem opera, não por facilidade de correção.
       agregação alarga o balde. Medido no app, uma aba com o livro ativo:
       **19,2% → 1,8% de um núcleo**, RSS de 192MB para 128MB. As vinte linhas
       continuam preenchidas nas quatro agregações.
-- [ ] **RV-007** · Falha na carga inicial do histórico oferece nova tentativa
+- [x] **RV-007** · Falha na carga inicial do histórico oferece nova tentativa
       sem trocar de par ou período.
-- [ ] **RV-008** · Falha na carga inicial não faz os desenhos do ativo
-      desaparecerem da sessão.
+- [x] **RV-008** · Falha na carga inicial não faz os desenhos do ativo
+      desaparecerem da sessão — nem do armazenamento, que era a perda de
+      verdade escondida atrás do sintoma.
 - [ ] **RV-009** · Rolar para trás não é desabilitado em definitivo por uma
       falha. Medido antes: quantas vezes ocorre página cheia com deduplicação
       zerada, em sessão real.
@@ -217,6 +218,31 @@ custo é inerente, não desperdício.
 **O que precisava continuar valendo.** A F-013 existe porque o stream parcial
 `@depth20` não conseguia encher as linhas nas agregações largas. Conferido no
 app: **20/20 linhas com número em 0,1, 1, 10 e 100.**
+
+### RV-007 — a falha inicial deixou de ser sem saída
+
+`loadHistory` é seguro de reinvocar: o contador de geração descarta resposta
+obsoleta, e o caminho de falha ganhou guarda no commit `69f0876`. Faltava só
+oferecer. A mensagem de erro passou a carregar o mesmo botão que o histórico
+antigo já tinha, com o texto limitado por reticências para que a razão do
+provedor não empurre o botão para fora do gráfico.
+
+### RV-008 — o sintoma escondia uma perda de dado
+
+O relatado era que os desenhos do ativo não apareciam quando a carga inicial
+falhava, embora estivessem íntegros no `localStorage`. Investigando, o
+problema era pior: `mountAll` descartava silenciosamente o desenho que não
+conseguia construir, e `persist` gravava **só o que estava montado**. Bastava o
+operador desenhar uma forma nova para que todos os desenhos que a falta de
+barras impediu de montar fossem **apagados do armazenamento**.
+
+Um desenho sem barras contra as quais se posicionar não deixa de ser um desenho
+do operador. Agora ele é guardado em `unbuilt`: conta na barra de ferramentas,
+é gravado junto com os demais, e `rebuild` o materializa quando houver o que
+medir. A restauração passou a acontecer nos dois caminhos de `loadHistory`, e a
+primeira vela que chega a um gráfico vazio dispara um `rebuild`.
+
+Três testes novos, todos verificados falhando sem a correção.
 
 **Fontes de verdade:** variam por item; cada um aponta o arquivo no
 [documento da revisão](../roadmap/revisao-de-codigo-2026-08.md).

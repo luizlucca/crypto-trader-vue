@@ -551,7 +551,6 @@ async function loadHistory(): Promise<void> {
     emit('history', props.sessionId, fingerprint, candles)
     showInitialCandleWindow(displayedCandles.length)
     indicators.invalidate()
-    drawings.restore(readDrawings(props.selection))
   } catch (error) {
     if (ownsChart(generation, fingerprint)) {
       errorMessage.value = error instanceof Error
@@ -559,6 +558,16 @@ async function loadHistory(): Promise<void> {
         : String(error)
     }
   } finally {
+    /*
+     * Restored on either path. The drawings of an asset do not depend on its
+     * candles having loaded — they are the operator's own work, and a failed
+     * request is no reason to lose sight of them. What they cannot do without
+     * bars is resolve their instants into positions, so `useChartDrawings`
+     * keeps the ones it cannot place and puts them up on the next rebuild.
+     */
+    if (ownsChart(generation, fingerprint)) {
+      drawings.restore(readDrawings(props.selection))
+    }
     if (generation === historyGeneration) {
       loading.value = false
     }
@@ -969,6 +978,10 @@ onMounted(() => {
     if (candle.time < lastTimestamp) {
       return
     }
+    // The first bar to reach an empty chart is what lets a stored drawing be
+    // placed at all: until there is something to measure against, its instants
+    // resolve to nothing.
+    const wasEmpty = displayedCandles.length === 0
     // Direct incremental writes bypass Vue rendering and preserve the viewport.
     candles.update(candlePoint(candle))
     volume.update(volumePoint(candle))
@@ -983,6 +996,9 @@ onMounted(() => {
       close: candle.close,
       volume: candle.volume,
     })
+    if (wasEmpty) {
+      drawings.rebuild()
+    }
   })
 
   document.addEventListener('keydown', cancelDrawingOnEscape)
@@ -1069,7 +1085,10 @@ watch(appThemePalette, applyChartTheme, { flush: 'sync' })
         @remove="removeIndicator"
       />
       <div v-if="errorMessage" class="chart-message error">
-        {{ errorMessage }}
+        <span>{{ errorMessage }}</span>
+        <button type="button" @click="loadHistory">
+          Tentar novamente
+        </button>
       </div>
       <div
         v-if="historyErrorMessage && !loading && !historyLoading"
