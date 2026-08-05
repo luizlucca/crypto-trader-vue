@@ -13,7 +13,8 @@ commitada em separado.
 **Andamento:** o trabalho é acompanhado pela
 [F-017](../specs/F-017-endurecimento-pos-revisao.md), que tem os critérios de
 aceite e o que cada correção descobriu. Onda 1 fechada por inteiro: RV-001 a RV-005, mais as duas pendências de
-verificação. Onda 2 fechada por inteiro: RV-006 a RV-011.
+verificação. Onda 2 fechada por inteiro: RV-006 a RV-011. Onda 3: RV-012 e RV-013
+fechados; RV-014 adiado com motivo.
 
 **Este documento é o que sobrou.** O que era correção segura e defensável já
 foi aplicado nos commits acima. Aqui estão os achados que exigem decisão sua:
@@ -273,7 +274,7 @@ hoje marca o cliente como descartado em definitivo.
 
 ## Onda 3 — correção contida, risco baixo
 
-### RV-012 · `mouseup` fora do contêiner deixa o press anterior pendurado
+### ✅ RV-012 · `mouseup` fora do contêiner deixa o press anterior pendurado
 
 **O que acontece.** Os dois listeners estão no contêiner do gráfico. Um
 `mouseup` fora dele — sobre o livro de ordens, sobre a barra de desenho — não
@@ -295,7 +296,7 @@ duplo-clique.
 
 **Custo:** baixo de código, risco médio. Peça um passe manual junto.
 
-### RV-013 · `renderBands` muta o contexto sem `save`/`restore`
+### ✅ RV-013 · `renderBands` muta o contexto sem `save`/`restore`
 
 **O que acontece.** `renderBands` escreve `context.fillStyle` sem preservar o
 estado, ao contrário de `render()`, que preserva.

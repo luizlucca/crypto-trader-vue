@@ -977,10 +977,19 @@ onMounted(() => {
     drawings.handlePointerUp(event)
   }
   host.addEventListener('mousedown', onDrawingPointerDown)
-  host.addEventListener('mouseup', onDrawingPointerUp)
+  /*
+   * The release listens on the document, not on the chart. A button let go
+   * outside the plot — over the order book, over the drawing toolbar — never
+   * reached a listener on the host, so the press that started inside stayed
+   * pending: the next press anywhere would pair with that stale position, and
+   * a movement under five pixels then read as a click, dropping a phantom
+   * anchor or changing the selection. The handler already refuses anything
+   * released outside the pane, so listening wider costs nothing.
+   */
+  document.addEventListener('mouseup', onDrawingPointerUp)
   releaseDrawingPointer = () => {
     host.removeEventListener('mousedown', onDrawingPointerDown)
-    host.removeEventListener('mouseup', onDrawingPointerUp)
+    document.removeEventListener('mouseup', onDrawingPointerUp)
   }
 
   unsubscribeCandle = onCandle(props.sessionId, (candle) => {

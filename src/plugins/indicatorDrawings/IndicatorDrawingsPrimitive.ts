@@ -157,19 +157,31 @@ export class IndicatorDrawingsPrimitive implements ISeriesPrimitive<Time> {
     const timeScale = chart.timeScale()
     const halfBar = timeScale.options().barSpacing / 2
 
-    for (const band of this.drawings.bands) {
-      const x1 = timeScale.timeToCoordinate(band.time1 as UTCTimestamp)
-      const x2 = timeScale.timeToCoordinate(band.time2 as UTCTimestamp)
-      if (x1 === null || x2 === null) {
-        continue
+    /*
+     * Bracketed like `render` is. This writes `fillStyle` and used to leave it
+     * written; whether that can reach another pane view depends on how the
+     * library brackets its own passes, which is not a guarantee to lean on.
+     * One save and one restore per paint — not per band — is a pair of stack
+     * operations on a path that already walks every band.
+     */
+    context.save()
+    try {
+      for (const band of this.drawings.bands) {
+        const x1 = timeScale.timeToCoordinate(band.time1 as UTCTimestamp)
+        const x2 = timeScale.timeToCoordinate(band.time2 as UTCTimestamp)
+        if (x1 === null || x2 === null) {
+          continue
+        }
+        const left = Math.min(x1, x2) - halfBar
+        const right = Math.max(x1, x2) + halfBar
+        if (right < 0 || left > mediaSize.width) {
+          continue
+        }
+        context.fillStyle = band.color
+        context.fillRect(left, 0, Math.max(right - left, 1), mediaSize.height)
       }
-      const left = Math.min(x1, x2) - halfBar
-      const right = Math.max(x1, x2) + halfBar
-      if (right < 0 || left > mediaSize.width) {
-        continue
-      }
-      context.fillStyle = band.color
-      context.fillRect(left, 0, Math.max(right - left, 1), mediaSize.height)
+    } finally {
+      context.restore()
     }
   }
 

@@ -90,10 +90,15 @@ Por consequência para quem opera, não por facilidade de correção.
 
 ### Onda 3 — correção contida, risco baixo
 
-- [ ] **RV-012** · Soltar o botão fora da área do gráfico não deixa o press
-      anterior pendurado.
-- [ ] **RV-013** · O desenho de bandas preserva o estado do contexto de canvas.
+- [x] **RV-012** · Soltar o botão fora da área do gráfico não deixa o press
+      anterior pendurado: o `mouseup` passou a ouvir no documento.
+- [x] **RV-013** · O desenho de bandas preserva o estado do contexto de canvas,
+      com um `save`/`restore` por pintura — não por banda.
 - [ ] **RV-014** · O worker de indicadores não retém buffer além do que usa.
+      **Adiado com motivo:** trocar a view por cópia troca retenção por uma
+      cópia por plot por rodada, no caminho quente, e a regra do projeto é que
+      isso precisa de evidência. Falta o snapshot de heap com oito indicadores
+      de período longo comparando o retido de `previous` contra `count * 8`.
 
 ### Onda 4 — qualidade, acessibilidade e dívida
 
@@ -300,6 +305,27 @@ interessados pertencem a um cliente: um gráfico descartado no meio da rodada
 rejeitava todos que tinham entrado nela. Só esse caso é retentado, e é por isso
 que ele tem um erro próprio — retentar um tempo limite seriam dois tempos
 limite, que foi exatamente o que o primeiro teste pegou.
+
+### RV-012 — o release passou a ouvir no documento
+
+Os dois ouvintes estavam no contêiner do gráfico. Um botão solto fora da área
+de plotagem — sobre o livro, sobre a barra de desenho — nunca chegava, e o
+press iniciado dentro ficava pendurado: o próximo press em qualquer lugar
+casava com aquela posição velha, e um deslocamento menor que cinco pixels lia-se
+como clique, largando âncora fantasma ou trocando a seleção.
+
+O `mousedown` continua no gráfico; o `mouseup` ouve no documento. O handler já
+recusava qualquer release fora do painel, então ouvir mais largo não custa
+nada — e agora ele limpa o press e devolve a rolagem também quando o gesto
+termina fora.
+
+### RV-013 — bracketar o desenho de bandas
+
+`renderBands` escrevia `fillStyle` e deixava escrito, ao contrário de `render`,
+que preserva. Se isso alcança outra view de painel depende de como a biblioteca
+bracketa as próprias passagens, o que não é garantia em que se apoiar. Um
+`save` e um `restore` por pintura — não por banda — são duas operações de pilha
+num caminho que já percorre todas as bandas.
 
 **Fontes de verdade:** variam por item; cada um aponta o arquivo no
 [documento da revisão](../roadmap/revisao-de-codigo-2026-08.md).
