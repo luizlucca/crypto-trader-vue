@@ -963,8 +963,8 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       // Read so the toolbar re-renders on the next change: `mounted` is a
       // plain array on purpose, and cannot report its own length (ADR-0003).
       void revision.value
-      // Inclui o que ainda não pôde ser colocado: são desenhos do operador,
-      // só sem barras contra as quais se posicionar.
+      // Counts what could not be placed yet: those are the operator's own
+      // drawings, only without bars to position themselves against.
       return mounted.length + unbuilt.length
     },
 

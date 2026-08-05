@@ -26,6 +26,19 @@ function chartStub() {
   return { chart, series }
 }
 
+/** A manager over a stub chart, plus the two things every case looks at. */
+function drawingsOver(bars: () => readonly { time: number }[]) {
+  const { chart, series } = chartStub()
+  const gravado = vi.fn()
+  const drawings = useChartDrawings({
+    chart: () => chart,
+    series: () => series,
+    bars,
+    onChange: gravado,
+  })
+  return { drawings, series, gravado }
+}
+
 const trendLine: ChartDrawing = {
   id: 'd1',
   tool: 'trend-line',
@@ -45,14 +58,7 @@ const bars = [
 
 describe('desenhos que ainda não podem ser colocados', () => {
   it('não sabe onde pôr o desenho enquanto não há barras', () => {
-    const { chart, series } = chartStub()
-    const gravado = vi.fn()
-    const drawings = useChartDrawings({
-      chart: () => chart,
-      series: () => series,
-      bars: () => [],
-      onChange: gravado,
-    })
+    const { drawings, series } = drawingsOver(() => [])
 
     drawings.restore([trendLine])
 
@@ -66,30 +72,22 @@ describe('desenhos que ainda não podem ser colocados', () => {
     // Era a perda de verdade: `persist` gravava só o que estava montado, então
     // o próximo desenho feito pelo operador apagava do localStorage todos os
     // que a falta de barras impediu de montar.
-    const { chart, series } = chartStub()
-    const gravado = vi.fn()
-    const drawings = useChartDrawings({
-      chart: () => chart,
-      series: () => series,
-      bars: () => [],
-      onChange: gravado,
-    })
+    const { drawings, gravado } = drawingsOver(() => [])
 
     drawings.restore([trendLine])
-    drawings.clear()
 
+    // É exatamente esta lista que `persist` grava.
+    expect(drawings.drawings()).toEqual([trendLine])
+
+    // E limpar apaga tudo, inclusive o que nunca chegou à tela.
+    drawings.clear()
     expect(gravado).toHaveBeenCalledWith([])
     expect(drawings.drawings()).toEqual([])
   })
 
   it('coloca na tela quando as barras finalmente chegam', () => {
-    const { chart, series } = chartStub()
     let barras: { time: number }[] = []
-    const drawings = useChartDrawings({
-      chart: () => chart,
-      series: () => series,
-      bars: () => barras,
-    })
+    const { drawings, series } = drawingsOver(() => barras)
 
     drawings.restore([trendLine])
     expect(series.attachPrimitive).not.toHaveBeenCalled()

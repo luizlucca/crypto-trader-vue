@@ -2,6 +2,7 @@ import {
   channelHex,
   hexChannels,
   relativeLuminance,
+  type RgbChannels,
 } from '@/domain/color'
 
 export interface ThemePalette {
@@ -698,6 +699,21 @@ function fromLinear(value: number): number {
   return scaled * 255
 }
 
+/**
+ * The catalog works in hex strings; the domain works in channels.
+ *
+ * Every colour here comes from a preset or from a customisation the editor
+ * validated, so an unreadable one is a bug rather than input. Falling back to
+ * black keeps the arithmetic total instead of spreading NaN through a palette.
+ */
+function channelsOf(hex: string): RgbChannels {
+  return hexChannels(hex) ?? [0, 0, 0]
+}
+
+function luminanceOf(hex: string): number {
+  return relativeLuminance(channelsOf(hex))
+}
+
 /** Grey with the same perceived lightness as the source colour. */
 function grayValue(hex: string): number {
   return fromLinear(luminanceOf(hex))
@@ -732,7 +748,7 @@ function toned(hex: string, tone: SurfaceTone | undefined): string {
    */
   const attenuated = Math.min(1, Math.max(0.5, gray / 48))
   const amount = (tone.amount ?? 0.4) * attenuated
-  const [hueR, hueG, hueB] = hexChannels(tone.hue) ?? [0, 0, 0]
+  const [hueR, hueG, hueB] = channelsOf(tone.hue)
   const hueGray = grayValue(tone.hue)
   return `#${channelHex(gray + ((hueR - hueGray) * amount))}${
     channelHex(gray + ((hueG - hueGray) * amount))
@@ -740,22 +756,16 @@ function toned(hex: string, tone: SurfaceTone | undefined): string {
 }
 
 function mix(base: string, overlay: string, amount: number): string {
-  const [baseR, baseG, baseB] = hexChannels(base) ?? [0, 0, 0]
-  const [overlayR, overlayG, overlayB] = hexChannels(overlay) ?? [0, 0, 0]
+  const [baseR, baseG, baseB] = channelsOf(base)
+  const [overlayR, overlayG, overlayB] = channelsOf(overlay)
   return `#${channelHex(baseR + ((overlayR - baseR) * amount))}${
     channelHex(baseG + ((overlayG - baseG) * amount))
   }${channelHex(baseB + ((overlayB - baseB) * amount))}`
 }
 
 function rgba(hex: string, alpha: number): string {
-  const [red, green, blue] = hexChannels(hex) ?? [0, 0, 0]
+  const [red, green, blue] = channelsOf(hex)
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`
-}
-
-/** The catalog works in hex strings; the domain works in channels. */
-function luminanceOf(hex: string): number {
-  const channels = hexChannels(hex)
-  return channels ? relativeLuminance(channels) : 0
 }
 
 function accentContrast(accent: string): string {

@@ -54,28 +54,6 @@ export function applyWorkspaceStreamStatus(
   tab.statusMessage = status.message ?? ''
 }
 
-/**
- * What the status bar says about a session.
- *
- * Deliberately names the two streams apart. The aggregate alone was
- * pessimistic — the order book failing its REST snapshot reported the whole
- * session as reconnecting while candles kept arriving, so the operator saw a
- * warning that the data was stale when the chart was current. On a trading
- * screen that reads as "do not trust this price", which is the opposite of
- * what was true.
- */
-export function sessionStatusLabel(tab: {
-  candleState: StreamState
-  orderBookState: StreamState
-}): string {
-  const { candleState, orderBookState } = tab
-  if (candleState === orderBookState) {
-    return BOTH_STREAMS[candleState]
-  }
-  return `Candles ${CANDLE_WORDS[candleState]}`
-    + ` · livro ${BOOK_WORDS[orderBookState]}`
-}
-
 const BOTH_STREAMS: Record<StreamState, string> = {
   connecting: 'Conectando aos streams',
   connected: 'Candles e livro conectados',
@@ -97,4 +75,29 @@ const BOOK_WORDS: Record<StreamState, string> = {
   connected: 'conectado',
   reconnecting: 'reconectando',
   error: 'com falha',
+}
+
+/**
+ * What the status bar says about a session.
+ *
+ * Deliberately names the two streams apart. The aggregate alone was
+ * pessimistic — the order book failing its REST snapshot reported the whole
+ * session as reconnecting while candles kept arriving, so the operator saw a
+ * warning that the data was stale when the chart was current. On a trading
+ * screen that reads as "do not trust this price", which is the opposite of
+ * what was true.
+ *
+ * Takes only the two fields it reads, not a whole tab: it is a pure statement
+ * about two stream states.
+ */
+export function sessionStatusLabel(tab: {
+  candleState: StreamState
+  orderBookState: StreamState
+}): string {
+  const { candleState, orderBookState } = tab
+  if (candleState === orderBookState) {
+    return BOTH_STREAMS[candleState]
+  }
+  return `Candles ${CANDLE_WORDS[candleState]}`
+    + ` · livro ${BOOK_WORDS[orderBookState]}`
 }

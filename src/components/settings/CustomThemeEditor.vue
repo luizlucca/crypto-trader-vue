@@ -17,7 +17,7 @@ import {
   type ThemePresetId,
   type ThemeVariantCustomization,
 } from '@/services/themeCatalog'
-import { contrastRatio } from '@/domain/readableColor'
+import { MIN_GRAPHIC_CONTRAST, contrastRatio } from '@/domain/color'
 import ThemePresetPreview from './ThemePresetPreview.vue'
 
 const emit = defineEmits<{
@@ -69,29 +69,30 @@ function save(): void {
   })
   emit('saved')
 }
+
 /**
  * Warns when a chosen candle colour disappears against the chosen background.
  *
  * A warning and not a correction: the previews exist precisely to show what
  * the operator picked, and silently adjusting a decision would be worse than
- * the problem. Three to one is the ratio WCAG asks of graphical objects, and
- * the same one `readableOn` uses for the indicator palette.
+ * the problem. The threshold is the one WCAG asks of graphical objects, shared
+ * with the indicator palette so both surfaces judge legibility the same way.
  */
-const MINIMUM_CANDLE_CONTRAST = 3
-
-function candleContrast(color: string): number | null {
-  return contrastRatio(color, currentVariant.value.chartBackground)
-}
-
 function contrastWarning(color: string): string {
-  const ratio = candleContrast(color)
-  if (ratio === null || ratio >= MINIMUM_CANDLE_CONTRAST) {
+  const ratio = contrastRatio(color, currentVariant.value.chartBackground)
+  if (ratio === null || ratio >= MIN_GRAPHIC_CONTRAST) {
     return ''
   }
   return `Contraste ${ratio.toFixed(1)}:1 contra o fundo do gráfico.`
-    + ` Abaixo de ${MINIMUM_CANDLE_CONTRAST}:1 o candle some.`
+    + ` Abaixo de ${MIN_GRAPHIC_CONTRAST}:1 o candle some.`
 }
 
+const candleUpWarning = computed(
+  () => contrastWarning(currentVariant.value.candleUp),
+)
+const candleDownWarning = computed(
+  () => contrastWarning(currentVariant.value.candleDown),
+)
 </script>
 
 <template>
@@ -207,10 +208,10 @@ function contrastWarning(color: string): string {
             <code>{{ currentVariant.candleUp }}</code>
           </div>
           <small
-            v-if="contrastWarning(currentVariant.candleUp)"
+            v-if="candleUpWarning"
             class="theme-contrast-warning"
             role="status"
-          >{{ contrastWarning(currentVariant.candleUp) }}</small>
+          >{{ candleUpWarning }}</small>
         </label>
         <label class="theme-color-field">
           <span>Candle de baixa</span>
@@ -219,10 +220,10 @@ function contrastWarning(color: string): string {
             <code>{{ currentVariant.candleDown }}</code>
           </div>
           <small
-            v-if="contrastWarning(currentVariant.candleDown)"
+            v-if="candleDownWarning"
             class="theme-contrast-warning"
             role="status"
-          >{{ contrastWarning(currentVariant.candleDown) }}</small>
+          >{{ candleDownWarning }}</small>
         </label>
         <label class="theme-color-field">
           <span>Fundo do gráfico</span>

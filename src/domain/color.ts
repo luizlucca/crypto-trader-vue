@@ -50,6 +50,9 @@ export function relativeLuminance([red, green, blue]: RgbChannels): number {
     + (0.0722 * linearChannel(blue))
 }
 
+/** WCAG 1.4.11 asks 3:1 for graphical objects; a thin line needs every bit. */
+export const MIN_GRAPHIC_CONTRAST = 3
+
 /** Ratio between two luminances already computed. */
 export function luminanceContrast(first: number, second: number): number {
   const lighter = Math.max(first, second)

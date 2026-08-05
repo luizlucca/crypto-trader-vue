@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  MIN_GRAPHIC_CONTRAST,
-  contrastRatio,
-  readableOn,
-} from './readableColor'
+import { MIN_GRAPHIC_CONTRAST, contrastRatio } from './color'
+import { readableOn } from './readableColor'
 
 const DARK = '#0e1821'
 const LIGHT = '#f8fbfc'

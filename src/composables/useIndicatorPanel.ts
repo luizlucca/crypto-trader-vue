@@ -27,7 +27,6 @@ export interface IndicatorPanelOptions {
   indicators: ChartIndicators
   /** Layout is stored per tab, so the session identifies it. */
   sessionId: () => string
-  onError?: (message: string) => void
 }
 
 export function useIndicatorPanel(options: IndicatorPanelOptions) {
@@ -82,6 +81,8 @@ export function useIndicatorPanel(options: IndicatorPanelOptions) {
   }
 
   const configuring = computed(() => find(configuringId.value))
+  // Normalised to null, not left undefined: the picker declares `editing` as a
+  // required prop that is either an instance or null.
   const editing = computed(() => find(editingId.value) ?? null)
   const configuringCalculated = computed(() => configuring.value
     ? indicators.hasCalculated(configuring.value.instance.instanceId)
@@ -165,6 +166,46 @@ export function useIndicatorPanel(options: IndicatorPanelOptions) {
     sync()
   }
 
+  function catalog(): Promise<IndicatorDefinition[]> {
+    return indicators.catalog()
+  }
+
+  function openPicker(): void {
+    pickerOpen.value = true
+  }
+
+  function closePicker(): void {
+    editingId.value = null
+    pickerOpen.value = false
+  }
+
+  /** Collapses the settings. The indicator stays exactly as it is. */
+  function collapseEditing(): void {
+    editingId.value = null
+  }
+
+  function removeEditing(): void {
+    if (editingId.value) {
+      remove(editingId.value)
+    }
+  }
+
+  function editingInputs(inputs: IndicatorInputs): void {
+    if (editingId.value) {
+      applyInputs(editingId.value, inputs)
+    }
+  }
+
+  function editingStyles(styles: Record<string, IndicatorPlotStyle>): void {
+    if (editingId.value) {
+      applyStyles(editingId.value, styles)
+    }
+  }
+
+  function previewReadout(instanceId: string): void {
+    indicators.previewReadout(instanceId)
+  }
+
   return {
     applied,
     presented,
@@ -181,40 +222,17 @@ export function useIndicatorPanel(options: IndicatorPanelOptions) {
 
     sync,
     restoreLayout,
+    catalog,
     add,
     remove,
+    removeEditing,
     applyInputs,
     applyStyles,
-
-    catalog: () => indicators.catalog(),
-    openPicker(): void {
-      pickerOpen.value = true
-    },
-    closePicker(): void {
-      editingId.value = null
-      pickerOpen.value = false
-    },
-    /** Collapses the settings. The indicator stays exactly as it is. */
-    collapseEditing(): void {
-      editingId.value = null
-    },
-    removeEditing(): void {
-      if (editingId.value) {
-        remove(editingId.value)
-      }
-    },
-    editingInputs(inputs: IndicatorInputs): void {
-      if (editingId.value) {
-        applyInputs(editingId.value, inputs)
-      }
-    },
-    editingStyles(styles: Record<string, IndicatorPlotStyle>): void {
-      if (editingId.value) {
-        applyStyles(editingId.value, styles)
-      }
-    },
-    previewReadout(instanceId: string): void {
-      indicators.previewReadout(instanceId)
-    },
+    openPicker,
+    closePicker,
+    collapseEditing,
+    editingInputs,
+    editingStyles,
+    previewReadout,
   }
 }

@@ -14,18 +14,13 @@
  */
 
 import {
-  contrastRatio,
+  MIN_GRAPHIC_CONTRAST,
   hexChannels,
   luminanceContrast,
   relativeLuminance,
   toHex,
   type RgbChannels,
 } from './color'
-
-export { contrastRatio }
-
-/** WCAG 1.4.11 asks 3:1 for graphical objects; a thin line needs every bit. */
-export const MIN_GRAPHIC_CONTRAST = 3
 
 type HslChannels = [number, number, number]
 

@@ -1,14 +1,16 @@
-import { ColorType } from 'lightweight-charts'
-import type {
-  HistogramData,
-  IChartApi,
-  ISeriesApi,
-  SeriesType,
-  UTCTimestamp,
+import {
+  ColorType,
+  type HistogramData,
+  type IChartApi,
+  type ISeriesApi,
+  type ITextWatermarkPluginApi,
+  type SeriesType,
+  type TextWatermarkLineOptions,
+  type Time,
+  type UTCTimestamp,
 } from 'lightweight-charts'
 import type { Candle } from '@shared/types/market'
 import type { ThemePalette } from '@/services/themeCatalog'
-import type { RoundedCandleData } from '@/plugins/roundedCandles/data'
 
 /**
  * Everything about how the chart is painted, apart from what it paints.
@@ -20,24 +22,11 @@ import type { RoundedCandleData } from '@/plugins/roundedCandles/data'
  * own.
  */
 
-export interface ChartWatermark {
-  applyOptions: (options: { lines: WatermarkLine[] }) => void
-}
-
-export interface WatermarkLine {
-  text: string
-  color: string
-  fontSize: number
-  lineHeight: number
-  fontFamily: string
-  fontStyle: string
-}
-
 export interface ChartThemeOptions {
   chart: () => IChartApi | null
   candleSeries: () => ISeriesApi<SeriesType> | null
   volumeSeries: () => ISeriesApi<SeriesType> | null
-  watermark: () => ChartWatermark | undefined
+  watermark: () => ITextWatermarkPluginApi<Time> | undefined
   /** Live array, never a copy: the volume series is repainted from it. */
   candles: () => readonly Candle[]
   /** What the watermark spells out, resolved when it is written. */
@@ -45,17 +34,6 @@ export interface ChartThemeOptions {
   interval: () => string
   /** The indicator palette is resolved against the surface it lands on. */
   onRetheme?: () => void
-}
-
-/** A candle as the rounded series wants it. */
-export function candlePoint(candle: Candle): RoundedCandleData<UTCTimestamp> {
-  return {
-    time: candle.time as UTCTimestamp,
-    open: candle.open,
-    high: candle.high,
-    low: candle.low,
-    close: candle.close,
-  }
 }
 
 /** Volume bars take their colour from the candle's own direction. */
@@ -73,7 +51,7 @@ export function volumePoint(
 }
 
 export function useChartTheme(options: ChartThemeOptions) {
-  function watermarkLines(palette: ThemePalette): WatermarkLine[] {
+  function watermarkLines(palette: ThemePalette): TextWatermarkLineOptions[] {
     return [
       {
         text: options.symbol(),

@@ -80,6 +80,11 @@ const REQUEST_RETRIES = 2
 /** Longest we will honour a `Retry-After`, so a bad header cannot park us. */
 const MAX_RETRY_AFTER_MS = 10_000
 
+/** Waited between attempts when the answer advised no delay of its own. */
+function retryBackoffMs(attempt: number): number {
+  return 1_000 * (2 ** attempt)
+}
+
 /**
  * Whether a failure is worth trying again.
  *
@@ -115,9 +120,13 @@ function pause(ms: number): Promise<void> {
 }
 
 async function fetchJSON<T>(url: string, retries = 0): Promise<T> {
-  let lastError: unknown
   let waitBeforeRetry = 0
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
+  /*
+   * Left from inside the catch, either by running out of attempts or because
+   * the failure is not worth repeating — so there is no exit condition up here
+   * to keep in step with that decision.
+   */
+  for (let attempt = 0; ; attempt += 1) {
     if (attempt > 0) {
       await pause(waitBeforeRetry)
     }
@@ -129,8 +138,9 @@ async function fetchJSON<T>(url: string, retries = 0): Promise<T> {
       })
       status = response.status
       if (!response.ok) {
+        // What the exchange asks for wins over our own schedule.
         waitBeforeRetry = retryAfterMs(response.headers.get('retry-after'))
-          ?? 1_000 * (2 ** attempt)
+          ?? retryBackoffMs(attempt)
         throw new Error(`Binance retornou HTTP ${response.status} para ${url}`)
       }
       // Under load and behind rate limiting the edge answers 200 with an HTML
@@ -140,16 +150,15 @@ async function fetchJSON<T>(url: string, retries = 0): Promise<T> {
         throw new Error(`Resposta da Binance não é JSON: ${url}`)
       }) as T
     } catch (error) {
-      lastError = error
       if (!worthRetrying(status) || attempt === retries) {
         throw error
       }
       if (status === undefined) {
-        waitBeforeRetry = 1_000 * (2 ** attempt)
+        // No answer came back, so nothing could have advised a delay.
+        waitBeforeRetry = retryBackoffMs(attempt)
       }
     }
   }
-  throw lastError
 }
 
 /** Deepest read allowed, so the widest aggregation cannot scan a whole book. */

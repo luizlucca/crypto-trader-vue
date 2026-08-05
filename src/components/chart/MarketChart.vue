@@ -12,6 +12,7 @@ import {
   HistogramSeries,
   createChart,
   createTextWatermark,
+  type HistogramData,
   type IChartApi,
   type ISeriesApi,
   type LogicalRangeChangeEventHandler,
@@ -19,22 +20,20 @@ import {
   type MouseEventHandler,
   type SeriesType,
   type Time,
+  type UTCTimestamp,
 } from 'lightweight-charts'
 import {
   RoundedCandleSeries,
   type RoundedCandleSeriesApi,
 } from '@/plugins/roundedCandles/RoundedCandleSeries'
+import { candlePoint } from '@/plugins/roundedCandles/data'
 import type { Candle, MarketSelection } from '@shared/types/market'
 import { uniqueSortedCandles } from '@/domain/candles'
 import { marketSelectionFingerprint } from '@/domain/marketSelection'
 import { useChartIndicators } from '@/composables/useChartIndicators'
 import { useChartDrawings } from '@/composables/useChartDrawings'
 import { useIndicatorPanel } from '@/composables/useIndicatorPanel'
-import {
-  candlePoint,
-  useChartTheme,
-  volumePoint,
-} from '@/composables/useChartTheme'
+import { useChartTheme, volumePoint } from '@/composables/useChartTheme'
 import type { DrawingToolId } from '@/domain/chartDrawings'
 import { readDrawings, writeDrawings } from '@/services/drawingStore'
 import type { IndicatorBars } from '@/services/indicators'
@@ -143,16 +142,6 @@ const indicators = useChartIndicators({
   onError: showIndicatorError,
 })
 
-/**
- * Drawings live on the candle series and are saved per asset: a trend line is
- * manual work, and losing it on restart would be losing the analysis.
- */
-const panel = useIndicatorPanel({
-  indicators,
-  sessionId: () => props.sessionId,
-  onError: showIndicatorError,
-})
-
 /*
  * Named at the top level so the template keeps unwrapping them. A ref reached
  * through an object is not unwrapped in a template, and writing `.value` in
@@ -160,6 +149,7 @@ const panel = useIndicatorPanel({
  * reason to change.
  */
 const {
+  applied: appliedIndicators,
   presented: presentedIndicators,
   hoveredId: hoveredIndicatorId,
   pickerOpen,
@@ -182,7 +172,11 @@ const {
   previewReadout: previewIndicatorReadout,
   applyInputs: applyIndicatorInputs,
   applyStyles: applyIndicatorStyles,
-} = panel
+  restoreLayout: restoreIndicatorLayout,
+} = useIndicatorPanel({
+  indicators,
+  sessionId: () => props.sessionId,
+})
 
 const chartTheme = useChartTheme({
   chart: () => chart.value,
@@ -195,6 +189,10 @@ const chartTheme = useChartTheme({
   onRetheme: () => indicators.retheme(),
 })
 
+/**
+ * Drawings live on the candle series and are saved per asset: a trend line is
+ * manual work, and losing it on restart would be losing the analysis.
+ */
 const drawings = useChartDrawings({
   chart: () => chart.value,
   series: () => candleSeries.value,
@@ -202,28 +200,6 @@ const drawings = useChartDrawings({
   onChange: (list) => writeDrawings(props.selection, list),
 })
 
-/**
- * Mirror of the applied indicators for the template only. The indicator data
- * path never touches it: the list changes when the user adds or removes one,
- * not when values update.
- */
-/**
- * Low-frequency presentation metadata. `populatedRevision` inside the
- * composable invalidates this only when a plot produces its first data, never
- * for realtime values or crosshair movement.
- */
-/**
- * Changes only when the pointer enters or leaves an indicator series. Values
- * themselves bypass Vue through the imperative readout channel.
- */
-/**
- * The instance whose settings are expanded inside the picker.
- *
- * It is already on the chart: choosing an indicator applies it. Collapsing the
- * accordion or closing the panel keeps it, because the chart has been showing
- * it since the click — and a gesture as ordinary as closing a panel must never
- * be what destroys it.
- */
 const diagnostics = import.meta.env.DEV
   ? {
       ind: indicators,
@@ -250,7 +226,7 @@ async function initializeChartData(): Promise<void> {
     return
   }
   try {
-    await panel.restoreLayout()
+    await restoreIndicatorLayout()
   } catch (error) {
     showIndicatorError(
       error instanceof Error ? error.message : String(error),
@@ -321,6 +297,16 @@ const enabledScrollInteractions = {
   horzTouchDrag: true,
   vertTouchDrag: true,
 } as const
+
+/**
+ * The volume bar for a candle, in the palette on screen right now.
+ *
+ * `volumePoint` takes the palette explicitly so the theme composable stays a
+ * translation table; every caller here wants the current one.
+ */
+function volumeBar(candle: Candle): HistogramData<UTCTimestamp> {
+  return volumePoint(candle, appThemePalette.value)
+}
 
 function rememberDisplayedCandle(candle: Candle): void {
   const lastIndex = displayedCandles.length - 1
@@ -399,7 +385,7 @@ async function loadHistory(): Promise<void> {
       && history.length < INITIAL_HISTORY_SIZE
     displayedCandles = candles
     candleSeries.value.setData(candles.map(candlePoint))
-    volumeSeries.value.setData(candles.map((candle) => volumePoint(candle, appThemePalette.value)))
+    volumeSeries.value.setData(candles.map(volumeBar))
     const lastCandle = candles.at(-1)
     if (lastCandle) {
       lastTimestamp = lastCandle.time
@@ -408,7 +394,7 @@ async function loadHistory(): Promise<void> {
     const latestPendingCandle = readPendingCandle()
     if (latestPendingCandle && latestPendingCandle.time >= lastTimestamp) {
       candleSeries.value.update(candlePoint(latestPendingCandle))
-      volumeSeries.value.update(volumePoint(latestPendingCandle, appThemePalette.value))
+      volumeSeries.value.update(volumeBar(latestPendingCandle))
       lastTimestamp = latestPendingCandle.time
       rememberDisplayedCandle(latestPendingCandle)
       updateLegend(latestPendingCandle)
@@ -506,7 +492,7 @@ async function loadOlderHistory(): Promise<void> {
     // the REST request runs in Electron's utility process.
     displayedCandles = [...olderCandles, ...displayedCandles]
     candles.setData(displayedCandles.map(candlePoint))
-    volume.setData(displayedCandles.map((candle) => volumePoint(candle, appThemePalette.value)))
+    volume.setData(displayedCandles.map(volumeBar))
 
     // Prepending shifts every previous logical index by the inserted count.
     // Restoring that shifted range keeps the same candles under the cursor.
@@ -756,8 +742,8 @@ onMounted(() => {
       param.seriesData as unknown as Map<ISeriesApi<SeriesType>, unknown>,
       param.hoveredInfo?.series as ISeriesApi<SeriesType> | undefined,
     )
-    if (panel.hoveredId.value !== nextIndicatorId) {
-      panel.hoveredId.value = nextIndicatorId
+    if (hoveredIndicatorId.value !== nextIndicatorId) {
+      hoveredIndicatorId.value = nextIndicatorId
     }
     drawings.handleMove(param)
   }
@@ -804,7 +790,7 @@ onMounted(() => {
     const wasEmpty = displayedCandles.length === 0
     // Direct incremental writes bypass Vue rendering and preserve the viewport.
     candles.update(candlePoint(candle))
-    volume.update(volumePoint(candle, appThemePalette.value))
+    volume.update(volumeBar(candle))
     lastTimestamp = candle.time
     rememberDisplayedCandle(candle)
     updateLegend(candle)
@@ -867,7 +853,7 @@ watch(appThemePalette, chartTheme.apply, { flush: 'sync' })
 <template>
   <section class="chart-panel">
     <ChartToolbar
-      :indicator-count="panel.applied.value.length"
+      :indicator-count="appliedIndicators.length"
       :interval="selection.interval"
       @indicators="openIndicatorPicker"
       @interval="emit('interval', $event)"
@@ -964,7 +950,7 @@ watch(appThemePalette, chartTheme.apply, { flush: 'sync' })
       </small>
     </div>
     <IndicatorPicker
-      :applied="panel.applied.value"
+      :applied="appliedIndicators"
       :load="loadIndicatorCatalog"
       :open="pickerOpen"
       :calculated="editingCalculated"

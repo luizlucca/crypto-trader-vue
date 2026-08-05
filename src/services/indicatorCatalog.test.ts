@@ -70,7 +70,7 @@ describe('catálogo de indicadores', () => {
     await falha
   })
 
-  it('larga o worker quando o catálogo foi o único motivo de criá-lo', async () => {
+  it('larga o worker criado só para listar o catálogo', async () => {
     // Abrir o seletor e não aplicar nada deixava um bundle de 2 MB vivo pela
     // vida inteira do gráfico — uma cópia por aba.
     const { client, workers } = await freshClient()

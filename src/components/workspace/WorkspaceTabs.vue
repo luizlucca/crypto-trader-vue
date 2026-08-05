@@ -21,23 +21,36 @@ const emit = defineEmits<{
  * eight presses of Tab, and a screen reader announces a list whose keys do
  * nothing.
  */
-function moveFocus(event: KeyboardEvent, tabs: WorkspaceTab[], index: number): void {
-  const passo = {
-    ArrowRight: 1,
-    ArrowLeft: -1,
-  }[event.key]
-  const destino = passo === undefined
-    ? { Home: 0, End: tabs.length - 1 }[event.key]
-    : (index + passo + tabs.length) % tabs.length
-  if (destino === undefined) {
-    return
+function moveFocus(
+  event: KeyboardEvent,
+  tabs: WorkspaceTab[],
+  index: number,
+): void {
+  const count = tabs.length
+  let target: number
+  switch (event.key) {
+    case 'ArrowRight':
+      target = (index + 1) % count
+      break
+    case 'ArrowLeft':
+      target = (index - 1 + count) % count
+      break
+    case 'Home':
+      target = 0
+      break
+    case 'End':
+      target = count - 1
+      break
+    default:
+      return
   }
   event.preventDefault()
-  const alvo = tabs[destino]
-  emit('activate', alvo.id)
+  emit('activate', tabs[target].id)
+  // Focus follows selection, and the button to focus is found through the DOM
+  // rather than a ref array: the strip is the element the handler is bound
+  // inside, so its tabs are exactly the ones enumerated here.
   const strip = (event.currentTarget as HTMLElement).closest('[role="tablist"]')
-  const botoes = strip?.querySelectorAll<HTMLElement>('[role="tab"]')
-  botoes?.[destino]?.focus()
+  strip?.querySelectorAll<HTMLElement>('[role="tab"]')[target]?.focus()
 }
 
 function closeOnMiddleClick(event: MouseEvent, tabId: string): void {

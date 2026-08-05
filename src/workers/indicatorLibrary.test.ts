@@ -4,11 +4,8 @@ import {
   calculateSMA,
   indicatorRegistry,
 } from 'lightweight-charts-indicators'
-import {
-  MIN_GRAPHIC_CONTRAST,
-  contrastRatio,
-  readableOn,
-} from '@/domain/readableColor'
+import { MIN_GRAPHIC_CONTRAST, contrastRatio } from '@/domain/color'
+import { readableOn } from '@/domain/readableColor'
 import { themePresets } from '@/services/themeCatalog'
 
 const bars = Array.from({ length: 500 }, (_, index) => {
