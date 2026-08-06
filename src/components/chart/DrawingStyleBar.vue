@@ -3,7 +3,6 @@ import {
   Check,
   ChevronDown,
   Palette,
-  PenTool,
   RotateCcw,
   Settings2,
   Trash2,
@@ -35,6 +34,7 @@ import {
   drawingStyleCapabilities,
 } from '@/domain/chartDrawings'
 import DrawingPropertiesEditor from './DrawingPropertiesEditor.vue'
+import DrawingToolIcon from './DrawingToolIcon.vue'
 
 const props = defineProps<{ drawing: ChartDrawing }>()
 
@@ -253,7 +253,7 @@ defineExpose({ openProperties })
     :aria-label="`Configurar ${label}`"
   >
     <div class="drawing-inspector__identity" :title="label">
-      <PenTool aria-hidden="true" />
+      <DrawingToolIcon :tool="drawing.tool" />
       <span>
         <small>Desenho selecionado</small>
         <strong>{{ label }}</strong>

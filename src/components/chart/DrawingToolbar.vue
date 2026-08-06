@@ -1,58 +1,12 @@
 <script setup lang="ts">
 import {
-  Activity,
-  ArrowDown,
-  ArrowDownRight,
-  ArrowRight,
-  ArrowUp,
-  ArrowUpRight,
-  BadgeInfo,
-  BetweenHorizontalStart,
-  Blend,
-  BoxSelect,
-  Brackets,
-  ChartNoAxesColumnIncreasing,
   Check,
-  Circle,
-  CircleDot,
-  Clock3,
   Crosshair,
   Eye,
   EyeOff,
-  Fan,
-  Flag,
-  Gauge,
-  GitCommitHorizontal,
-  GitFork,
-  Highlighter,
   Lock,
   LockOpen,
-  MapPin,
-  MessageSquare,
-  Minus,
-  MousePointer2,
-  MoveDiagonal2,
-  MoveHorizontal,
-  MoveVertical,
-  Orbit,
-  PanelTop,
-  PenLine,
-  Pencil,
-  Route,
-  Ruler,
-  ScanLine,
-  Share2,
-  Spline,
-  Square,
-  StickyNote,
-  Table2,
-  Target,
   Trash2,
-  TrendingUp,
-  Triangle,
-  Type,
-  Waypoints,
-  Waves,
 } from '@lucide/vue'
 import {
   computed,
@@ -61,12 +15,12 @@ import {
   shallowRef,
   useId,
 } from 'vue'
-import type { Component } from 'vue'
 import type {
   DrawingToolGroup,
   DrawingToolGroupId,
   DrawingToolId,
 } from '@/domain/chartDrawings'
+import DrawingToolIcon from './DrawingToolIcon.vue'
 import {
   DRAWING_TOOL_GROUPS,
   DRAWING_TOOL_LABELS,
@@ -93,77 +47,6 @@ const MENU_NAVIGATION_KEYS = new Set([
   'Home',
   'End',
 ])
-
-const icons: Record<DrawingToolId, Component> = {
-  'trend-line': TrendingUp,
-  'ray': TrendingUp,
-  'arrow': ArrowRight,
-  'extended-line': ScanLine,
-  'info-line': BadgeInfo,
-  'trend-angle': Gauge,
-  'horizontal-line': Minus,
-  'horizontal-ray': MoveHorizontal,
-  'vertical-line': MoveVertical,
-  'cross-line': Crosshair,
-  'regression-trend': Activity,
-  'flat-top-bottom': BetweenHorizontalStart,
-  'disjoint-channel': Brackets,
-  'andrews-pitchfork': GitFork,
-  'schiff-pitchfork': GitFork,
-  'modified-schiff-pitchfork': GitFork,
-  'inside-pitchfork': GitFork,
-  'fib-retracement': Spline,
-  'fib-extension': Waypoints,
-  'fib-channel': GitCommitHorizontal,
-  'fib-time-zone': Clock3,
-  'fib-speed-fan': Fan,
-  'fib-time-extension': Clock3,
-  'fib-circles': CircleDot,
-  'fib-spiral': Orbit,
-  'fib-arcs': Orbit,
-  'fib-wedge': Waves,
-  'pitchfan': Fan,
-  'gann-box': BoxSelect,
-  'gann-fan': Fan,
-  'gann-square-fixed': Target,
-  'gann-square': BoxSelect,
-  'parallel-channel': GitCommitHorizontal,
-  'rectangle': Square,
-  'rotated-rectangle': BoxSelect,
-  'circle': Circle,
-  'ellipse': Circle,
-  'arc': Orbit,
-  'triangle': Triangle,
-  'path': Route,
-  'polyline': Share2,
-  'curve': Spline,
-  'double-curve': Blend,
-  'long-position': ArrowUpRight,
-  'short-position': ArrowDownRight,
-  'forecast': Activity,
-  'projection': MoveDiagonal2,
-  'bars-pattern': ChartNoAxesColumnIncreasing,
-  'measure': Ruler,
-  'price-range': MoveVertical,
-  'date-range': MoveHorizontal,
-  'date-price-range': MoveDiagonal2,
-  'text-annotation': Type,
-  'callout': MessageSquare,
-  'anchored-text': PenLine,
-  'note': StickyNote,
-  'price-note': StickyNote,
-  'price-label': PanelTop,
-  'flag-mark': Flag,
-  'pin': MapPin,
-  'comment': MessageSquare,
-  'signpost': PanelTop,
-  'table': Table2,
-  'brush': Pencil,
-  'highlighter': Highlighter,
-  'arrow-marker': ArrowRight,
-  'arrow-mark-up': ArrowUp,
-  'arrow-mark-down': ArrowDown,
-}
 
 const toolbar = shallowRef<HTMLElement | null>(null)
 const menu = shallowRef<HTMLElement | null>(null)
@@ -350,7 +233,7 @@ onBeforeUnmount(closeMenu)
         type="button"
         @click="selectCursor"
       >
-        <MousePointer2 aria-hidden="true" />
+        <Crosshair aria-hidden="true" />
       </button>
 
       <hr>
@@ -372,10 +255,7 @@ onBeforeUnmount(closeMenu)
           :title="`Usar ${DRAWING_TOOL_LABELS[representativeTool(group)]}`"
           @click="activateGroup(group)"
         >
-          <component
-            :is="icons[representativeTool(group)]"
-            aria-hidden="true"
-          />
+          <DrawingToolIcon :tool="representativeTool(group)" />
         </button>
         <button
           :id="groupTriggerId(group.id)"
@@ -413,7 +293,7 @@ onBeforeUnmount(closeMenu)
         type="button"
         @click="selectTool(openGroup.id, tool)"
       >
-        <component :is="icons[tool]" aria-hidden="true" />
+        <DrawingToolIcon :tool="tool" />
         <span>{{ DRAWING_TOOL_LABELS[tool] }}</span>
         <Check v-if="activeTool === tool" aria-hidden="true" />
       </button>

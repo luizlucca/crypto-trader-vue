@@ -21,6 +21,9 @@ qualquer período e depois de fechar o app.
   arma imediatamente a ferramenta lembrada; um botão adjacente, visualmente
   separado, abre o menu lateral. Escolher uma variante arma o desenho e faz
   dela a representante da família até outra ser escolhida.
+- Cada uma das 68 ferramentas usa um glifo próprio que comunica sua geometria
+  conforme a convenção visual de plataformas de mercado. O mesmo glifo aparece
+  na barra, no seletor da família e na identidade do desenho selecionado.
 - O menu fecha ao escolher, clicar fora ou pressionar `Esc`; setas, `Home` e
   `End` percorrem suas opções sem mouse.
 - Escolher a ferramenta arma um desenho; ela desarma sozinha ao concluir, e
@@ -122,6 +125,13 @@ O flyout é DOM comum, sem backdrop, blur ou observador de posição. Sua posiç
 é medida uma vez, no clique que o abre, e limitada à altura da barra. Assim o
 menu não entra no movimento do ponteiro, no repaint das primitives ou no fluxo
 reativo dos candles e do livro de ordens.
+
+Os ícones são SVGs locais descritos em `drawingToolIcons.ts`; não dependem de
+sprites remotos nem copiam os assets proprietários de outra plataforma. Cada
+glifo representa a operação — níveis horizontais para retração, leques para
+Fibonacci/Gann, âncoras para linhas e canais, áreas direcionais para posições e
+setas duplas para medições. `DrawingToolIcon.vue` é o único renderer desses
+dados e mantém barra, flyout e inspetor semanticamente consistentes.
 
 Cada grupo é exposto como menu acessível: gatilho com `aria-haspopup`, estado
 em `aria-expanded`, itens `menuitemradio`, foco inicial na opção ativa e
@@ -332,6 +342,11 @@ setas, `Home` e `End` navegam nas alternativas; `Esc` fecha primeiro o seletor
 e só um segundo `Esc` larga o desenho. Clicar fora também fecha apenas o
 seletor.
 
+Rótulos dos controles são atômicos e não quebram linha. Quando a largura fica
+restrita, a media query remove o texto auxiliar e preserva ícone, amostra e área
+de clique; ela não comprime expressões como “Cores por níveis” em duas ou três
+linhas, nem aumenta a altura do inspetor.
+
 Não há backdrop, blur, medição contínua, transição ligada ao ponteiro ou
 atualização de estilo por `hover`. A cor nativa é aplicada no evento `change`,
 ao concluir a escolha, em vez de reconstruir a aparência a cada movimento no
@@ -508,6 +523,10 @@ ao reiniciar seria perder a análise.
       selecionar, mover, restilizar, trocar período e recarregar o app.
 - [x] A barra mostra oito famílias, separa ação direta do botão de flyout e
       lembra a última ferramenta escolhida de cada família.
+- [x] As 68 ferramentas possuem glifos SVG locais e específicos, reutilizados
+      na barra, no flyout e no inspetor do desenho selecionado.
+- [x] Controles do inspetor não quebram seus rótulos em várias linhas; em
+      espaço reduzido passam ao modo compacto sem alterar sua altura.
 - [x] O flyout fecha por seleção, clique externo ou `Esc`, e aceita setas,
       `Home` e `End`.
 - [x] Cliques em sequência rápida não são engolidos, incluindo dois pontos
