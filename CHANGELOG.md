@@ -25,9 +25,12 @@ observável; detalhes de implementação permanecem nas specs e ADRs.
   inteiro.
 - As cores da interface passaram a derivar dos tokens de tema: trocar de preset
   agora recolore livro, abas, painéis e rótulos, e não apenas o gráfico.
-- Estilos divididos em `src/styles/` por domínio.
+- Estilos divididos em `src/app/styles/` por domínio.
+- Renderer reorganizado em pacotes verticais por feature, com aliases próprios
+  indisponíveis aos processos Electron ([ADR-0005] e [F-012]).
 
-- Aliases `@shared/` e `@/` no lugar de caminhos relativos profundos.
+- Aliases `@shared/`, `@/` e aliases por feature no lugar de caminhos relativos
+  profundos.
 - ESLint adicionado (`npm run lint`), descrevendo o estilo já praticado.
 - A janela principal inicia em tela cheia.
 - Gráfico abre nas últimas 20 barras com espaço à direita e carrega páginas
@@ -46,6 +49,7 @@ observável; detalhes de implementação permanecem nas specs e ADRs.
   visíveis do livro de ordens.
 
 [ADR-0004]: docs/adr/0004-camadas-e-fronteiras-de-modulo.md
+[ADR-0005]: docs/adr/0005-pacotes-por-feature-no-renderer.md
 [F-012]: docs/specs/F-012-arquitetura-modular.md
 [F-013]: docs/specs/F-013-profundidade-livro-ordens.md
 

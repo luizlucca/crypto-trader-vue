@@ -15,7 +15,7 @@ import {
   type SymbolSelectionResult,
   type SymbolSearchContext,
 } from '@shared/contracts/desktop'
-import { MarketDataCoordinator } from './marketDataCoordinator'
+import { MarketDataCoordinator } from './market-data/coordinator'
 
 let mainWindow: BrowserWindow | null = null
 let searchWindow: BrowserWindow | null = null

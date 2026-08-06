@@ -21,18 +21,18 @@ workspace principal.
 - O processo principal cria a janela em `fullscreen: true` e reafirma
   `setFullScreen(true)` em `ready-to-show`.
 - `BrowserWindow` usa `contextIsolation`, `sandbox` e `nodeIntegration: false`.
-  O preload expõe apenas a API tipada de `src/contracts/desktop.ts`.
+  O preload expõe apenas a API tipada de `shared/contracts/desktop.ts`.
 - O processo principal valida o remetente IPC, bloqueia navegação/redireção e nega `window.open`.
 - `MarketDataCoordinator` cria processos utilitários para trabalho de mercado;
   eles reiniciam após falha e restauram assinaturas ativas.
 
 Fontes de verdade: `electron/main/index.ts`,
-`electron/main/marketDataCoordinator.ts`,
-`electron/preload/index.ts` e `src/contracts/desktop.ts`.
+`electron/main/market-data/coordinator.ts`,
+`electron/preload/index.ts` e `shared/contracts/desktop.ts`.
 
 ## Testes
 
-- `src/contracts/desktop.test.ts` valida comandos IPC.
+- `shared/contracts/desktop.test.ts` valida comandos IPC.
 - `npm run typecheck` valida o contrato compartilhado.
 - Tela cheia e janela de busca exigem validação manual no sistema operacional.
 

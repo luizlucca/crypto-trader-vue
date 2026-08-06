@@ -32,6 +32,11 @@ itens que restaram exigem decisão — mudam comportamento de produto, tocam
 caminho quente e precisam de medição, ou têm correção óbvia com efeito colateral
 pior que o problema. O documento traz uma ordem sugerida em quatro ondas.
 
+O [relatório de arquivos grandes](./refatoracao-arquivos-grandes-2026-08.md)
+lista candidatos por risco e responsabilidade depois da organização em pacotes.
+Ele é diagnóstico: nenhuma dessas refatorações faz parte da movimentação de
+pastas.
+
 ## Posterior — execução e segurança
 
 | ID | Item | Prioridade | Dependências |

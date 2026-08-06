@@ -11,6 +11,18 @@ export default defineConfig({
     alias: {
       '@shared': resolve(root, 'shared'),
       '@': resolve(root, 'src'),
+      '@app': resolve(root, 'src/app'),
+      '@chart': resolve(root, 'src/features/chart'),
+      '@desktop': resolve(root, 'src/platform/desktop'),
+      '@drawings': resolve(root, 'src/features/drawings'),
+      '@indicators': resolve(root, 'src/features/indicators'),
+      '@market': resolve(root, 'src/features/market'),
+      '@orderbook': resolve(root, 'src/features/orderbook'),
+      '@positions': resolve(root, 'src/features/positions'),
+      '@renderer-shared': resolve(root, 'src/shared'),
+      '@settings': resolve(root, 'src/features/settings'),
+      '@trading': resolve(root, 'src/features/trading'),
+      '@workspace': resolve(root, 'src/features/workspace'),
     },
   },
   test: {

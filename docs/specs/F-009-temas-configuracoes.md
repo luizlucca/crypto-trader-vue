@@ -71,8 +71,8 @@ redimensionar a janela, e apagava para sempre o tamanho escolhido — voltar a
 alargar a janela não trazia o painel de volta ao que era. É a mesma regra que
 `useResizableSidebar` já seguia para a largura do painel de mercados.
 
-Fontes de verdade: `src/services/theme*.ts` e
-`src/components/settings/`.
+Fontes de verdade: `src/features/settings/services/theme*.ts` e
+`src/features/settings/components/`.
 
 ## Testes
 

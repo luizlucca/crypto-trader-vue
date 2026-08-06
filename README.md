@@ -29,6 +29,23 @@ O ponto de entrada para specs, ADRs, roadmap, performance, testes, bugs e
 Definition of Done está em [docs/README.md](docs/README.md). Alterações de
 comportamento percebido também são registradas no [CHANGELOG.md](CHANGELOG.md).
 
+## Organização do código
+
+```text
+electron/              main, preload e utility processes
+shared/                contratos e tipos neutros entre processos
+src/
+├── app/               shell Vue e estilos globais
+├── features/          pacotes verticais por capacidade do produto
+├── platform/desktop/  adapter tipado para o preload
+└── shared/            reúso interno do renderer
+```
+
+Cada pacote em `src/features` mantém juntos seus componentes, composables,
+domínio, serviços, plugins e Workers. Consulte o
+[ADR-0005](docs/adr/0005-pacotes-por-feature-no-renderer.md) e o
+[catálogo de pacotes](src/features/README.md).
+
 ## Desenvolvimento com Electron
 
 Recomendado: Node.js 22.

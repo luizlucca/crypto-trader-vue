@@ -98,7 +98,7 @@ frame do livro de ordens — a classe de problema que o
 [ADR-0003](../adr/0003-renderizacao-imperativa-do-grafico.md) existe para
 evitar. O Worker mantém esse custo fora do caminho de desenho.
 
-O projeto já usa esse padrão em `src/workers/marketCatalog.worker.ts`, então
+O projeto já usa esse padrão em `src/features/market/workers/marketCatalog.worker.ts`, então
 não se trata de introduzir um mecanismo novo.
 
 O Worker é criado sob demanda, na primeira aplicação de indicador, e encerrado
@@ -261,13 +261,13 @@ série muda inteira. As séries de indicador **não** entram no caminho de
 ### Estrutura
 
 ```text
-src/domain/indicators.ts          catálogo filtrado, validação de parâmetros,
+src/features/indicators/domain/indicators.ts          catálogo filtrado, validação de parâmetros,
                                   identidade de uma instância aplicada
-src/workers/indicators.worker.ts  única fronteira que importa a biblioteca
-src/services/indicators.ts        cliente do Worker: requisições, coalescência,
+src/features/indicators/workers/indicators.worker.ts  única fronteira que importa a biblioteca
+src/features/indicators/services/indicators.ts        cliente do Worker: requisições, coalescência,
                                   rodadas, revisões e recuperação
-src/composables/useChartIndicators.ts  ciclo de vida das séries e painéis
-src/components/chart/indicators/
+src/features/indicators/composables/useChartIndicators.ts  ciclo de vida das séries e painéis
+src/features/indicators/components/
   IndicatorPicker.vue             seleção por categoria + busca
   IndicatorSettings.vue           formulário montado a partir de inputConfig
   IndicatorLegend.vue             valores no ponto do cursor
@@ -470,7 +470,7 @@ Além disso:
 - [x] O formulário de parâmetros é gerado a partir de `inputConfig`, sem código
       específico por indicador.
 - [x] Nenhum recálculo ocorre na thread principal — imposto por lint:
-      `lightweight-charts-indicators` só pode ser importado em `src/workers/`.
+      `lightweight-charts-indicators` só pode ser importado em `src/features/indicators/workers/`.
 - [x] Em um tick comum, a thread do gráfico aplica `update()` em poucos pontos;
       `setData()` só ocorre na primeira aplicação e ao carregar histórico.
       Medido em 90 s de mercado real com oito indicadores: 113 rodadas,

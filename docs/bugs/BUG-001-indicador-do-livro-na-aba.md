@@ -29,7 +29,7 @@ do respectivo stream.
 ## Regressão
 
 - `electron/utility/market-data/session.test.ts`
-- `src/types/workspace.test.ts`
+- `src/features/workspace/domain/workspace.test.ts`
 
 ## Critérios validados
 

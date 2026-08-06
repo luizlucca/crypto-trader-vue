@@ -33,7 +33,7 @@ lacunas, saltos de viewport ou disputar interação com uma carga histórica.
   disparo é o evento de mudança de intervalo visível, que acontece a cada
   gesto: com o provedor fora do ar, cada arrasto abria uma requisição nova e
   segurava a camada de bloqueio até o timeout de 20s do coordenador
-  (`electron/main/marketDataCoordinator.ts`), deixando o gráfico piscando o
+  (`electron/main/market-data/coordinator.ts`), deixando o gráfico piscando o
   overlay enquanto o operador rolasse. `historyRetryBlocked` é o que suspende;
   é distinto de `historyExhausted`, que significa que o ativo não tem mais
   histórico. Chegar a `loadOlderHistory` — pelo botão — já é a decisão de
@@ -44,8 +44,8 @@ lacunas, saltos de viewport ou disputar interação com uma carga histórica.
   que carregou bem, com um botão de nova tentativa apontado para o ativo
   errado.
 
-Fontes de verdade: `src/components/chart/MarketChart.vue`,
-`src/services/marketData.ts`, `src/contracts/desktop.ts` e
+Fontes de verdade: `src/features/chart/components/MarketChart.vue`,
+`src/platform/desktop/marketData.ts`, `shared/contracts/desktop.ts` e
 `electron/utility/market-data/providers/binance/provider.ts`.
 
 ## Testes

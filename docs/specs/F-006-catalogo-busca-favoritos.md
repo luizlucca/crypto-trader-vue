@@ -44,10 +44,10 @@ princípio separa "a atualização falhou, exibindo o último cache" de "não fo
 possível carregar o catálogo" — a segunda mensagem antes aparecia dizendo que
 exibia um cache que não existia.
 
-Fontes de verdade: `src/components/market/`,
-`src/workers/marketCatalog.worker.ts`,
-`src/services/marketCatalogSearch*.ts` e
-`src/services/favorites.ts`.
+Fontes de verdade: `src/features/market/components/`,
+`src/features/market/workers/marketCatalog.worker.ts`,
+`src/features/market/services/marketCatalogSearch*.ts` e
+`src/features/market/services/favorites.ts`.
 
 ## Testes
 

@@ -121,7 +121,7 @@ Por consequência para quem opera, não por facilidade de correção.
       depois: cursor com mediana de 7ms nos dois, zero long tasks nos dois,
       troca de período em 6.034ms contra 6.030ms.
 - [x] **RV-021** · A conversão de cor existe num lugar só, em
-      `src/domain/color.ts`. A unificação é comprovadamente neutra: os dois
+      `src/features/settings/domain/color.ts`. A unificação é comprovadamente neutra: os dois
       limiares sRGB só discordam para canais entre 10,016 e 10,315, e nenhum
       inteiro de 8 bits cai ali — há teste varrendo os 256.
 - [x] **RV-022** · A F-003 descreve o livro como ele é hoje.
@@ -353,11 +353,13 @@ em que sentido.
 
 ### RV-023 — o arquivo estava na pasta errada
 
-`repaintPump.ts` é nosso, mas morava em `src/plugins/lineTools/`, que é
+`repaintPump.ts` é nosso, mas morava em `src/features/drawings/plugins/line-tools/`, que é
 ignorada por inteiro para manter o código de terceiro byte a byte igual ao
 upstream. A exceção negativa no ESLint não funciona dentro de um diretório
 ignorado, e isso apontou o problema real: o arquivo não pertence ali. Movido
-para `src/plugins/`. O lint achou uma linha longa nele no primeiro passe.
+para o antigo `src/plugins/repaintPump.ts`, hoje em
+`src/features/drawings/plugins/repaintPump.ts`. O lint achou uma linha longa
+nele no primeiro passe.
 
 ### RV-019 — o que saiu e o que ficou
 

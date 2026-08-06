@@ -24,8 +24,8 @@ export default tseslint.config(
     ignores: [
       'out/**', 'release/**', 'build/**', 'node_modules/**',
       // Código de terceiro mantido byte a byte igual ao upstream, para que
-      // atualizar seja um diff. Ver src/plugins/lineTools/README.md.
-      'src/plugins/lineTools/**',
+      // atualizar seja um diff. Ver o README dentro do pacote de desenhos.
+      'src/features/drawings/plugins/line-tools/**',
     ],
   },
 
@@ -77,7 +77,12 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['@/*', '**/src/*'],
+              group: [
+                '@/*', '@app/*', '@chart/*', '@desktop/*', '@drawings/*',
+                '@indicators/*', '@market/*', '@orderbook/*', '@positions/*',
+                '@renderer-shared/*', '@settings/*', '@trading/*',
+                '@workspace/*', '**/src/*',
+              ],
               message:
                 'electron/ não pode importar do renderer. Use @shared/.',
             },
@@ -93,7 +98,7 @@ export default tseslint.config(
   // one property the whole indicator design exists to protect.
   {
     files: ['src/**/*.{ts,vue}'],
-    ignores: ['src/workers/**'],
+    ignores: ['src/features/indicators/workers/**'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -102,8 +107,112 @@ export default tseslint.config(
             {
               name: 'lightweight-charts-indicators',
               message:
-                'O cálculo de indicadores vive em src/workers/. '
-                + 'Fale com ele pelo protocolo em domain/indicatorProtocol.ts.',
+                'O cálculo vive no Worker da feature indicators. '
+                + 'Fale com ele pelo protocolo do domínio da feature.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // ARCHITECTURE: módulos compartilhados do renderer são folhas reutilizáveis,
+  // portanto não podem depender de uma feature, do shell ou da plataforma.
+  {
+    files: ['src/shared/**/*.{ts,vue}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@app/*', '@chart/*', '@desktop/*', '@drawings/*',
+                '@indicators/*', '@market/*', '@orderbook/*', '@positions/*',
+                '@settings/*', '@trading/*', '@workspace/*',
+              ],
+              message:
+                'src/shared não pode depender de app, feature ou plataforma.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // ARCHITECTURE: domínio é TypeScript puro, testável sem Vue ou Electron.
+  {
+    files: [
+      'src/features/*/domain/**/*.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'vue',
+              message: 'Domínio não pode depender da reatividade do Vue.',
+            },
+            {
+              name: 'electron',
+              message: 'Domínio não pode depender do runtime Electron.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/shared/domain/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'vue',
+              message: 'Domínio não pode depender da reatividade do Vue.',
+            },
+            {
+              name: 'electron',
+              message: 'Domínio não pode depender do runtime Electron.',
+            },
+          ],
+          patterns: [
+            {
+              group: [
+                '@app/*', '@chart/*', '@desktop/*', '@drawings/*',
+                '@indicators/*', '@market/*', '@orderbook/*', '@positions/*',
+                '@settings/*', '@trading/*', '@workspace/*',
+              ],
+              message: 'Domínio compartilhado não pode depender de pacotes.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // ARCHITECTURE: platform adapts external runtimes to neutral contracts. It
+  // never reaches into application or feature state.
+  {
+    files: ['src/platform/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@app/*', '@chart/*', '@drawings/*', '@indicators/*',
+                '@market/*', '@orderbook/*', '@positions/*',
+                '@renderer-shared/*', '@settings/*', '@trading/*',
+                '@workspace/*',
+              ],
+              message:
+                'Platform adapta contratos; não pode importar do renderer.',
             },
           ],
         },
@@ -121,7 +230,12 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['@/*', 'electron', 'vue'],
+              group: [
+                '@/*', '@app/*', '@chart/*', '@desktop/*', '@drawings/*',
+                '@indicators/*', '@market/*', '@orderbook/*', '@positions/*',
+                '@renderer-shared/*', '@settings/*', '@trading/*',
+                '@workspace/*', 'electron', 'vue',
+              ],
               message:
                 'shared/ é neutro: sem dependência de renderer ou Electron.',
             },

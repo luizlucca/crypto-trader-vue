@@ -109,7 +109,7 @@ retentativa indefinida enquanto houver sinal de vida.
 **O que acontece.** `publish` percorre os assinantes sem isolamento. Um `throw`
 em `RealtimePriceText` sobe por `publishRealtimePrice` → `updateLegend` →
 callback de `onCandle` e estoura dentro do laço do roteador em
-`src/services/marketData.ts`, interrompendo a entrega para os **demais**
+`src/platform/desktop/marketData.ts`, interrompendo a entrega para os **demais**
 handlers da mesma sessão.
 
 **Por que importa.** Uma escrita de DOM ruim mata o stream de candles. O
@@ -117,7 +117,7 @@ projeto já tem o precedente exato do isolamento — os `try/catch` de
 `applyPatches` e do laço por instância do worker, que a `CLAUDE.md` registra
 como deliberados.
 
-**Onde.** `src/services/imperativeChannel.ts`.
+**Onde.** `src/shared/services/imperativeChannel.ts`.
 
 **O que decidir antes:** onde o erro engolido aparece. Engolir em silêncio num
 app de trade é risco próprio.
@@ -138,7 +138,7 @@ emite bandas desenha suas linhas contra a escala de preço, para sempre.
 **Por que importa.** Um oscilador desenhado na escala de preço é ativamente
 enganoso para uma decisão de trade — parece um nível de preço e não é.
 
-**Onde.** `src/composables/useChartIndicators.ts:742`.
+**Onde.** `src/features/indicators/composables/useChartIndicators.ts:742`.
 
 **Correção.** Precisa migrar de painel séries já criadas, não só decidir melhor
 na criação.
@@ -184,7 +184,7 @@ falha; hoje isso só vale para o histórico antigo. `loadHistory` é seguro de
 reinvocar: o contador de geração cuida da corrida, e o caminho de falha passou
 a ter guarda no commit `69f0876`.
 
-**Onde.** `src/components/chart/MarketChart.vue`.
+**Onde.** `src/features/chart/components/MarketChart.vue`.
 
 **Custo:** baixo — cerca de seis linhas de template e uma de CSS. O que segura
 é validar o layout de `.chart-message.error` com um botão dentro.
@@ -199,7 +199,7 @@ algum para existir.
 **Por que importa.** Desenho é trabalho manual. Sumir por causa de uma falha de
 rede não relacionada é a pior forma de perdê-lo: parece que foi apagado.
 
-**Onde.** `src/components/chart/MarketChart.vue:554`.
+**Onde.** `src/features/chart/components/MarketChart.vue:554`.
 
 **A sutileza:** mover a restauração para fora do `try` não resolve sozinho —
 `logicalForTime` precisa de barras para posicionar, e com zero candles nada é
@@ -218,7 +218,7 @@ candles.
 **Por que importa.** É perda de função silenciosa: o operador rola e nada mais
 carrega, sem nenhum aviso.
 
-**Onde.** `src/components/chart/MarketChart.vue:93`.
+**Onde.** `src/features/chart/components/MarketChart.vue:93`.
 
 **A armadilha:** simplesmente remover o latch cria laço infinito de
 requisições, porque o cursor não avança.
@@ -265,7 +265,7 @@ A decisão é sua; a revisão marcou o item em vez de escolher sozinha.
 vale com o cache de módulo quente. E o segundo item é um travamento permanente
 do seletor de indicadores.
 
-**Onde.** `src/services/indicators.ts:78` e `:260`.
+**Onde.** `src/features/indicators/services/indicators.ts:78` e `:260`.
 
 **Custo:** médio. Exige um caminho de liberação distinto de `dispose()`, que
 hoje marca o cliente como descartado em definitivo.
@@ -284,7 +284,7 @@ para fora, soltar fora, depois pressionar **na barra de ferramentas** e soltar
 dentro do gráfico usa a posição do press velho — e um deslocamento menor que
 cinco pixels vira clique, criando âncora fantasma ou trocando a seleção.
 
-**Onde.** `src/components/chart/MarketChart.vue:953`.
+**Onde.** `src/features/chart/components/MarketChart.vue:953`.
 
 **Correção.** Ligar o `mouseup` ao `document` resolve os dois de uma vez; a
 checagem `pane.contains(event.target)` já rejeita o que está fora da área de
@@ -304,7 +304,7 @@ estado, ao contrário de `render()`, que preserva.
 **Se vaza ou não** depende de o lightweight-charts isolar o estado do canvas
 entre views de painel — não verificado.
 
-**Onde.** `src/plugins/indicatorDrawings/IndicatorDrawingsPrimitive.ts`.
+**Onde.** `src/features/indicators/plugins/indicator-drawings/IndicatorDrawingsPrimitive.ts`.
 
 **Medição antes:** a corrida de long tasks do ADR-0003, porque `save`/`restore`
 por quadro entra no caminho de pintura.
@@ -320,7 +320,7 @@ de 200 períodos sobre 600 barras prende 600 floats para reter 401.
 **Não é vazamento** — é substituído a cada rodada — mas é sobrecarga constante,
 multiplicada por indicador e por aba.
 
-**Onde.** `src/workers/indicators.worker.ts:216`.
+**Onde.** `src/features/indicators/workers/indicators.worker.ts:216`.
 
 **Medição antes:** snapshot de heap com oito indicadores de período longo,
 comparando o tamanho retido de `previous` contra `count * 8`. Trocar por
@@ -335,7 +335,7 @@ medição mostrar que a retenção pesa.
 
 ### ✅ RV-015 · ~90 linhas de CSS morto no tema claro
 
-O bloco `html[data-theme="light"]` (linhas 184–377 de `src/styles/base.css`) e
+O bloco `html[data-theme="light"]` (linhas 184–377 de `src/app/styles/base.css`) e
 o bloco `html[data-theme]` (385–512) têm **especificidade idêntica**, e o
 genérico vem depois — então ele vence toda propriedade que ambos definem. São
 **23 declarações sobrescritas, 12 delas com valor diferente**: a barra de
@@ -367,7 +367,7 @@ atual.
 
 Nada impede o usuário de escolher uma cor de candle que desaparece contra o
 próprio fundo que ele escolheu. A correção honesta é um **aviso de contraste**
-no editor — `contrastRatio` já é exportado por `src/domain/readableColor.ts` —
+no editor — `contrastRatio` já é exportado por `src/features/settings/domain/readableColor.ts` —
 e não uma correção silenciosa, porque as miniaturas existem justamente para
 mostrar o que foi escolhido. É mudança de produto e precisa de spec.
 
@@ -379,7 +379,7 @@ código aparentemente morto já quebrou o typecheck neste projeto.
 | Onde | O quê |
 | --- | --- |
 | `normalizers.ts:319` | `normalizeDepthEvent` + `normalizeLevels`, ~50 linhas, resíduo da era pré-F-013, alcançável só pelo próprio teste |
-| `src/services/favorites.ts` | `belongsToMarket`, sem nenhum chamador |
+| `src/features/market/services/favorites.ts` | `belongsToMarket`, sem nenhum chamador |
 | `session.ts` | `MarketSessionPool.stopAll()` e `size`, usados só em teste |
 | `useChartDrawings.ts:917` | `undo()` sem chamador — parece afordância pretendida e não ligada |
 | `useChartDrawings.ts` | `drawings()` sem chamador, e `styleFor` exportado sem consumidor externo |
@@ -408,7 +408,7 @@ pelo livro local completo.
 
 ### ✅ RV-023 · `repaintPump.ts` fora do alcance do ESLint
 
-É código nosso, mas mora em `src/plugins/lineTools/`, que é ignorado por
+É código nosso, mas mora em `src/features/drawings/plugins/line-tools/`, que é ignorado por
 inteiro para manter o código de terceiro byte a byte igual ao upstream. Não é
 lintado nem formatado. Cobrir exige uma exceção negativa no ignore.
 

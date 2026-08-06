@@ -56,11 +56,11 @@ sem que bursts do livro atrasem o canvas, troca de aba ou interface.
   `close` nem `error` — caso em que o TCP nunca avisa e o livro congela.
 
 Fontes de verdade: `electron/utility/market-data/session.ts`,
-`electron/main/marketDataCoordinator.ts`,
+`electron/main/market-data/coordinator.ts`,
 `electron/utility/market-data/providers/binance/websocket.ts`,
-`src/components/orderbook/OrderBook.vue`,
-`src/components/chart/MarketChart.vue` e
-`src/services/realtimePrice.ts`.
+`src/features/orderbook/components/OrderBook.vue`,
+`src/features/chart/components/MarketChart.vue` e
+`src/features/market/services/realtimePrice.ts`.
 
 ## Testes
 

@@ -63,7 +63,7 @@ qualquer período e depois de fechar o app.
 ### O que veio de fora, e o que não veio
 
 As primitivas de desenho foram copiadas do plugin `line-tools`
-([procedência completa](../../src/plugins/lineTools/README.md)): cada
+([procedência completa](../../src/features/drawings/plugins/line-tools/README.md)): cada
 ferramenta é um `ISeriesPrimitive<Time>` autocontido, a mesma forma que o
 `IndicatorDrawingsPrimitive` já usa em produção aqui.
 
@@ -94,7 +94,7 @@ O pacote não foi instalado e seus 22,6 mil linhas não foram copiadas. A
 biblioteca não possui testes, releases ou arquivo `LICENSE` — apenas declara
 MIT no `package.json` — e o manager dela duplicaria listeners e estado de
 interação. A análise completa e a lista de riscos estão na
-[procedência da implementação local](../../src/plugins/catalogDrawings/README.md).
+[procedência da implementação local](../../src/features/drawings/plugins/catalog-drawings/README.md).
 
 `CatalogDrawing` concentra apenas o contrato mecânico compartilhado: pontos,
 estilo, hit test, pane view e seleção. O renderer despacha geometrias por
@@ -388,7 +388,7 @@ limites de 8 a 48px, normalização defensiva, stack CSS, shorthand do canvas e
 as métricas aproximadas usadas pelo hit test. O renderer não mantém uma cópia
 dessas decisões.
 
-`components/shared/TextAppearanceControls.vue` consome esse domínio por
+`src/shared/components/TextAppearanceControls.vue` consome esse domínio por
 `v-model` e pode trabalhar em dois modos: compacto, exibindo apenas os quatro
 atalhos, ou completo, com fonte, tamanho numérico, peso, cor, negrito, itálico
 e prévia. O editor inline usa o modo compacto; as propriedades do desenho usam
@@ -457,12 +457,12 @@ uma linha de tendência é uma afirmação sobre tempo e preço, válida em qual
 granularidade. Diferente de um indicador, um desenho é trabalho manual: perdê-lo
 ao reiniciar seria perder a análise.
 
-**Fontes de verdade:** `src/domain/chartDrawings.ts`,
-`src/domain/textAppearance.ts`,
-`src/composables/useChartDrawings.ts`, `src/services/drawingStore.ts`,
-`src/components/chart/DrawingToolbar.vue`, `src/plugins/lineTools/` e
-`src/plugins/catalogDrawings/`. O controle reutilizável está em
-`src/components/shared/TextAppearanceControls.vue`.
+**Fontes de verdade:** `src/features/drawings/domain/chartDrawings.ts`,
+`src/shared/domain/textAppearance.ts`,
+`src/features/drawings/composables/useChartDrawings.ts`, `src/features/drawings/services/drawingStore.ts`,
+`src/features/drawings/components/DrawingToolbar.vue`, `src/features/drawings/plugins/line-tools/` e
+`src/features/drawings/plugins/catalog-drawings/`. O controle reutilizável está em
+`src/shared/components/TextAppearanceControls.vue`.
 
 ## Testes
 

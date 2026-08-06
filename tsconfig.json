@@ -22,6 +22,42 @@
       ],
       "@/*": [
         "src/*"
+      ],
+      "@app/*": [
+        "src/app/*"
+      ],
+      "@chart/*": [
+        "src/features/chart/*"
+      ],
+      "@desktop/*": [
+        "src/platform/desktop/*"
+      ],
+      "@drawings/*": [
+        "src/features/drawings/*"
+      ],
+      "@indicators/*": [
+        "src/features/indicators/*"
+      ],
+      "@market/*": [
+        "src/features/market/*"
+      ],
+      "@orderbook/*": [
+        "src/features/orderbook/*"
+      ],
+      "@positions/*": [
+        "src/features/positions/*"
+      ],
+      "@renderer-shared/*": [
+        "src/shared/*"
+      ],
+      "@settings/*": [
+        "src/features/settings/*"
+      ],
+      "@trading/*": [
+        "src/features/trading/*"
+      ],
+      "@workspace/*": [
+        "src/features/workspace/*"
       ]
     }
   },
