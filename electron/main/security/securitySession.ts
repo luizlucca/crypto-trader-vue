@@ -39,6 +39,19 @@ type ScheduleInterval = (
 ) => IntervalHandle
 type ClearScheduledInterval = (handle: IntervalHandle) => void
 
+class RecoverableFifoQueue {
+  private tail: Promise<void> = Promise.resolve()
+
+  enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(operation)
+    this.tail = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    return result
+  }
+}
+
 interface SecuritySessionOptions {
   repository: VaultRepository
   crypto: VaultCrypto
@@ -95,6 +108,7 @@ export class SecuritySession {
   private masterKey: Buffer | undefined
   private revision = 0
   private idleTimer: IntervalHandle | undefined
+  private readonly vaultMutationQueue = new RecoverableFifoQueue()
   private readonly listeners = new Set<(snapshot: SecuritySnapshot) => void>()
 
   private readonly repository: VaultRepository
@@ -173,6 +187,68 @@ export class SecuritySession {
   }
 
   async setup(password: string): Promise<SecuritySnapshot> {
+    return this.vaultMutationQueue.enqueue(() => this.setupInternal(password))
+  }
+
+  async unlock(password: string): Promise<SecuritySnapshot> {
+    return this.vaultMutationQueue.enqueue(() => this.unlockInternal(password))
+  }
+
+  lock(_reason: LockReason): SecuritySnapshot {
+    this.revision += 1
+    this.connections.disconnect()
+    this.clearUnlockedVault()
+    this.state = this.hasVault ? 'locked' : 'setup-required'
+    return this.publish()
+  }
+
+  lockIfEnabled(
+    reason: Extract<LockReason, 'minimize' | 'suspend'>,
+  ): SecuritySnapshot {
+    const enabled = reason === 'minimize'
+      ? this.preferences.lockOnMinimize
+      : this.preferences.lockOnSuspend
+    return enabled ? this.lock(reason) : this.getSnapshot()
+  }
+
+  closeAction(): SecurityPreferences['closeAction'] {
+    return this.preferences.closeAction
+  }
+
+  async saveBinanceAccount(
+    draft: BinanceAccountDraft,
+  ): Promise<SecuritySnapshot> {
+    const result = await this.vaultMutationQueue.enqueue(
+      () => this.saveBinanceAccountInternal(draft),
+    )
+    if (draft.validateAndConnect && result.snapshot.state === 'unlocked') {
+      return this.connectAccount(result.accountId)
+    }
+    return result.snapshot
+  }
+
+  async removeAccount(accountId: string): Promise<SecuritySnapshot> {
+    return this.vaultMutationQueue.enqueue(
+      () => this.removeAccountInternal(accountId),
+    )
+  }
+
+  async changePassword(
+    currentPassword: string,
+    nextPassword: string,
+  ): Promise<SecuritySnapshot> {
+    return this.vaultMutationQueue.enqueue(
+      () => this.changePasswordInternal(currentPassword, nextPassword),
+    )
+  }
+
+  async resetVault(confirmation: 'APAGAR'): Promise<SecuritySnapshot> {
+    return this.vaultMutationQueue.enqueue(
+      () => this.resetVaultInternal(confirmation),
+    )
+  }
+
+  private async setupInternal(password: string): Promise<SecuritySnapshot> {
     this.assertValidPassword(password)
     if (this.hasVault) {
       throw new Error('O cofre de credenciais já existe')
@@ -208,7 +284,7 @@ export class SecuritySession {
     }
   }
 
-  async unlock(password: string): Promise<SecuritySnapshot> {
+  private async unlockInternal(password: string): Promise<SecuritySnapshot> {
     this.assertValidPassword(password)
     if (!this.hasVault) {
       throw new Error('Nenhum cofre de credenciais foi configurado')
@@ -241,30 +317,12 @@ export class SecuritySession {
     }
   }
 
-  lock(_reason: LockReason): SecuritySnapshot {
-    this.revision += 1
-    this.connections.disconnect()
-    this.clearUnlockedVault()
-    this.state = this.hasVault ? 'locked' : 'setup-required'
-    return this.publish()
-  }
-
-  lockIfEnabled(
-    reason: Extract<LockReason, 'minimize' | 'suspend'>,
-  ): SecuritySnapshot {
-    const enabled = reason === 'minimize'
-      ? this.preferences.lockOnMinimize
-      : this.preferences.lockOnSuspend
-    return enabled ? this.lock(reason) : this.getSnapshot()
-  }
-
-  closeAction(): SecurityPreferences['closeAction'] {
-    return this.preferences.closeAction
-  }
-
-  async saveBinanceAccount(
+  private async saveBinanceAccountInternal(
     draft: BinanceAccountDraft,
-  ): Promise<SecuritySnapshot> {
+  ): Promise<{
+    accountId: string
+    snapshot: SecuritySnapshot
+  }> {
     this.assertUnlocked()
     this.assertAccountDraft(draft)
     const vault = this.requireVault()
@@ -287,19 +345,17 @@ export class SecuritySession {
     const revision = this.revision
     const envelope = await this.persistContents(next, revision)
     if (!envelope || !this.isCurrent(revision)) {
-      return this.getSnapshot()
+      return { accountId, snapshot: this.getSnapshot() }
     }
 
     this.vault = next
     this.envelope = envelope
-    this.publish()
-    if (draft.validateAndConnect) {
-      return this.connectAccount(accountId)
-    }
-    return this.getSnapshot()
+    return { accountId, snapshot: this.publish() }
   }
 
-  async removeAccount(accountId: string): Promise<SecuritySnapshot> {
+  private async removeAccountInternal(
+    accountId: string,
+  ): Promise<SecuritySnapshot> {
     this.assertUnlocked()
     const vault = this.requireVault()
     if (this.connections.snapshot().accountId === accountId) {
@@ -339,7 +395,7 @@ export class SecuritySession {
     return this.getSnapshot()
   }
 
-  async changePassword(
+  private async changePasswordInternal(
     currentPassword: string,
     nextPassword: string,
   ): Promise<SecuritySnapshot> {
@@ -370,7 +426,9 @@ export class SecuritySession {
     }
   }
 
-  async resetVault(confirmation: 'APAGAR'): Promise<SecuritySnapshot> {
+  private async resetVaultInternal(
+    confirmation: 'APAGAR',
+  ): Promise<SecuritySnapshot> {
     if (confirmation !== 'APAGAR') {
       throw new Error('Confirmação de reset inválida')
     }

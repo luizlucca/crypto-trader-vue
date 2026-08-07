@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SecuritySnapshot } from '@shared/contracts/security'
-import type { ProviderAccountRecord } from './vaultCrypto'
+import type {
+  EncryptedCredentialVaultV1,
+  ProviderAccountRecord,
+} from './vaultCrypto'
 import { VaultCrypto } from './vaultCrypto'
 import { VaultRepository } from './vaultRepository'
 import { SecurityPreferencesStore } from './securityPreferences'
@@ -16,6 +19,77 @@ import {
 
 const password = 'Abcdef1!'
 const temporaryDirectories: string[] = []
+
+interface Deferred<T> {
+  promise: Promise<T>
+  resolve(value: T): void
+  reject(reason?: unknown): void
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve: (value: T) => void = () => undefined
+  let reject: (reason?: unknown) => void = () => undefined
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve
+    reject = nextReject
+  })
+  return { promise, resolve, reject }
+}
+
+interface WriteGate {
+  started: Deferred<void>
+  completion: Deferred<void>
+}
+
+class DeferredVaultRepository extends VaultRepository {
+  private readonly writeGates: WriteGate[] = []
+
+  pauseNextWrite(): WriteGate {
+    const gate = { started: deferred<void>(), completion: deferred<void>() }
+    this.writeGates.push(gate)
+    return gate
+  }
+
+  async write(envelope: EncryptedCredentialVaultV1): Promise<void> {
+    const gate = this.writeGates.shift()
+    gate?.started.resolve()
+    await gate?.completion.promise
+    await super.write(envelope)
+  }
+}
+
+interface UnlockGate {
+  started: Deferred<void>
+  wasStarted: boolean
+  completion: Deferred<void>
+}
+
+class DeferredVaultCrypto extends VaultCrypto {
+  private readonly unlockGates: UnlockGate[] = []
+
+  pauseNextUnlock(): UnlockGate {
+    const gate = {
+      started: deferred<void>(),
+      wasStarted: false,
+      completion: deferred<void>(),
+    }
+    this.unlockGates.push(gate)
+    return gate
+  }
+
+  async unlock(
+    nextPassword: string,
+    envelope: EncryptedCredentialVaultV1,
+  ) {
+    const gate = this.unlockGates.shift()
+    if (gate) {
+      gate.wasStarted = true
+      gate.started.resolve()
+      await gate.completion.promise
+    }
+    return super.unlock(nextPassword, envelope)
+  }
+}
 
 function account(id: string): ProviderAccountRecord {
   return {
@@ -40,14 +114,17 @@ function connectedProvider(): AccountProvider {
 async function createSession(options: {
   accounts?: ProviderAccountRecord[]
   provider?: AccountProvider
+  repository?: VaultRepository
+  crypto?: VaultCrypto
   getSystemIdleTime?: () => number
   setInterval?: typeof setInterval
   clearInterval?: typeof clearInterval
 } = {}): Promise<SecuritySession> {
   const directory = await mkdtemp(join(tmpdir(), 'cryptopro-session-'))
   temporaryDirectories.push(directory)
-  const repository = new VaultRepository(join(directory, 'credentials.v1.enc'))
-  const crypto = new VaultCrypto()
+  const repository = options.repository
+    ?? new VaultRepository(join(directory, 'credentials.v1.enc'))
+  const crypto = options.crypto ?? new VaultCrypto()
   if (options.accounts) {
     const unlocked = await crypto.create(password, {
       version: 1,
@@ -77,6 +154,26 @@ async function createSession(options: {
   })
   await session.initialize()
   return session
+}
+
+async function createDeferredSession(
+  accounts: ProviderAccountRecord[] = [],
+  crypto: VaultCrypto = new VaultCrypto(),
+): Promise<{
+  session: SecuritySession
+  repository: DeferredVaultRepository
+}> {
+  const directory = await mkdtemp(join(tmpdir(), 'cryptopro-deferred-session-'))
+  temporaryDirectories.push(directory)
+  const repository = new DeferredVaultRepository(
+    join(directory, 'credentials.v1.enc'),
+  )
+  const session = await createSession({
+    accounts: accounts.length > 0 ? accounts : undefined,
+    crypto,
+    repository,
+  })
+  return { session, repository }
 }
 
 afterEach(async () => {
@@ -422,6 +519,174 @@ describe('SecuritySession', () => {
         accountId: 'new-account-id',
         state: 'connected',
       })
+    },
+  )
+})
+
+describe('SecuritySession credential vault mutation queue', () => {
+  it('preserves both accounts when two saves overlap', async () => {
+    const { session, repository } = await createDeferredSession()
+    await session.setup(password)
+    const firstWrite = repository.pauseNextWrite()
+
+    const firstSave = session.saveBinanceAccount({
+      ...account('one'),
+      validateAndConnect: false,
+    })
+    await firstWrite.started.promise
+    const secondSave = session.saveBinanceAccount({
+      ...account('two'),
+      validateAndConnect: false,
+    })
+    firstWrite.completion.resolve()
+    await Promise.all([firstSave, secondSave])
+
+    session.lock('manual')
+    await session.unlock(password)
+
+    expect(session.getSnapshot().accounts.map(({ accountId }) => accountId))
+      .toEqual(['one', 'two'])
+  })
+
+  it('keeps a queued save when the password changes afterwards', async () => {
+    const crypto = new DeferredVaultCrypto()
+    const { session, repository } = await createDeferredSession([], crypto)
+    await session.setup(password)
+    const firstWrite = repository.pauseNextWrite()
+    const passwordCheck = crypto.pauseNextUnlock()
+
+    const save = session.saveBinanceAccount({
+      ...account('one'),
+      validateAndConnect: false,
+    })
+    await firstWrite.started.promise
+    const changePassword = session.changePassword(password, 'NewPassword1!')
+    await Promise.resolve()
+
+    expect(passwordCheck.wasStarted).toBe(false)
+
+    firstWrite.completion.resolve()
+    passwordCheck.completion.resolve()
+    await Promise.all([save, changePassword])
+
+    session.lock('manual')
+    await expect(session.unlock(password)).rejects.toThrow(
+      'Não foi possível abrir o cofre de credenciais',
+    )
+    await session.unlock('NewPassword1!')
+
+    expect(session.getSnapshot().accounts).toEqual([
+      expect.objectContaining({ accountId: 'one' }),
+    ])
+  })
+
+  it('does not recreate a vault when reset follows a queued save', async () => {
+    const { session, repository } = await createDeferredSession()
+    await session.setup(password)
+    const firstWrite = repository.pauseNextWrite()
+
+    const save = session.saveBinanceAccount({
+      ...account('one'),
+      validateAndConnect: false,
+    })
+    await firstWrite.started.promise
+    const reset = session.resetVault('APAGAR')
+    firstWrite.completion.resolve()
+    await Promise.all([save, reset])
+
+    expect(session.getSnapshot()).toMatchObject({
+      state: 'setup-required',
+      hasVault: false,
+      accounts: [],
+    })
+    await expect(repository.exists()).resolves.toBe(false)
+  })
+
+  it('locks immediately while a later unlock waits for the committed write',
+    async () => {
+      const crypto = new DeferredVaultCrypto()
+      const { session, repository } = await createDeferredSession([], crypto)
+      await session.setup(password)
+      const firstWrite = repository.pauseNextWrite()
+      const unlockGate = crypto.pauseNextUnlock()
+
+      const save = session.saveBinanceAccount({
+        ...account('one'),
+        validateAndConnect: false,
+      })
+      await firstWrite.started.promise
+      session.lock('manual')
+
+      let unlocked = false
+      const unlock = session.unlock(password).then(() => {
+        unlocked = true
+      })
+      await Promise.resolve()
+      expect(unlocked).toBe(false)
+      expect(unlockGate.wasStarted).toBe(false)
+      expect(session.getSnapshot()).toMatchObject({
+        state: 'locked',
+        accounts: [],
+      })
+
+      firstWrite.completion.resolve()
+      await unlockGate.started.promise
+      unlockGate.completion.resolve()
+      await Promise.all([save, unlock])
+
+      expect(session.getSnapshot().accounts).toEqual([
+        expect.objectContaining({ accountId: 'one' }),
+      ])
+    },
+  )
+
+  it(
+    'continues with the next mutation after a queued write fails',
+    async () => {
+      const { session, repository } = await createDeferredSession()
+      await session.setup(password)
+      const failedWrite = repository.pauseNextWrite()
+
+      const rejectedSave = session.saveBinanceAccount({
+        ...account('one'),
+        validateAndConnect: false,
+      })
+      await failedWrite.started.promise
+      const nextSave = session.saveBinanceAccount({
+        ...account('two'),
+        validateAndConnect: false,
+      })
+      failedWrite.completion.reject(new Error('disk unavailable'))
+
+      await expect(rejectedSave).rejects.toThrow('disk unavailable')
+      await nextSave
+
+      expect(session.getSnapshot().accounts).toEqual([
+        expect.objectContaining({ accountId: 'two' }),
+      ])
+    },
+  )
+
+  it('does not resurrect a removed record or discard an unrelated save',
+    async () => {
+      const { session, repository } = await createDeferredSession([
+        account('one'),
+        account('two'),
+      ])
+      await session.unlock(password)
+      const firstWrite = repository.pauseNextWrite()
+
+      const remove = session.removeAccount('one')
+      await firstWrite.started.promise
+      const save = session.saveBinanceAccount({
+        ...account('three'),
+        validateAndConnect: false,
+      })
+      firstWrite.completion.resolve()
+      await Promise.all([remove, save])
+
+      expect(session.getSnapshot().accounts.map(({ accountId }) => accountId))
+        .toEqual(['two', 'three'])
     },
   )
 })
