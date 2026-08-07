@@ -1,6 +1,6 @@
 # F-018 — Cofre de credenciais e conexões privadas de providers
 
-**Status:** implementada  
+**Status:** em evolução
 **Última revisão:** 2026-08-07  
 **Relaciona-se a:** [F-002](./F-002-providers-binance.md),
 [F-009](./F-009-temas-configuracoes.md),
@@ -20,8 +20,8 @@ Esta entrega cria o cofre local, o ciclo de bloqueio/desbloqueio, a tela de
 providers, as preferências de segurança e a validação autenticada de leitura.
 Ela **não** envia ou cancela ordens, não lê saldo, posições ou histórico, e não
 abre streams privados. A boleta e os painéis privados continuam andaimes até a
-feature de execução; esta F-018 apenas entrega o guarda comum que eles deverão
-consultar antes de qualquer chamada autenticada.
+feature de execução; esta F-018 entrega o guarda comum, valida uma única conta
+ativa e oculta a boleta enquanto não houver conexão autenticada.
 
 ## Comportamento esperado
 
@@ -39,8 +39,11 @@ consultar antes de qualquer chamada autenticada.
   senha correta desbloqueia apenas a sessão atual.
 - Trocar senha exige a senha atual, cifra novamente o cofre com novo `salt` e
   só confirma depois da escrita atômica bem-sucedida.
-- Esqueci minha senha inicia um fluxo destrutivo: após confirmação explícita,
-  remove o cofre e todas as contas. Não há recuperação alternativa.
+- **Esqueci minha senha** aparece no desbloqueio e inicia um fluxo destrutivo.
+  A interface avisa que a senha não pode ser recuperada e que API keys,
+  secrets, contas e conexões serão removidos. Somente digitar `APAGAR` confirma
+  a destruição do cofre; cancelar não altera os dados. Não há recuperação
+  alternativa.
 - API key, secret, senha, chave derivada e conteúdo decifrado nunca são
   escritos em `localStorage`, fonte, telemetria, erros ou logs.
 
@@ -54,18 +57,26 @@ consultar antes de qualquer chamada autenticada.
 - O painel mostra somente o apelido, provider, mercados e sufixo mascarado da
   API key; o secret nunca volta ao renderer. Editar uma credencial pede o valor
   novamente.
-- Salvar uma conta cifra o novo documento e inicia imediatamente uma validação
-  de leitura em cada mercado habilitado, sem criar ordem, transformar saldo em
-  DTO ou iniciar stream privado. Uma falha de credencial, permissão ou rede é
-  exibida como estado da conta e permite corrigi-la depois; a mensagem bruta
-  do provider não atravessa o IPC.
-- **Entrar** desbloqueia o cofre e valida as contas habilitadas com concorrência
-  limitada. Cada conta informa `desconectada`, `conectando`, `conectada` ou
-  `falhou`; `conectada` significa "validada nesta sessão", não um stream
-  privado aberto.
-- **Bloquear** encerra as conexões privadas de validação, descarta o material
-  sensível em memória e devolve todas as contas a `desconectada`. O modo
-  público continua funcionando.
+- **Adicionar provedor** abre um catálogo declarativo com ícone, nome,
+  descrição e disponibilidade. Binance é a única opção habilitada nesta
+  versão; escolhê-la abre o formulário próprio de API key e secret.
+- Salvar uma conta sempre cifra o novo documento. A opção transitória
+  **Validar e conectar ao salvar** inicia a validação da conta recém-salva, mas
+  não é persistida como propriedade da conta.
+- **Entrar** desbloqueia o cofre sem validar todas as contas. Com zero contas,
+  abre Configurações > Provedores; com uma, seleciona e valida essa conta; com
+  várias, exige que o usuário escolha uma conta.
+- Existe apenas uma conta ativa por sessão desbloqueada. A escolha não é
+  persistida e é esquecida ao bloquear.
+- A conta ativa informa `desconectada`, `conectando`, `conectada` ou `falhou`;
+  `conectada` significa "validada nesta sessão", não um stream privado aberto.
+- Validação bem-sucedida mostra um toast identificando provider e apelido. Uma
+  falha exibe erro normalizado e permite tentar novamente ou abrir as
+  configurações; a mensagem bruta do provider não atravessa o IPC.
+- **Bloquear** cancela logicamente validações pendentes, descarta conta ativa e
+  material sensível em memória. O modo público continua funcionando.
+- A boleta só é renderizada quando a conta ativa estiver `conectada`; sem
+  conexão, sua coluna é devolvida ao workspace.
 
 ### Preferências de bloqueio
 
@@ -137,10 +148,10 @@ trocar/redefinir senha, gerir contas mascaradas e editar preferências; nenhuma
 operação retorna uma credencial.
 
 `electron/main/security/` contém a criptografia, o repositório em disco, a
-sessão, o temporizador de inatividade, IPC e ciclo de vida. Ele é a única
-camada que recebe senhas e credenciais pelo IPC e verifica origem, tamanho e
-formato antes de qualquer uso. A janela de busca não pode chamar os comandos
-de segurança.
+sessão, o coordenador da conexão privada, o temporizador de inatividade, IPC e
+ciclo de vida. Ele é a única camada que recebe senhas e credenciais pelo IPC e
+verifica origem, tamanho e formato antes de qualquer uso. A janela de busca não
+pode chamar os comandos de segurança.
 
 `electron/main/providers/` introduz uma interface independente de
 `MarketDataProvider`:
@@ -160,6 +171,12 @@ Futures e normaliza erros de credencial, permissão, relógio e rede. O provider
 de conta não entra no `utilityProcess` de candles/livro, e
 `MarketDataProvider` continua público e sem credenciais.
 
+`ProviderConnectionCoordinator` mantém somente a conta ativa, estado da
+tentativa e falha normalizada. `SecuritySession` localiza a credencial no cofre
+desbloqueado e a entrega ao coordenador dentro do processo principal. Revisões
+lógicas impedem respostas antigas de reconectar uma conta depois de troca,
+lock, reset ou remoção.
+
 ### Interface e estado
 
 `src/features/security/` mantém somente estado de baixo volume: `setup-required`,
@@ -167,8 +184,10 @@ de conta não entra no `utilityProcess` de candles/livro, e
 livro nem do gráfico. `src/features/providers/` renderiza a lista de contas e
 o editor apenas quando a sessão está desbloqueada.
 
-O cabeçalho recebe o botão global **Entrar** ou **Bloquear**. A seção
-**Provedores** deixa de ser placeholder, enquanto **Geral** ganha o bloco
+O cabeçalho recebe o botão global **Entrar** ou **Bloquear**. Após entrar, um
+orquestrador de baixo volume abre Provedores, conecta a única conta ou mostra o
+seletor, conforme a quantidade disponível. A seção **Provedores** usa catálogo
+genérico antes do formulário específico, enquanto **Geral** contém o bloco
 **Segurança e sessão**. Preferências de bloqueio não são credenciais e são
 persistidas/controladas pelo processo principal, para que minimização,
 fechamento e inatividade sejam aplicados mesmo se o renderer não estiver
@@ -196,15 +215,16 @@ tick no renderer.
 - Repositório: escrita atômica, ausência de segredo no arquivo, permissões
   POSIX, leitura de versão inválida e destruição por redefinição de senha.
 - Sessão: início bloqueado, lock manual, minimização, suspensão, inatividade,
-  ação de fechar e descarte das contas decifradas.
+  ação de fechar, seleção de uma conta ativa e descarte do estado privado.
 - Contrato IPC/preload: origem confiável, payloads inválidos, limite de campos,
   janela de busca bloqueada e garantia de que respostas não possuem `secret`,
   senha ou documento do vault.
 - Binance: fixtures cobrem assinatura HMAC, seleção Spot/Futures, mapeamento de
   resposta e erro. Um teste ao vivo será opt-in, usa variáveis de ambiente e
   nunca imprime credenciais.
-- Renderer: diálogos de cadastro/desbloqueio, lista mascarada, estados por
-  conta, preferências e guarda visual dos recursos privados.
+- Renderer: diálogos de cadastro/desbloqueio/reset, lista mascarada, caminhos
+  de zero/uma/várias contas, catálogo de providers, toast, preferências e
+  guarda visual da boleta.
 - Manual: com gráfico, livro e oito indicadores ativos, cadastrar/desbloquear
   e bloquear não pode criar *long task* acima de 50 ms no renderer nem pausar
   os streams públicos.
@@ -216,13 +236,20 @@ tick no renderer.
 - [x] Só uma senha válida que obedece à política cria ou desbloqueia o cofre.
 - [x] O arquivo em disco, `localStorage`, logs e IPC de resposta não expõem API
       key, secret, senha ou chave derivada em texto simples.
-- [x] Alterar a senha recifra todas as contas; redefini-la remove todas elas.
+- [ ] Alterar a senha recifra todas as contas; **Esqueci minha senha** exige
+      aviso e `APAGAR` antes de remover o cofre inteiro.
 - [x] É possível adicionar, editar, remover e distinguir várias contas Binance
       por apelido, sem expor o secret no renderer.
-- [x] Salvar uma conta valida imediatamente os mercados autenticados
-      habilitados, sem enviar qualquer ordem.
-- [x] Entrar valida as contas habilitadas; Bloquear, timeout, minimização,
-      suspensão/bloqueio suportado e fechamento aplicam a política configurada.
+- [ ] **Adicionar provedor** mostra o catálogo com ícone e abre o formulário
+      Binance, única opção habilitada nesta versão.
+- [ ] **Validar e conectar ao salvar** fica alinhado, não é persistido e só
+      conecta a conta recém-salva.
+- [ ] Entrar abre Provedores sem contas, conecta a conta única ou solicita
+      escolha quando houver várias contas.
+- [ ] Somente uma conta fica ativa; Bloquear, timeout, minimização,
+      suspensão/bloqueio suportado e fechamento descartam essa escolha.
+- [ ] A boleta só aparece com a conta ativa conectada, sem interromper gráfico
+      ou livro durante seleção, validação ou falha.
 - [x] A tela Segurança e sessão persiste os gatilhos e o tempo escolhidos.
 - [ ] Nenhum processo de dados públicos recebe credenciais, e gráfico/livro
       continuam atualizando durante os fluxos de segurança.
