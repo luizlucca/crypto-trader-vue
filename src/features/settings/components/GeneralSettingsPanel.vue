@@ -36,6 +36,9 @@ import {
 } from '@settings/services/themeCatalog'
 import CustomThemeEditor from './CustomThemeEditor.vue'
 import ThemePresetPreview from './ThemePresetPreview.vue'
+import ProviderAccountsPanel from '@providers/components/ProviderAccountsPanel.vue'
+import { useSecuritySession } from '@security/services/securitySession'
+import SecurityPreferencesPanel from './SecurityPreferencesPanel.vue'
 
 const props = defineProps<{
   open: boolean
@@ -43,6 +46,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  requestAccess: []
 }>()
 
 type SettingsSection = 'appearance' | 'general' | 'providers'
@@ -72,6 +76,7 @@ const WINDOW_MIN_WIDTH = 620
 const WINDOW_MIN_HEIGHT = 480
 
 const activeSection = ref<SettingsSection>('appearance')
+const security = useSecuritySession()
 const editingTheme = ref(false)
 const pendingDelete = ref<CustomThemeId | null>(null)
 const panel = ref<HTMLElement | null>(null)
@@ -691,25 +696,29 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
+          <ProviderAccountsPanel
+            v-else-if="activeSection === 'providers'"
+            :snapshot="security.snapshot.value"
+            @request-access="emit('requestAccess')"
+          />
+
+          <SecurityPreferencesPanel
+            v-else-if="activeSection === 'general'"
+            :snapshot="security.snapshot.value"
+          />
+
           <section v-else class="settings-content settings-placeholder">
             <span class="settings-placeholder-icon">
-              <SlidersHorizontal
-                v-if="activeSection === 'general'"
-                aria-hidden="true"
-              />
-              <Plug v-else aria-hidden="true" />
+              <Plug aria-hidden="true" />
             </span>
             <span>ESTRUTURA PREPARADA</span>
             <h3>
               {{
-                activeSection === 'general'
-                  ? 'Preferências gerais'
-                  : 'Provedores e chaves de API'
+                'Configurações'
               }}
             </h3>
             <p>
-              Esta seção já está reservada para as próximas configurações da
-              plataforma, sem misturar credenciais com preferências visuais.
+              Esta seção está reservada para configurações da plataforma.
             </p>
           </section>
         </div>

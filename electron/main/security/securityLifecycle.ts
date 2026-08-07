@@ -27,6 +27,7 @@ interface SecurityLifecycleOptions {
   powerMonitor: LifecyclePowerMonitor
   session: LifecycleSession
   isQuitting: () => boolean
+  platform?: NodeJS.Platform
 }
 
 export function bindSecurityLifecycle(
@@ -58,12 +59,16 @@ export function bindSecurityLifecycle(
   options.window.on('minimize', onMinimize)
   options.window.on('close', onClose)
   options.powerMonitor.on('suspend', onSuspend)
-  options.powerMonitor.on('lock-screen', onLockScreen)
+  if (options.platform !== 'linux') {
+    options.powerMonitor.on('lock-screen', onLockScreen)
+  }
 
   return () => {
     options.window.removeListener('minimize', onMinimize)
     options.window.removeListener('close', onClose)
     options.powerMonitor.removeListener('suspend', onSuspend)
-    options.powerMonitor.removeListener('lock-screen', onLockScreen)
+    if (options.platform !== 'linux') {
+      options.powerMonitor.removeListener('lock-screen', onLockScreen)
+    }
   }
 }

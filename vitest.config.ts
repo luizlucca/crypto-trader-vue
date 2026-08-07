@@ -19,6 +19,7 @@ export default defineConfig({
       '@market': resolve(root, 'src/features/market'),
       '@orderbook': resolve(root, 'src/features/orderbook'),
       '@positions': resolve(root, 'src/features/positions'),
+      '@providers': resolve(root, 'src/features/providers'),
       '@renderer-shared': resolve(root, 'src/shared'),
       '@security': resolve(root, 'src/features/security'),
       '@settings': resolve(root, 'src/features/settings'),

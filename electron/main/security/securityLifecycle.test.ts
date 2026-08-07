@@ -30,6 +30,7 @@ describe('bindSecurityLifecycle', () => {
       powerMonitor,
       session,
       isQuitting: () => false,
+      platform: 'darwin',
     })
 
     window.emit('minimize')
@@ -40,6 +41,21 @@ describe('bindSecurityLifecycle', () => {
     expect(session.lockIfEnabled).toHaveBeenCalledWith('suspend')
     expect(session.lockIfEnabled).toHaveBeenCalledTimes(3)
     dispose()
+  })
+
+  it('does not attach unavailable lock-screen events on Linux', () => {
+    const window = new FakeWindow()
+    const powerMonitor = new FakePowerMonitor()
+    const session = createSession('quit-and-lock')
+    bindSecurityLifecycle({
+      window,
+      powerMonitor,
+      session,
+      isQuitting: () => false,
+      platform: 'linux',
+    })
+
+    expect(powerMonitor.listenerCount('lock-screen')).toBe(0)
   })
 
   it('locks before minimizing instead of closing when configured', () => {
