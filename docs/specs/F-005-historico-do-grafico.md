@@ -29,9 +29,23 @@ lacunas, saltos de viewport ou disputar interação com uma carga histórica.
   Realtime continua em `update()`.
 - Uma camada opaca bloqueia ponteiro, wheel, zoom, scroll e toolbar do gráfico.
   Não há blur ou backdrop custoso; em falha existe tentativa manual.
+- **Uma página que falha suspende o prefetch automático até o botão.** O
+  disparo é o evento de mudança de intervalo visível, que acontece a cada
+  gesto: com o provedor fora do ar, cada arrasto abria uma requisição nova e
+  segurava a camada de bloqueio até o timeout de 20s do coordenador
+  (`electron/main/market-data/coordinator.ts`), deixando o gráfico piscando o
+  overlay enquanto o operador rolasse. `historyRetryBlocked` é o que suspende;
+  é distinto de `historyExhausted`, que significa que o ativo não tem mais
+  histórico. Chegar a `loadOlderHistory` — pelo botão — já é a decisão de
+  tentar de novo, e é onde a suspensão é levantada.
+- Resposta obsoleta é descartada por `historyGeneration` e pelo *fingerprint*
+  da seleção, **inclusive quando a requisição falha**: uma rejeição que chega
+  depois de o gráfico ter seguido em frente pintaria erro sobre um histórico
+  que carregou bem, com um botão de nova tentativa apontado para o ativo
+  errado.
 
-Fontes de verdade: `src/components/chart/MarketChart.vue`,
-`src/services/marketData.ts`, `src/contracts/desktop.ts` e
+Fontes de verdade: `src/features/chart/components/MarketChart.vue`,
+`src/platform/desktop/marketData.ts`, `shared/contracts/desktop.ts` e
 `electron/utility/market-data/providers/binance/provider.ts`.
 
 ## Testes
@@ -49,6 +63,8 @@ Fontes de verdade: `src/components/chart/MarketChart.vue`,
 - [ ] Livro continua recebendo updates durante o bloqueio.
 - [ ] Após prepend, a barra sob o cursor permanece na mesma posição visual.
 - [ ] No início real do ativo, novas requisições param.
+- [ ] Com o provedor fora do ar, rolar para trás não repete a requisição a cada
+      gesto: uma falha, uma mensagem, e só o botão tenta de novo.
 
 ## Evolução
 

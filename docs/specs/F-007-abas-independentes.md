@@ -30,9 +30,9 @@ perder contexto, sem compartilhar livro de ordens e com consumo previsível.
 - A busca carrega `tabId` e intenção (`replace-tab` ou `new-tab`), aplicando
   seleção à origem correta mesmo após troca de foco.
 
-Fontes de verdade: `src/components/workspace/TradingWorkspace.vue`,
-`src/components/workspace/WorkspaceTabs.vue` e
-`src/types/workspace.ts`.
+Fontes de verdade: `src/features/workspace/components/TradingWorkspace.vue`,
+`src/features/workspace/components/WorkspaceTabs.vue` e
+`src/features/workspace/domain/workspace.ts`.
 
 ## Testes
 

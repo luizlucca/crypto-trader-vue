@@ -98,7 +98,7 @@ frame do livro de ordens — a classe de problema que o
 [ADR-0003](../adr/0003-renderizacao-imperativa-do-grafico.md) existe para
 evitar. O Worker mantém esse custo fora do caminho de desenho.
 
-O projeto já usa esse padrão em `src/workers/marketCatalog.worker.ts`, então
+O projeto já usa esse padrão em `src/features/market/workers/marketCatalog.worker.ts`, então
 não se trata de introduzir um mecanismo novo.
 
 O Worker é criado sob demanda, na primeira aplicação de indicador, e encerrado
@@ -261,13 +261,13 @@ série muda inteira. As séries de indicador **não** entram no caminho de
 ### Estrutura
 
 ```text
-src/domain/indicators.ts          catálogo filtrado, validação de parâmetros,
+src/features/indicators/domain/indicators.ts          catálogo filtrado, validação de parâmetros,
                                   identidade de uma instância aplicada
-src/workers/indicators.worker.ts  única fronteira que importa a biblioteca
-src/services/indicators.ts        cliente do Worker: requisições, coalescência,
+src/features/indicators/workers/indicators.worker.ts  única fronteira que importa a biblioteca
+src/features/indicators/services/indicators.ts        cliente do Worker: requisições, coalescência,
                                   rodadas, revisões e recuperação
-src/composables/useChartIndicators.ts  ciclo de vida das séries e painéis
-src/components/chart/indicators/
+src/features/indicators/composables/useChartIndicators.ts  ciclo de vida das séries e painéis
+src/features/indicators/components/
   IndicatorPicker.vue             seleção por categoria + busca
   IndicatorSettings.vue           formulário montado a partir de inputConfig
   IndicatorLegend.vue             valores no ponto do cursor
@@ -299,6 +299,13 @@ em `plotConfig`; a existência da saída só é conhecida pelo resultado.
 Por isso a montagem é dirigida pelo resultado, e não pela definição: chegou um
 `IndicatorCandlePatch`, cria-se uma `CandlestickSeries` no painel do indicador.
 Encaixa no mesmo desenho de montagem tardia já usado para as linhas.
+
+A montagem tardia vale para **qualquer** rodada, não só a primeira. A repintura
+(`barColors`) fica vazia até o indicador de fato pintar uma barra, então essa
+saída aparece rodadas depois das demais séries. Tratá-la como ausente era uma
+falha sem saída: o retry completo encontra as outras séries já montadas e nunca
+volta ao caminho de criação, de modo que a instância ficava quebrada em
+definitivo.
 
 As cores vêm da biblioteca, por barra. Trafegam como paleta mais um índice por
 barra — uma série usa duas ou três cores distintas, e mandar a string por barra
@@ -433,11 +440,18 @@ amostral.
 Além disso:
 
 - `domain/indicators.test.ts`: validação de parâmetros contra `inputConfig`
-  (limites, tipos, opções), e identidade de instâncias — dois RSI com períodos
-  diferentes não podem colidir.
+  (limites, tipos, opções, valores não finitos), identidade de instâncias —
+  dois RSI com períodos diferentes não podem colidir — e a dobra da opacidade
+  na cor, incluindo as formas curtas `#RGB` e `#RGBA`.
 - `services/indicators.test.ts`: descarte por rodada/revisão, retry completo,
-  recuperação do Worker, resultado ausente, erro isolado de cálculo e 100
-  ciclos de inclusão/remoção com uma SMA ativa.
+  recuperação do Worker por `error` e por `messageerror`, limite de tentativas
+  de recuperação, resultado ausente, erro isolado de cálculo, encerramento do
+  Worker ao remover o último indicador e 100 ciclos de inclusão/remoção com uma
+  SMA ativa.
+- `workers/indicators.worker.test.ts`: diff de cauda contra snapshot completo,
+  isolamento de uma instância que falha sem reter a rodada, liberação da rodada
+  sem nada a calcular e descarte de uma barra de cauda mais antiga que o
+  histórico retido.
 - `workers/indicatorLibrary.test.ts`: 250 ciclos determinísticos de SMA seguido
   de MFI/RSI Bollinger Bands, verificando dados nos quatro plots.
 - `domain/readableColor.test.ts` e `workers/indicatorLibrary.test.ts`: a cor de
@@ -456,7 +470,7 @@ Além disso:
 - [x] O formulário de parâmetros é gerado a partir de `inputConfig`, sem código
       específico por indicador.
 - [x] Nenhum recálculo ocorre na thread principal — imposto por lint:
-      `lightweight-charts-indicators` só pode ser importado em `src/workers/`.
+      `lightweight-charts-indicators` só pode ser importado em `src/features/indicators/workers/`.
 - [x] Em um tick comum, a thread do gráfico aplica `update()` em poucos pontos;
       `setData()` só ocorre na primeira aplicação e ao carregar histórico.
       Medido em 90 s de mercado real com oito indicadores: 113 rodadas,

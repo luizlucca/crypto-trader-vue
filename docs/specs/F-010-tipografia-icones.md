@@ -24,9 +24,9 @@ ativos importantes sem inflar bundle ou lista de mercado.
 - `CryptoAssetIcon.vue` resolve símbolo e apresenta fallback. Listas
   virtualizadas instanciam ícones somente nas linhas visíveis.
 
-Fontes de verdade: `src/style.css`,
-`src/components/market/CryptoAssetIcon.vue` e
-`src/components/market/cryptoIconRegistry.ts`.
+Fontes de verdade: `src/app/styles/index.css`,
+`src/features/market/components/CryptoAssetIcon.vue` e
+`src/features/market/components/cryptoIconRegistry.ts`.
 
 ## Testes
 

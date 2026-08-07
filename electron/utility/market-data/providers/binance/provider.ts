@@ -1,4 +1,4 @@
-import { map, Observable } from 'rxjs'
+import { filter, map, Observable } from 'rxjs'
 import type {
   Candle,
   Market,
@@ -27,6 +27,9 @@ import {
   normalizeDepthSnapshot,
   normalizeDepthUpdate,
   normalizeExchangeSymbols,
+  describeStreamFrame,
+  isKlineEvent,
+  isStreamRejection,
   normalizeKlineEvent,
   type BinanceExchangeSymbol,
   type BinanceTicker24h,
@@ -66,15 +69,133 @@ function toLevels(entries: [number, number][]): OrderBookLevel[] {
   return entries.map(([price, quantity]) => ({ price, quantity, total: 0 }))
 }
 
-async function fetchJSON<T>(url: string): Promise<T> {
-  const response = await fetch(url, {
-    headers: { accept: 'application/json' },
-    signal: AbortSignal.timeout(requestTimeout),
-  })
-  if (!response.ok) {
-    throw new Error(`Binance retornou HTTP ${response.status} para ${url}`)
+/**
+ * Attempts after the first, for a request with nothing retrying it from above.
+ *
+ * Opt-in per call site on purpose. The depth snapshot already schedules its own
+ * retry with backoff, and retrying underneath that multiplies the requests and
+ * delays the moment the book admits it is reconnecting.
+ */
+const REQUEST_RETRIES = 2
+
+/** Longest we will honour a `Retry-After`, so a bad header cannot park us. */
+const MAX_RETRY_AFTER_MS = 10_000
+
+/** Waited between attempts when the answer advised no delay of its own. */
+function retryBackoffMs(attempt: number): number {
+  return 1_000 * (2 ** attempt)
+}
+
+/**
+ * Whether a failure is worth trying again.
+ *
+ * A 429 is the reachable case: scrolling back through history hammers
+ * `/klines`, and the operator sees the whole load fail for a limit that clears
+ * in a second. A 5xx is the exchange being briefly unwell. A 4xx that is not
+ * 429 is a request this code got wrong, and repeating it only wastes the
+ * budget.
+ */
+export function worthRetrying(status: number | undefined): boolean {
+  if (status === undefined) {
+    // Network failure or timeout, with no answer to read.
+    return true
   }
-  return response.json() as Promise<T>
+  return status === 429 || status >= 500
+}
+
+export function retryAfterMs(header: string | null): number | undefined {
+  if (!header) {
+    return undefined
+  }
+  const seconds = Number(header)
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return undefined
+  }
+  return Math.min(seconds * 1_000, MAX_RETRY_AFTER_MS)
+}
+
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+async function fetchJSON<T>(url: string, retries = 0): Promise<T> {
+  let waitBeforeRetry = 0
+  /*
+   * Left from inside the catch, either by running out of attempts or because
+   * the failure is not worth repeating — so there is no exit condition up here
+   * to keep in step with that decision.
+   */
+  for (let attempt = 0; ; attempt += 1) {
+    if (attempt > 0) {
+      await pause(waitBeforeRetry)
+    }
+    let status: number | undefined
+    try {
+      const response = await fetch(url, {
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(requestTimeout),
+      })
+      status = response.status
+      if (!response.ok) {
+        // What the exchange asks for wins over our own schedule.
+        waitBeforeRetry = retryAfterMs(response.headers.get('retry-after'))
+          ?? retryBackoffMs(attempt)
+        throw new Error(`Binance retornou HTTP ${response.status} para ${url}`)
+      }
+      // Under load and behind rate limiting the edge answers 200 with an HTML
+      // page. Naming the endpoint turns an opaque parser message into
+      // something that says which request failed.
+      return await response.json().catch(() => {
+        throw new Error(`Resposta da Binance não é JSON: ${url}`)
+      }) as T
+    } catch (error) {
+      if (!worthRetrying(status) || attempt === retries) {
+        throw error
+      }
+      if (status === undefined) {
+        // No answer came back, so nothing could have advised a delay.
+        waitBeforeRetry = retryBackoffMs(attempt)
+      }
+    }
+  }
+}
+
+/** Deepest read allowed, so the widest aggregation cannot scan a whole book. */
+export const MAX_ORDER_BOOK_DEPTH = 4_000
+
+/**
+ * How many raw levels to read to fill `rows` aggregated rows.
+ *
+ * A function of how much the aggregation widens a bucket, not a constant. The
+ * previous `Math.max(rows, Math.min(rows * 200, 4_000))` read as adaptive and
+ * was not: `rowsPerSide()` is fixed at twenty, so it always resolved to exactly
+ * four thousand, and every emission — ten per second per session — sorted four
+ * thousand levels to show twenty rows. Measured at 19,2% of a core for one tab,
+ * 1,8% after this; across eight tabs that is the difference between one and a
+ * half cores and a rounding error.
+ *
+ * At the default aggregation one raw level is one row, and the small multiple
+ * covers the gaps a thin book leaves. Widening the buckets needs
+ * proportionally more levels to fill the same rows — at the widest the cap is
+ * reached and the cost is what it always was, because filling twenty
+ * hundred-wide buckets genuinely needs most of the book.
+ */
+export function orderBookDepthFor(
+  rows: number,
+  aggregationStep: number,
+  tickSize: number,
+): number {
+  // A catalog entry without a usable tick size would divide by zero and read
+  // everything on every emission.
+  const buckets = tickSize > 0
+    ? Math.max(1, Math.round(aggregationStep / tickSize))
+    : 1
+  return Math.min(
+    MAX_ORDER_BOOK_DEPTH,
+    Math.max(rows * 4, rows * buckets * 2),
+  )
 }
 
 export class BinanceProvider implements MarketDataProvider {
@@ -165,20 +286,38 @@ export class BinanceProvider implements MarketDataProvider {
         String(Math.max(0, Math.trunc(options.before * 1_000) - 1)),
       )
     }
+    // Nothing retries the history from above: a 429 here — reachable, because
+    // scrolling back hammers this endpoint — used to fail the whole load.
     const rows = await fetchJSON<unknown[][]>(
       `${endpoint.rest}/klines?${query.toString()}`,
+      REQUEST_RETRIES,
     )
     if (!Array.isArray(rows)) {
       throw new Error('Resposta de candles da Binance não é uma lista')
     }
     const now = Date.now()
-    return rows.map((row) => normalizeCandleRow(
-      row,
-      selection.market,
-      symbol,
-      selection.interval,
-      now,
-    ))
+    /*
+     * A malformed row fails the whole page, deliberately. Skipping it would
+     * leave a hole that looks exactly like a gap in the market: every
+     * indicator would compute over the hole as if it were real, and nothing on
+     * screen would say a candle is missing. A loud failure is recoverable —
+     * the request above retries, and the operator has a button — while a
+     * silent gap is a wrong number presented as a right one.
+     */
+    return rows.map((row, index) => {
+      try {
+        return normalizeCandleRow(
+          row,
+          selection.market,
+          symbol,
+          selection.interval,
+          now,
+        )
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        throw new Error(`${reason} (candle ${index + 1} de ${rows.length})`)
+      }
+    })
   }
 
   streamCandles(
@@ -191,7 +330,23 @@ export class BinanceProvider implements MarketDataProvider {
     const streamURL = `${endpoint.marketWebSocket}/${
       symbol.toLowerCase()
     }@kline_${selection.interval}`
-    return websocketJSON$<unknown>(streamURL, onState).pipe(
+    const rejectRefusedSubscription = (event: unknown): void => {
+      if (isStreamRejection(event)) {
+        throw new Error(describeStreamFrame(event))
+      }
+    }
+    return websocketJSON$<unknown>(
+      streamURL,
+      onState,
+      rejectRefusedSubscription,
+    ).pipe(
+      filter((event) => {
+        if (isKlineEvent(event)) {
+          return true
+        }
+        onState({ state: 'connected', message: describeStreamFrame(event) })
+        return false
+      }),
       map((event) => normalizeKlineEvent(event, selection.market)),
     )
   }
@@ -212,6 +367,9 @@ export class BinanceProvider implements MarketDataProvider {
   ): Observable<OrderBookSnapshot> {
     const symbol = normalizeSymbol(selection.symbol)
     const market = selection.market
+    // Guarded: a catalog entry without a tick size would make the depth
+    // calculation divide by zero and read the whole book on every emission.
+    const tickSize = selection.priceTickSize
     const endpoint = endpointsFor(market)
     const streamURL = `${endpoint.publicWebSocket}/${
       symbol.toLowerCase()
@@ -323,8 +481,7 @@ export class BinanceProvider implements MarketDataProvider {
       function emitSnapshot(eventTime: number): void {
         const rows = options.rowsPerSide()
         const step = options.aggregationStep()
-        // Pull more raw levels than rows: aggregation merges many into one.
-        const depth = Math.max(rows, Math.min(rows * 200, 4_000))
+        const depth = orderBookDepthFor(rows, step, tickSize)
         const best = book.best(depth)
         const snapshot = buildOrderBookSnapshot(
           market,
@@ -435,8 +592,14 @@ export class BinanceProvider implements MarketDataProvider {
   private async fetchCatalog(market: Market): Promise<MarketPair[]> {
     const endpoint = endpointsFor(market)
     const [exchangeInfo, tickers] = await Promise.all([
-      fetchJSON<ExchangeInfoPayload>(`${endpoint.rest}/exchangeInfo`),
-      fetchJSON<BinanceTicker24h[]>(`${endpoint.rest}/ticker/24hr`),
+      fetchJSON<ExchangeInfoPayload>(
+        `${endpoint.rest}/exchangeInfo`,
+        REQUEST_RETRIES,
+      ),
+      fetchJSON<BinanceTicker24h[]>(
+        `${endpoint.rest}/ticker/24hr`,
+        REQUEST_RETRIES,
+      ),
     ])
     if (!Array.isArray(exchangeInfo.symbols) || !Array.isArray(tickers)) {
       throw new Error('Catálogo Binance retornou um formato inválido')

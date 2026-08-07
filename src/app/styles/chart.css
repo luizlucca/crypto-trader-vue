@@ -1,0 +1,1286 @@
+.chart-workspace {
+  grid-column: 4;
+  grid-row: 1;
+  display: grid;
+  grid-template-rows: 38px minmax(0, 1fr);
+  contain: layout paint style;
+}
+
+.chart-panel {
+  position: relative;
+  display: grid;
+  grid-template-rows: 38px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.chart-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 9px;
+  border-bottom: 1px solid var(--border);
+  background: var(--navigation-bg);
+}
+
+.chart-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  min-width: 30px;
+  padding: 0 7px;
+  color: color-mix(in srgb, var(--text) 20%, var(--muted));
+  background: transparent;
+  border-radius: 3px;
+  font-size: 10.5px;
+}
+
+.chart-toolbar button svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.9;
+}
+
+.chart-toolbar button:hover,
+.chart-toolbar button.active {
+  color: color-mix(in srgb, var(--blue) 70%, var(--accent-contrast));
+  background: color-mix(in srgb, var(--panel-raised) 50%, var(--selected-bg));
+}
+
+.chart-toolbar .add-button {
+  color: var(--blue);
+}
+
+.chart-toolbar .add-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border);
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.chart-stage {
+  --drawing-toolbar-width: 44px;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  padding-left: var(--drawing-toolbar-width);
+  background: var(--chart-bg);
+}
+
+.chart-container {
+  width: 100%;
+  height: 100%;
+}
+
+.chart-stage.drawing-mode-active .chart-container,
+.chart-stage.drawing-mode-active .chart-container canvas {
+  cursor: crosshair !important;
+}
+
+.drawing-toolbar {
+  position: absolute;
+  z-index: 6;
+  inset: 0 auto 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: var(--drawing-toolbar-width);
+  border-right: 1px solid var(--border);
+  background: var(--navigation-bg);
+}
+
+/*
+ * The tool list scrolls on its own so a short chart clips nothing, and the
+ * two actions below it stay reachable at any height.
+ */
+.drawing-tools,
+.drawing-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 7px 0;
+}
+
+.drawing-tools {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.drawing-tools::-webkit-scrollbar {
+  display: none;
+}
+
+.drawing-actions {
+  border-top: 1px solid var(--border-soft);
+}
+
+.drawing-tools hr {
+  width: 24px;
+  height: 0;
+  margin: 1px 0;
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.drawing-tools > button,
+.drawing-actions > button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: color-mix(in srgb, var(--selected-bg) 45%, var(--text));
+  background: transparent;
+}
+
+.drawing-group-control {
+  display: grid;
+  grid-template-columns: 27px 9px;
+  width: 38px;
+  height: 34px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: color-mix(in srgb, var(--selected-bg) 45%, var(--text));
+}
+
+.drawing-group-control button {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+}
+
+.drawing-group-primary svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.65;
+}
+
+.drawing-group-menu-trigger {
+  border-left: 1px solid transparent;
+}
+
+.drawing-tools > button svg,
+.drawing-actions > button svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.65;
+}
+
+.drawing-tools > button:hover,
+.drawing-tools > button.active,
+.drawing-group-control:hover,
+.drawing-group-control.open,
+.drawing-group-control.active,
+.drawing-actions > button:hover,
+.drawing-actions > button.active {
+  border-color: color-mix(in srgb, var(--accent-hover) 30%, transparent);
+  color: var(--accent-hover);
+  background: var(--selected-bg);
+}
+
+.drawing-group-control:hover .drawing-group-menu-trigger,
+.drawing-group-control.open .drawing-group-menu-trigger {
+  border-left-color: color-mix(in srgb, var(--accent-hover) 22%, transparent);
+}
+
+.drawing-tools > button:focus-visible,
+.drawing-group-control button:focus-visible,
+.drawing-actions > button:focus-visible,
+.drawing-tool-menu button:focus-visible {
+  outline: 1px solid var(--accent-hover);
+  outline-offset: 1px;
+}
+
+.drawing-tools > button:disabled,
+.drawing-actions > button:disabled {
+  opacity: .35;
+}
+
+.drawing-tools > button:disabled:hover,
+.drawing-actions > button:disabled:hover {
+  border-color: transparent;
+  color: color-mix(in srgb, var(--selected-bg) 45%, var(--text));
+  background: transparent;
+}
+
+.drawing-group-caret {
+  width: 0;
+  height: 0;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-left: 4px solid currentcolor;
+  opacity: .72;
+}
+
+.drawing-tool-menu {
+  position: absolute;
+  z-index: 2;
+  left: calc(100% + 6px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 246px;
+  max-height: calc(100% - 12px);
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid var(--overlay-border);
+  border-radius: 8px;
+  background: var(--panel-raised, var(--navigation-bg));
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--bg) 58%, transparent);
+  scrollbar-color: var(--border) transparent;
+  scrollbar-width: thin;
+}
+
+.drawing-tool-menu > strong {
+  padding: 5px 8px 7px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.drawing-tool-menu button {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 16px;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.drawing-tool-menu button:hover,
+.drawing-tool-menu button.active {
+  border-color: color-mix(in srgb, var(--accent-hover) 24%, transparent);
+  background: var(--selected-bg);
+  color: var(--text-strong);
+}
+
+.drawing-tool-menu button > svg:first-child {
+  width: 19px;
+  height: 19px;
+  color: color-mix(in srgb, var(--selected-bg) 36%, var(--text));
+  stroke-width: 1.65;
+}
+
+.drawing-tool-menu button:hover > svg:first-child,
+.drawing-tool-menu button.active > svg:first-child {
+  color: var(--accent-hover);
+}
+
+.drawing-tool-menu button > svg:last-child:not(:first-child) {
+  width: 14px;
+  height: 14px;
+  color: var(--accent-hover);
+  stroke-width: 2.2;
+}
+
+.drawing-tool-menu button span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawing-clear i {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  min-width: 12px;
+  padding: 0 2px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-style: normal;
+  line-height: 12px;
+  color: var(--navigation-bg);
+  background: var(--accent-hover);
+}
+
+/*
+ * Anchored to the chart, not to the drawing. Following the shape would mean
+ * measuring it every frame, which is a Vue render per pointer pixel — the one
+ * thing the drawing path exists to avoid (ADR-0003).
+ */
+.drawing-inspector {
+  position: absolute;
+  z-index: 7;
+  top: 32px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 96px);
+  min-height: 40px;
+  padding: 4px 6px;
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in srgb, var(--selected-bg) 72%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--panel-raised) 97%, var(--chart-bg));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .34),
+    inset 0 1px rgba(255, 255, 255, .035);
+  contain: layout style;
+}
+
+.drawing-text-inline-editor {
+  position: absolute;
+  z-index: 9;
+  display: grid;
+  gap: 7px;
+  width: min(320px, calc(100% - 16px));
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent-hover) 58%, var(--border));
+  border-radius: 7px;
+  background: var(--panel-raised);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .42);
+  contain: layout style;
+}
+
+.drawing-text-inline-editor > label {
+  display: grid;
+  gap: 5px;
+}
+
+.drawing-text-inline-editor > label > span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.drawing-text-inline-editor input {
+  width: 100%;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  outline: none;
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--navigation-bg) 72%, transparent);
+  font: 550 12px/1 Inter, sans-serif;
+}
+
+.drawing-text-inline-editor input:focus {
+  border-color: var(--accent-hover);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-hover) 18%, transparent);
+}
+
+.drawing-text-inline-editor__quick-size {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.drawing-text-inline-editor__quick-size > span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.drawing-text-inline-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.drawing-text-inline-editor__actions small {
+  flex: 1;
+  color: var(--muted);
+  font-size: 8.5px;
+}
+
+.drawing-text-inline-editor__actions kbd {
+  padding: 1px 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  color: var(--text);
+  background: var(--navigation-bg);
+  font: 500 8px "JetBrains Mono Variable", monospace;
+}
+
+.drawing-text-inline-editor__actions button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  place-items: center;
+}
+
+.drawing-text-inline-editor__actions button:hover {
+  border-color: var(--border-soft);
+  color: var(--text-strong);
+  background: var(--selected-bg);
+}
+
+.drawing-text-inline-editor__actions button.confirm {
+  border-color: color-mix(in srgb, var(--accent-hover) 45%, var(--border));
+  color: var(--navigation-bg);
+  background: var(--accent-hover);
+}
+
+.drawing-text-inline-editor__actions svg {
+  width: 14px;
+  height: 14px;
+}
+
+.drawing-inspector__separator {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 22px;
+  margin: 0 2px;
+  background: var(--border-soft);
+}
+
+.drawing-inspector__separator--tone {
+  margin-inline: 5px 3px;
+}
+
+.drawing-style-field {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.drawing-style-field--tone + .drawing-style-field--tone {
+  margin-left: 3px;
+}
+
+.drawing-style-control,
+.drawing-inspector__action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: color-mix(in srgb, var(--selected-bg) 38%, var(--text));
+  background: transparent;
+}
+
+.drawing-style-control {
+  gap: 6px;
+  min-width: 38px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.drawing-style-control--tone {
+  width: 42px;
+  min-width: 42px;
+  padding: 0;
+}
+
+.drawing-color-glyph {
+  position: relative;
+  display: grid;
+  width: 24px;
+  height: 26px;
+  place-items: center;
+}
+
+.drawing-color-glyph > svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.8;
+  transform: translateY(-2px);
+}
+
+.drawing-color-glyph > i {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  left: 2px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--drawing-color);
+}
+
+.drawing-text-color-glyph {
+  position: relative;
+  display: grid;
+  width: 24px;
+  height: 26px;
+  place-items: center;
+}
+
+.drawing-text-color-glyph > b {
+  color: currentcolor;
+  font: 560 20px/.9 Inter, sans-serif;
+  letter-spacing: -.08em;
+  transform: translateY(-3px);
+}
+
+.drawing-text-color-glyph > i {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  left: 2px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--drawing-color);
+}
+
+.drawing-style-control > svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.8;
+}
+
+button.drawing-style-control:hover,
+button.drawing-style-control[aria-expanded="true"],
+.drawing-inspector__action:hover {
+  border-color: var(--border-soft);
+  color: var(--accent-hover);
+  background: color-mix(in srgb, var(--selected-bg) 62%, transparent);
+}
+
+.drawing-level-colors {
+  flex: 0 0 auto;
+  min-width: max-content;
+  cursor: help;
+  color: var(--muted);
+}
+
+.drawing-level-colors > svg {
+  color: var(--accent-hover);
+}
+
+.drawing-signed-color-pair {
+  display: flex;
+  align-items: center;
+}
+
+.drawing-signed-color-pair > i {
+  width: 13px;
+  height: 13px;
+  border: 1px solid color-mix(in srgb, var(--text-strong) 22%, transparent);
+  border-radius: 50%;
+  background: var(--drawing-color);
+}
+
+.drawing-signed-color-pair > i + i {
+  margin-left: -4px;
+}
+
+.drawing-line-preview {
+  display: block;
+  flex: 0 0 auto;
+  width: 28px;
+  height: max(1px, var(--drawing-line-width));
+  border-radius: 3px;
+  color: var(--accent-hover);
+  background: currentcolor;
+}
+
+.drawing-line-preview[data-line-style="1"] {
+  background: radial-gradient(circle, currentcolor 0 1.25px, transparent 1.5px)
+    0 50% / 6px 4px repeat-x;
+}
+
+.drawing-line-preview[data-line-style="2"] {
+  background: repeating-linear-gradient(
+    90deg,
+    currentcolor 0 8px,
+    transparent 8px 13px
+  );
+}
+
+.drawing-inspector__action {
+  flex: 0 0 auto;
+  width: 31px;
+  padding: 0;
+}
+
+.drawing-inspector__action svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.8;
+}
+
+.drawing-inspector__action.danger:hover {
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+}
+
+.drawing-style-popover {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + 9px);
+  left: 0;
+  display: grid;
+  width: 202px;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--selected-bg) 68%, var(--border));
+  border-radius: 8px;
+  background: var(--panel-raised);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .4);
+}
+
+.drawing-style-popover header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 30px;
+  padding: 1px 7px 6px;
+  color: var(--text-strong);
+}
+
+.drawing-style-popover header strong {
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.drawing-style-popover header small {
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 9.5px;
+}
+
+.drawing-color-popover {
+  width: 224px;
+}
+
+.drawing-color-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 4px 6px 9px;
+}
+
+.drawing-color-option {
+  display: grid;
+  place-items: center;
+  height: 31px;
+  border: 1px solid color-mix(in srgb, var(--drawing-color) 48%, var(--border));
+  border-radius: 6px;
+  color: #fff;
+  background: var(--drawing-color);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08);
+}
+
+.drawing-color-option:hover,
+.drawing-color-option.active {
+  border-color: color-mix(in srgb, var(--text-strong) 72%, var(--drawing-color));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--drawing-color) 40%, transparent);
+}
+
+.drawing-color-option svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 3;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .45));
+}
+
+.drawing-custom-color {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 7px;
+  overflow: hidden;
+  border-top: 1px solid var(--border-soft);
+  border-radius: 5px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.drawing-custom-color:hover {
+  color: var(--text-strong);
+  background: var(--selected-bg);
+}
+
+.drawing-custom-color:has(.drawing-native-color:focus-visible) {
+  outline: 1px solid var(--blue);
+  outline-offset: -1px;
+}
+
+.drawing-custom-color > svg {
+  width: 15px;
+  height: 15px;
+  color: var(--accent-hover);
+}
+
+.drawing-custom-color > span {
+  flex: 1;
+  font-size: 10.5px;
+  font-weight: 550;
+}
+
+.drawing-custom-color > i {
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--drawing-color);
+}
+
+.drawing-native-color {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+
+.drawing-style-option {
+  display: grid;
+  grid-template-columns: 38px 1fr 16px;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+}
+
+.drawing-style-option:hover,
+.drawing-style-option.active {
+  color: var(--text-strong);
+  background: var(--selected-bg);
+}
+
+.drawing-style-option.active {
+  border-color: color-mix(in srgb, var(--accent-hover) 30%, transparent);
+}
+
+.drawing-style-option > span {
+  font-size: 10.5px;
+  font-weight: 550;
+}
+
+.drawing-style-option > svg {
+  width: 14px;
+  height: 14px;
+  color: var(--accent-hover);
+  stroke-width: 2.5;
+}
+
+.drawing-line-style-popover {
+  right: 0;
+  left: auto;
+}
+
+.drawing-properties-popover {
+  position: fixed;
+  z-index: 1000;
+  right: auto;
+  left: auto;
+  width: 370px;
+  padding: 0;
+  overflow: hidden;
+  contain: layout style;
+}
+
+.drawing-properties {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  max-height: inherit;
+  color: var(--text);
+}
+
+.drawing-properties__body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.drawing-properties > header {
+  min-height: 54px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--selected-bg) 35%, transparent);
+}
+
+.drawing-properties > header > span,
+.drawing-properties__heading,
+.drawing-properties__text > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.drawing-properties > header strong,
+.drawing-properties__heading strong,
+.drawing-properties__text strong {
+  color: var(--text-strong);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.drawing-properties > header small,
+.drawing-properties__heading small,
+.drawing-properties__text small {
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 500;
+}
+
+.drawing-properties > header > span {
+  display: grid;
+  justify-content: start;
+  gap: 3px;
+}
+
+.drawing-properties__section {
+  display: grid;
+  gap: 9px;
+  padding: 12px 14px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.drawing-properties__color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.drawing-properties__color-grid.text-colors {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.drawing-properties__color-grid > label {
+  position: relative;
+  display: grid;
+  grid-template-columns: 19px minmax(0, 1fr);
+  align-items: center;
+  gap: 3px 8px;
+  min-height: 55px;
+  padding: 7px 9px;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--selected-bg) 25%, transparent);
+}
+
+.drawing-properties__color-grid > label:hover {
+  border-color: color-mix(in srgb, var(--accent-hover) 42%, var(--border));
+}
+
+.drawing-properties__color-grid label > span {
+  grid-column: 1 / -1;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.drawing-properties__color-grid label > i,
+.drawing-level-row__color > i {
+  width: 18px;
+  height: 18px;
+  border: 1px solid color-mix(in srgb, var(--text-strong) 25%, transparent);
+  border-radius: 50%;
+  background: var(--drawing-color);
+}
+
+.drawing-properties__color-grid input,
+.drawing-level-row__color input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.drawing-properties__color-grid code {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 9px;
+  text-overflow: ellipsis;
+}
+
+.drawing-properties__text {
+  display: grid;
+  gap: 7px;
+}
+
+.drawing-properties__text textarea,
+.drawing-level-row input[type="number"] {
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  outline: none;
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--navigation-bg) 62%, transparent);
+}
+
+.drawing-properties__text textarea {
+  min-height: 72px;
+  padding: 9px 10px;
+  resize: vertical;
+  font: 500 11.5px/1.45 Inter, sans-serif;
+}
+
+.drawing-properties__text textarea:focus,
+.drawing-level-row input[type="number"]:focus {
+  border-color: var(--accent-hover);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-hover) 17%, transparent);
+}
+
+.drawing-level-list {
+  display: grid;
+  gap: 4px;
+  max-height: 242px;
+  padding-right: 3px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.drawing-level-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 28px 28px;
+  align-items: center;
+  gap: 6px;
+  min-height: 35px;
+  padding: 3px 4px 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+}
+
+.drawing-level-row:hover {
+  border-color: var(--border-soft);
+  background: color-mix(in srgb, var(--selected-bg) 25%, transparent);
+}
+
+.drawing-level-row > span {
+  color: var(--muted);
+  font: 500 9px "JetBrains Mono Variable", monospace;
+}
+
+.drawing-level-row input[type="number"] {
+  width: 100%;
+  height: 27px;
+  padding: 0 7px;
+  font: 500 10.5px "JetBrains Mono Variable", monospace;
+}
+
+.drawing-level-row__color {
+  position: relative;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  place-items: center;
+}
+
+.drawing-level-row > button,
+.drawing-properties__add,
+.drawing-properties > footer button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  color: var(--text);
+  background: transparent;
+}
+
+.drawing-level-row > button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.drawing-level-row > button svg,
+.drawing-properties__add svg,
+.drawing-properties__reset svg {
+  width: 13px;
+  height: 13px;
+}
+
+.drawing-level-row > button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--red) 42%, var(--border));
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+}
+
+.drawing-level-row > button:disabled,
+.drawing-properties__add:disabled {
+  cursor: not-allowed;
+  opacity: .35;
+}
+
+.drawing-properties__add {
+  justify-self: start;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 9px;
+  font-size: 10px;
+}
+
+.drawing-properties__add:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent-hover) 42%, var(--border));
+  color: var(--accent-hover);
+  background: var(--selected-bg);
+}
+
+.drawing-properties > footer {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 7px;
+  align-items: center;
+  min-height: 50px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--selected-bg) 22%, transparent);
+}
+
+.drawing-properties > footer button {
+  gap: 6px;
+  min-height: 31px;
+  padding: 0 10px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.drawing-properties > footer button:hover {
+  color: var(--text-strong);
+  background: var(--selected-bg);
+}
+
+.drawing-properties > footer button.primary {
+  border-color: color-mix(in srgb, var(--accent-hover) 58%, var(--border));
+  color: var(--navigation-bg);
+  background: var(--accent-hover);
+}
+
+.drawing-properties > footer button.primary:hover {
+  filter: brightness(1.08);
+}
+
+.drawing-properties__reset {
+  color: var(--muted) !important;
+}
+
+.drawing-properties .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 1450px) {
+  .drawing-style-control > span:not(.drawing-color-glyph) {
+    display: none;
+  }
+
+  .drawing-style-control {
+    min-width: 38px;
+    padding-inline: 6px;
+  }
+}
+
+.chart-message {
+  position: absolute;
+  z-index: 4;
+  top: 14px;
+  left: 54px;
+  /*
+   * A failed initial load carries a retry button beside its text. Laid out as
+   * a row so the button sits next to the reason instead of under it, and
+   * bounded so a long provider message cannot push it off the chart.
+   */
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: calc(100% - 120px);
+  padding: 6px 9px;
+  border: 1px solid #1f4859;
+  border-radius: 4px;
+  background: rgba(5, 25, 34, .9);
+  color: color-mix(in srgb, var(--selected-bg) 40%, var(--text-strong));
+  font-size: 11.5px;
+}
+
+.chart-legend {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  left: 50px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  pointer-events: none;
+  font-size: 10.5px;
+}
+
+.chart-legend strong {
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.chart-legend span {
+  color: color-mix(in srgb, var(--selected-bg) 60%, var(--text-strong));
+}
+
+.chart-legend b {
+  color: color-mix(in srgb, var(--accent-hover) 10%, var(--green));
+  font-weight: 400;
+}
+
+.chart-legend[data-direction="down"] b {
+  color: color-mix(in srgb, var(--accent-contrast) 15%, var(--red));
+}
+
+.chart-legend i {
+  padding: 2px 4px;
+  border: 1px solid rgba(24, 197, 143, .35);
+  border-radius: 3px;
+  color: var(--green);
+  background: rgba(24, 197, 143, .08);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.chart-message span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chart-message button {
+  flex-shrink: 0;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-strong);
+  background: var(--control-bg);
+  font-size: 11px;
+}
+
+.chart-message button:hover {
+  border-color: var(--accent-hover);
+  color: var(--accent-hover);
+}
+
+.chart-message.error {
+  color: color-mix(in srgb, var(--accent-contrast) 25%, var(--red));
+  border-color: color-mix(in srgb, var(--workspace-bg) 55%, var(--red));
+}
+
+.chart-interaction-lock {
+  position: absolute;
+  z-index: 12;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 9px;
+  cursor: wait;
+  touch-action: none;
+  background: var(--chart-bg);
+  color: var(--text);
+  user-select: none;
+}
+
+.chart-interaction-lock strong {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: .01em;
+}
+
+.chart-interaction-lock small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.chart-loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: chart-loading-spin .72s linear infinite;
+}
+
+.chart-history-error {
+  position: absolute;
+  z-index: 4;
+  top: 43px;
+  left: 54px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--red) 55%, var(--border));
+  border-radius: 4px;
+  background: var(--panel-raised);
+  color: var(--red);
+  font-size: 11.5px;
+}
+
+.chart-history-error button {
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-strong);
+  background: var(--control-bg);
+  font-size: 11px;
+}
+
+.chart-history-error button:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.tradingview-attribution {
+  position: absolute;
+  z-index: 2;
+  right: 74px;
+  bottom: 3px;
+  color: color-mix(in srgb, var(--muted) 65%, var(--chart-border));
+  font-size: 9.5px;
+  pointer-events: none;
+}

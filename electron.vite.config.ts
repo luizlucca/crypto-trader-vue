@@ -5,21 +5,37 @@ import { defineConfig } from 'electron-vite'
 
 const root = dirname(fileURLToPath(import.meta.url))
 
-// `@shared` is the only module boundary both sides may cross. `@` belongs to
-// the renderer and must never be imported from `electron/`.
-const alias = {
+// Desktop processes resolve only the process-neutral contract. Renderer
+// packages receive their own aliases without leaking them into main/preload.
+const sharedAlias = {
   '@shared': resolve(root, 'shared'),
+}
+
+const rendererAlias = {
+  ...sharedAlias,
   '@': resolve(root, 'src'),
+  '@app': resolve(root, 'src/app'),
+  '@chart': resolve(root, 'src/features/chart'),
+  '@desktop': resolve(root, 'src/platform/desktop'),
+  '@drawings': resolve(root, 'src/features/drawings'),
+  '@indicators': resolve(root, 'src/features/indicators'),
+  '@market': resolve(root, 'src/features/market'),
+  '@orderbook': resolve(root, 'src/features/orderbook'),
+  '@positions': resolve(root, 'src/features/positions'),
+  '@renderer-shared': resolve(root, 'src/shared'),
+  '@settings': resolve(root, 'src/features/settings'),
+  '@trading': resolve(root, 'src/features/trading'),
+  '@workspace': resolve(root, 'src/features/workspace'),
 }
 
 export default defineConfig({
   main: {
-    resolve: { alias },
+    resolve: { alias: sharedAlias },
     build: {
       rollupOptions: {
         input: {
           index: resolve(root, 'electron/main/index.ts'),
-          'market-data': resolve(root, 'electron/utility/market-data.ts'),
+          'market-data': resolve(root, 'electron/utility/market-data/index.ts'),
         },
         output: {
           format: 'cjs',
@@ -30,7 +46,7 @@ export default defineConfig({
     },
   },
   preload: {
-    resolve: { alias },
+    resolve: { alias: sharedAlias },
     build: {
       rollupOptions: {
         input: {
@@ -46,7 +62,7 @@ export default defineConfig({
   },
   renderer: {
     root,
-    resolve: { alias },
+    resolve: { alias: rendererAlias },
     plugins: [vue()],
     build: {
       rollupOptions: {

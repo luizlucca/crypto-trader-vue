@@ -15,7 +15,7 @@ import {
   type SymbolSelectionResult,
   type SymbolSearchContext,
 } from '@shared/contracts/desktop'
-import { MarketDataCoordinator } from './marketDataCoordinator'
+import { MarketDataCoordinator } from './market-data/coordinator'
 
 let mainWindow: BrowserWindow | null = null
 let searchWindow: BrowserWindow | null = null
@@ -69,8 +69,20 @@ function createMainWindow(): BrowserWindow {
     window.setFullScreen(false)
     window.show()
   })
+  // Session ids belong to a renderer instance. A reload, a crash or a closed
+  // window abandons every one of them, and the utility process would otherwise
+  // keep those WebSockets open and streaming to nobody until the app quits.
+  window.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) {
+      streamData?.stopAllStreams()
+    }
+  })
+  window.webContents.on('render-process-gone', () => {
+    streamData?.stopAllStreams()
+  })
   window.on('closed', () => {
     mainWindow = null
+    streamData?.stopAllStreams()
   })
 
   const developmentURL = rendererURL()

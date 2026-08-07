@@ -25,16 +25,35 @@ atualizar a lista quando necessário e acessar favoritos sem congestionar o grá
 - Formatações são memorizadas e o catálogo vem de processo auxiliar separado de
   realtime.
 - `favorites.ts` persiste chaves no `localStorage`; IPC sincroniza alterações.
+  A chave é sempre minúscula — sementes e valores lidos do armazenamento são
+  normalizados na leitura, senão um favorito gravado por outra versão nunca
+  volta a casar com o par que nomeia.
 - A barra lateral limita a lista compacta a 14 linhas; a busca explora todos os pares.
 
-Fontes de verdade: `src/components/market/`,
-`src/workers/marketCatalog.worker.ts`,
-`src/services/marketCatalogSearch*.ts` e
-`src/services/favorites.ts`.
+### Falha de catálogo é um estado, não um carregamento eterno
+
+`useCatalogCache` distingue três situações onde antes havia duas: carregando,
+carregado e **falhou sem nada em cache**. Um mercado que ninguém pediu ainda
+conta como carregando, porque é o que o chamador está prestes a fazer; um
+mercado cujo carregamento falhou, não — a lista ficava girando para sempre em
+uma requisição que nunca chegaria, e a única pista do erro estava no rodapé.
+
+Falha só é falha quando não sobrou lista: um refresh que falha sobre um
+catálogo já carregado mantém a lista utilizável. Na janela de busca, o mesmo
+princípio separa "a atualização falhou, exibindo o último cache" de "não foi
+possível carregar o catálogo" — a segunda mensagem antes aparecia dizendo que
+exibia um cache que não existia.
+
+Fontes de verdade: `src/features/market/components/`,
+`src/features/market/workers/marketCatalog.worker.ts`,
+`src/features/market/services/marketCatalogSearch*.ts` e
+`src/features/market/services/favorites.ts`.
 
 ## Testes
 
 - `provider.test.ts` cobre catálogo/cache.
+- `useCatalogCache.test.ts` cobre single-flight, refresh forçado e os estados de
+  falha: sem cache, recuperada por retry e refresh que falha sobre lista viva.
 - `marketData.test.ts` cobre a fronteira de dados do renderer.
 - Busca, virtualização, atalhos e sincronização entre janelas são testes manuais.
 
@@ -46,6 +65,8 @@ Fontes de verdade: `src/components/market/`,
 - [ ] Atualizar da corretora ignora o cache de uma hora.
 - [ ] Favorito alterado em uma janela reflete na outra.
 - [ ] `Esc` fecha a busca e `Enter` seleciona a linha ativa.
+- [ ] Catálogo indisponível mostra erro na barra lateral, não "carregando".
+- [ ] Refresh que falha sobre lista carregada mantém a lista e avisa.
 
 ## Evolução
 

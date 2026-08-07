@@ -65,9 +65,9 @@ a `LIVRO`, com o nome completo no tooltip, e o cabeçalho agora fecha em 231px
 com folga. A alternativa seria alargar a coluna do livro, o que iria contra o
 motivo de existir desta feature.
 
-Fontes de verdade: `src/components/layout/PanelResizeHandle.vue`,
-`src/services/workspacePanels.ts`, `src/components/chart/ChartToolbar.vue`,
-`src/components/workspace/TradingWorkspace.vue` e `src/styles/layout.css`.
+Fontes de verdade: `src/app/components/PanelResizeHandle.vue`,
+`src/app/services/panelVisibility.ts`, `src/features/chart/components/ChartToolbar.vue`,
+`src/features/workspace/components/TradingWorkspace.vue` e `src/app/styles/layout.css`.
 
 ## Testes
 

@@ -95,7 +95,7 @@ com a troca de período em relação aos candles.
 **Fontes de verdade:** `electron/utility/market-data/providers/binance/orderBookSync.ts`,
 `shared/domain/orderBook.ts`, `shared/contracts/desktop.ts`,
 `electron/utility/market-data/session.ts`,
-`src/components/orderbook/OrderBook.vue`.
+`src/features/orderbook/components/OrderBook.vue`.
 
 **Fora de escopo:** exibir profundidade acumulada em gráfico, mapa de calor de
 liquidez e detecção de icebergs. O livro completo em memória habilita esses

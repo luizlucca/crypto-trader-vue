@@ -83,9 +83,9 @@ estão listados em um único bloco em `tokens.css`. Painéis fixos do
 workspace continuam em `--panel`: a distinção entre fixo e flutuante é
 justamente o que se quer preservar.
 
-**Fontes de verdade:** `src/services/themeCatalog.ts` (derivação),
-`src/services/theme.ts` (publicação como custom properties),
-`src/styles/tokens.css`.
+**Fontes de verdade:** `src/features/settings/services/themeCatalog.ts` (derivação),
+`src/features/settings/services/theme.ts` (publicação como custom properties),
+`src/app/styles/tokens.css`.
 
 **Fora de escopo:** revisão do espaçamento e da tipografia dos painéis; aqui
 trata-se apenas de superfície, contorno e sombra.

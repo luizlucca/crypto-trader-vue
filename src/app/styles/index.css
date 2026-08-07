@@ -1,0 +1,12 @@
+/* Ordem de import = ordem da cascata. Nao reordene sem verificar. */
+@import './tokens.css';
+@import './base.css';
+@import './layout.css';
+@import './workspace-tabs.css';
+@import './market-sidebar.css';
+@import './chart.css';
+@import './orderbook.css';
+@import './trading.css';
+@import './indicators.css';
+@import './settings.css';
+@import './symbol-search.css';

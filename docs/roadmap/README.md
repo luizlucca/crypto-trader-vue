@@ -24,6 +24,19 @@ avaliado.
 DA-002 (livro completo por snapshot + diff stream) foi entregue pela
 [F-013](../specs/F-013-profundidade-livro-ordens.md).
 
+## Achados de revisão
+
+A [revisão de código de agosto de 2026](./revisao-de-codigo-2026-08.md) percorreu
+o repositório em quatro frentes. O que era correção segura foi aplicado; os 25
+itens que restaram exigem decisão — mudam comportamento de produto, tocam
+caminho quente e precisam de medição, ou têm correção óbvia com efeito colateral
+pior que o problema. O documento traz uma ordem sugerida em quatro ondas.
+
+O [relatório de arquivos grandes](./refatoracao-arquivos-grandes-2026-08.md)
+lista candidatos por risco e responsabilidade depois da organização em pacotes.
+Ele é diagnóstico: nenhuma dessas refatorações faz parte da movimentação de
+pastas.
+
 ## Posterior — execução e segurança
 
 | ID | Item | Prioridade | Dependências |

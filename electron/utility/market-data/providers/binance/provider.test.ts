@@ -7,7 +7,13 @@ import type {
   ConnectionState,
   ConnectionStateHandler,
 } from '../../provider'
-import { BinanceProvider } from './provider'
+import {
+  BinanceProvider,
+  MAX_ORDER_BOOK_DEPTH,
+  orderBookDepthFor,
+  retryAfterMs,
+  worthRetrying,
+} from './provider'
 
 interface WebSocketHarness {
   state?: ConnectionStateHandler
@@ -28,9 +34,17 @@ vi.mock('./websocket', async () => {
     websocketJSON$: vi.fn((
       _url: string,
       onState: ConnectionStateHandler,
+      validateFrame?: (frame: unknown) => void,
     ) => new Observable<unknown>((subscriber) => {
       websocketHarness.state = onState
-      websocketHarness.next = (value) => subscriber.next(value)
+      websocketHarness.next = (value) => {
+        try {
+          validateFrame?.(value)
+          subscriber.next(value)
+        } catch (error) {
+          subscriber.error(error)
+        }
+      }
       return () => {
         websocketHarness.state = undefined
         websocketHarness.next = undefined
@@ -198,6 +212,25 @@ describe('BinanceProvider candle history', () => {
   })
 })
 
+describe('BinanceProvider candle stream', () => {
+  it('propaga uma assinatura recusada como falha do stream', () => {
+    const errors: unknown[] = []
+    new BinanceProvider().streamCandles(
+      futuresSelection,
+      () => {},
+    ).subscribe({ error: (error) => errors.push(error) })
+
+    websocketHarness.next?.({
+      error: { code: -1121, msg: 'Invalid symbol.' },
+    })
+
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toEqual(expect.objectContaining({
+      message: expect.stringContaining('A Binance recusou a assinatura'),
+    }))
+  })
+})
+
 describe('BinanceProvider order-book bootstrap', () => {
   it('recovers before reporting the book as connected', async () => {
     vi.useFakeTimers()
@@ -315,5 +348,54 @@ describe('BinanceProvider order-book bootstrap', () => {
     expect(books[0].lastUpdateId).toBe(201)
     expect(states.at(-1)?.state).toBe('connected')
     stop()
+  })
+})
+
+describe('profundidade lida do livro', () => {
+  const rows = 20
+  const tick = 0.1
+
+  it('na agregação padrão lê um múltiplo pequeno das linhas', () => {
+    // Antes eram sempre 4000 níveis ordenados dez vezes por segundo para
+    // mostrar vinte linhas: 19,2% de um núcleo por aba, 1,8% depois disso.
+    expect(orderBookDepthFor(rows, tick, tick)).toBe(80)
+  })
+
+  it('cresce com o quanto a agregação alarga o balde', () => {
+    expect(orderBookDepthFor(rows, 1, tick)).toBe(400)
+    expect(orderBookDepthFor(rows, 5, tick)).toBe(2000)
+  })
+
+  it('respeita o teto na agregação mais larga', () => {
+    expect(orderBookDepthFor(rows, 10, tick)).toBe(MAX_ORDER_BOOK_DEPTH)
+    expect(orderBookDepthFor(rows, 100, tick)).toBe(MAX_ORDER_BOOK_DEPTH)
+  })
+
+  it('não divide por zero quando o catálogo não traz o tick', () => {
+    expect(orderBookDepthFor(rows, 10, 0)).toBe(80)
+    expect(Number.isFinite(orderBookDepthFor(rows, 10, Number.NaN))).toBe(true)
+  })
+})
+
+describe('retentativa de requisição', () => {
+  it('só repete o que vale a pena repetir', () => {
+    // 429 é alcançável: rolar o histórico para trás martela /klines. 5xx é a
+    // corretora passando mal. Um 4xx que não seja 429 é pedido errado deste
+    // código, e repetir só gasta o orçamento.
+    expect(worthRetrying(429)).toBe(true)
+    expect(worthRetrying(500)).toBe(true)
+    expect(worthRetrying(503)).toBe(true)
+    expect(worthRetrying(undefined)).toBe(true)
+    expect(worthRetrying(400)).toBe(false)
+    expect(worthRetrying(404)).toBe(false)
+    expect(worthRetrying(418)).toBe(false)
+  })
+
+  it('honra o Retry-After sem deixar um cabeçalho ruim nos estacionar', () => {
+    expect(retryAfterMs('2')).toBe(2_000)
+    expect(retryAfterMs('600')).toBe(10_000)
+    expect(retryAfterMs('abacaxi')).toBeUndefined()
+    expect(retryAfterMs('-1')).toBeUndefined()
+    expect(retryAfterMs(null)).toBeUndefined()
   })
 })

@@ -182,8 +182,9 @@ export function normalizeCandleRow(
   interval: string,
   now = Date.now(),
 ): Candle {
-  if (row.length < 8) {
-    throw new Error(`Candle Binance inválido: ${row.length} campos`)
+  if (!Array.isArray(row) || row.length < 8) {
+    const shape = Array.isArray(row) ? `${row.length} campos` : typeof row
+    throw new Error(`Candle Binance inválido: ${shape}`)
   }
   const openTime = requiredNumber(row[0], 'openTime')
   const closeTime = requiredNumber(row[6], 'closeTime')
@@ -202,6 +203,39 @@ export function normalizeCandleRow(
     quoteVolume: requiredNumber(row[7], 'quoteVolume'),
     closed: closeTime < now,
   }
+}
+
+/**
+ * Whether a frame from the kline stream is a kline at all.
+ *
+ * The socket carries more than candles: Binance answers subscription commands
+ * and can carry control frames that are not candles. Explicit error frames
+ * are rejected before the websocket observable emits them; every other
+ * non-kline frame can be ignored without taking a healthy stream down.
+ */
+export function isKlineEvent(raw: unknown): boolean {
+  const event = raw as BinanceKlineEvent | null
+  return Boolean(event?.s) && Boolean(event?.k?.i)
+}
+
+/** Binance's explicit rejection envelope, distinct from a control frame. */
+export function isStreamRejection(
+  raw: unknown,
+): raw is { error: { msg?: string, code?: number } } {
+  const frame = raw as { error?: unknown } | null
+  return Boolean(frame?.error) && typeof frame?.error === 'object'
+}
+
+/** Describes a non-kline frame for the status line, without leaking its size. */
+export function describeStreamFrame(raw: unknown): string {
+  const frame = raw as { error?: { msg?: string, code?: number } } | null
+  if (frame?.error) {
+    const code = frame.error.code === undefined ? '' : ` (${frame.error.code})`
+    return `A Binance recusou a assinatura${code}: ${
+      frame.error.msg ?? 'sem detalhe'
+    }`
+  }
+  return 'Quadro ignorado no stream de candles: não é um kline'
 }
 
 export function normalizeKlineEvent(
@@ -228,21 +262,6 @@ export function normalizeKlineEvent(
     quoteVolume: requiredNumber(kline.q, 'kline.quoteVolume'),
     closed: Boolean(kline.x),
   }
-}
-
-export function normalizeLevels(rawLevels: string[][]): OrderBookLevel[] {
-  const levels: OrderBookLevel[] = []
-  let cumulative = 0
-  for (const raw of rawLevels) {
-    if (raw.length < 2) {
-      continue
-    }
-    const price = requiredNumber(raw[0], 'depth.price')
-    const quantity = requiredNumber(raw[1], 'depth.quantity')
-    cumulative += quantity
-    levels.push({ price, quantity, total: cumulative })
-  }
-  return levels
 }
 
 function normalizeDeltas(rawLevels: string[][] | undefined): [number, number][] {
@@ -306,34 +325,6 @@ export function buildOrderBookSnapshot(
     symbol,
     eventTime,
     lastUpdateId,
-    bids,
-    asks,
-    midPrice: hasSpread ? ((bestBid as number) + (bestAsk as number)) / 2 : 0,
-    spread: hasSpread
-      ? Math.max(0, (bestAsk as number) - (bestBid as number))
-      : 0,
-  }
-}
-
-export function normalizeDepthEvent(
-  raw: unknown,
-  market: Market,
-  fallbackSymbol: string,
-  now = Date.now(),
-): OrderBookSnapshot {
-  const event = raw as BinanceDepthEvent
-  const bids = normalizeLevels(event.bids?.length ? event.bids : event.b ?? [])
-  const asks = normalizeLevels(event.asks?.length ? event.asks : event.a ?? [])
-  const bestBid = bids[0]?.price
-  const bestAsk = asks[0]?.price
-  const hasSpread = Number.isFinite(bestBid) && Number.isFinite(bestAsk)
-
-  return {
-    provider,
-    market,
-    symbol: event.s || fallbackSymbol,
-    eventTime: finiteNumber(event.E, now),
-    lastUpdateId: finiteNumber(event.u || event.lastUpdateId),
     bids,
     asks,
     midPrice: hasSpread ? ((bestBid as number) + (bestAsk as number)) / 2 : 0,

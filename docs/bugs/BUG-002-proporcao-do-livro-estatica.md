@@ -24,7 +24,7 @@ Percentuais e largura estavam codificados diretamente no template e no CSS.
 
 ## Regressão
 
-- `src/components/orderbook/orderBookRatio.test.ts`
+- `shared/domain/orderBookRatio.test.ts`
 
 ## Critérios validados
 

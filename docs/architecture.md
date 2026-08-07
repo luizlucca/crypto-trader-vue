@@ -31,29 +31,39 @@ pesquisa, processo realtime e processo de catálogo. Uma ordenação, resize da
 janela de pesquisa ou parsing de um catálogo grande não agenda trabalho na
 thread do gráfico e não bloqueia a ingestão dos WebSockets.
 
-## Camadas de módulo
+## Camadas e pacotes de módulo
 
-A dependência entre pastas tem sentido único e é verificada por lint
-([ADR-0004](./adr/0004-camadas-e-fronteiras-de-modulo.md)):
+A fronteira entre processos continua seguindo o
+[ADR-0004](./adr/0004-camadas-e-fronteiras-de-modulo.md), enquanto o renderer
+é organizado por pacotes verticais conforme o
+[ADR-0005](./adr/0005-pacotes-por-feature-no-renderer.md):
 
 ```text
-        shared/            contratos e tipos neutros
-       ▲       ▲           sem Vue, sem Electron
-       │       │
-    src/     electron/
-  renderer   main + preload + utility
+shared/                         contratos neutros entre processos
+   ▲                                      ▲
+   │                                      │
+electron/                              src/
+├── main/                 renderer ─────┼── app/       shell e estilos
+├── preload/                             ├── features/  pacotes de produto
+└── utility/                             ├── platform/  adapter do preload
+                                         └── shared/    reúso do renderer
 ```
 
-- `shared/contracts/desktop.ts`: única fonte para comandos, eventos, validação
-  e API disponibilizada ao Vue.
-- `shared/types/market.ts`: tipos de domínio consumidos pelos dois lados.
-- `src/domain`: regra pura e testável do renderer, sem dependência de Vue.
-- `src/types`: apenas declarações de ambiente do renderer.
+- `shared/contracts/desktop.ts`: comandos, eventos, validação e API exposta ao
+  Vue; não depende de Vue nem Electron.
+- `shared/types/market.ts`: tipos consumidos por renderer e processos desktop.
+- `src/app`: composição do app, shell e ordem da cascata global.
+- `src/features/<feature>`: componentes, composables, domínio, services,
+  plugins e Workers pertencentes à mesma capacidade.
+- `src/platform/desktop`: única fronteira do renderer com o `contextBridge`.
+- `src/shared`: componentes, domínio e serviços reutilizados somente dentro do
+  renderer; não deve importar features.
+- `src/types`: declarações de ambiente do renderer.
 
-`electron/` importa somente `@shared/`; um import de `@/` falha em
-`npm run lint`. Os aliases `@shared/*` e `@/*` são declarados em
-`electron.vite.config.ts`, `tsconfig.json`, `tsconfig.node.json` e
-`vitest.config.ts`.
+`electron/` resolve somente `@shared`. Os aliases dos pacotes do renderer
+(`@chart`, `@drawings`, `@indicators`, `@market` e equivalentes) existem apenas
+no build do renderer e no Vitest. ESLint impede dependência de Vue/Electron no
+domínio e impede `src/shared` de apontar para app, plataforma ou features.
 
 ## Camada desktop Electron
 
@@ -114,25 +124,22 @@ um comando dedicado, que re-agrega sem tocar no socket nem no livro.
 
 ## Renderer principal
 
-- `components/chart`: ciclo de vida e acesso imperativo ao Lightweight Charts.
-- `components/orderbook`: linhas fixas e atualização imperativa em lote.
-- `components/market/RealtimePriceText.vue`: consumidor imperativo do último
-  preço, isolado do grafo reativo do workspace.
-- `components/layout/PanelResizeHandle.vue`: divisor acessível que altera
-  apenas a coluna CSS do painel de mercados.
-- `components/settings/GeneralSettingsPanel.vue`: painel isolado e extensível
-  para aparência, preferências gerais e futuras credenciais de providers.
-- `components/market/CryptoAssetIcon.vue`: ícones SVG curados com fallback.
-- `components/workspace`: compõe os painéis e traduz eventos das janelas; o
-  ciclo de vida das abas e sessões vive em `composables/useWorkspaceTabs.ts`.
-- `services/marketData.ts`: fronteira única entre os componentes Vue e a API
-  Electron exposta pelo preload.
-- `services/realtimePrice.ts`: canal quente de preço sem estado Vue.
-- `domain/marketSelection.ts`: seleção padrão, fingerprint de stream e derivação
-  de seleção para nova aba — fonte única para workspace e janela de pesquisa.
-- `domain/workspace.ts`: modelo da aba e aplicação de estado dos streams.
-- `domain/topSelection.ts`: seleção parcial dos melhores N itens sem ordenar a
-  coleção inteira.
+- `features/chart`: ciclo de vida e acesso imperativo ao Lightweight Charts,
+  histórico e custom series de candles.
+- `features/drawings`: primitives, interação, persistência e interface das
+  ferramentas de desenho.
+- `features/indicators`: catálogo, panes, cliente e Worker de indicadores.
+- `features/market`: catálogo de símbolos, busca, favoritos e canais
+  imperativos de preço/latência.
+- `features/orderbook`: linhas fixas e atualização DOM imperativa em lote.
+- `features/settings`: painel de configuração, temas e contraste.
+- `features/workspace`: composição dos painéis, abas e sessões.
+- `platform/desktop/marketData.ts`: adapter único entre Vue e a API tipada do
+  preload.
+- `app/components/PanelResizeHandle.vue`: divisor acessível que altera apenas a
+  coluna CSS do painel de mercados.
+- `src/shared/services/imperativeChannel.ts`: base de publicação quente fora do
+  grafo reativo.
 - `composables/`: estado de baixo volume com ciclo de vida Vue. O cache de
   candles mora aqui, mas é o único que **não** usa reatividade — ele é escrito
   a cada tick, e a restrição está documentada no próprio módulo.
@@ -156,7 +163,7 @@ gráfico. O arraste sobre o painel principal desativa o auto scale antes do
 handler nativo da biblioteca, permitindo movimentar conjuntamente os eixos X e
 Y. Um duplo clique na escala de preços restaura o ajuste automático.
 
-Os estilos ficam em `src/styles/`, divididos por domínio; `src/style.css` guarda
+Os estilos ficam em `src/app/styles/`, divididos por domínio; `src/app/styles/index.css` guarda
 apenas os `@import`. **A ordem desses imports é a ordem da cascata** e não deve
 ser alterada sem verificar: a divisão garante que dois blocos com o mesmo
 seletor permaneçam no mesmo arquivo, preservando a precedência original.

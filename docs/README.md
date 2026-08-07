@@ -6,6 +6,8 @@
 | [Specs](./specs/README.md) | Requisitos e aceite por funcionalidade |
 | [ADRs](./adr/README.md) | Decisões arquiteturais e seus trade-offs |
 | [Roadmap](./roadmap/README.md) | Próximos incrementos, riscos e dependências |
+| [Revisão 2026-08](./roadmap/revisao-de-codigo-2026-08.md) | Achados da revisão de código que aguardam decisão |
+| [Arquivos grandes](./roadmap/refatoracao-arquivos-grandes-2026-08.md) | Candidatos a refatoração por tamanho, responsabilidade e risco |
 | [Performance](./performance/README.md) | Metas, cenários e processo de medição |
 | [Testes](./testing/strategy.md) | Pirâmide, camadas e comandos de validação |
 | [Bugs](./bugs/README.md) | Modelo de relato, triagem e regressão |

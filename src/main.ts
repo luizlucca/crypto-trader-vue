@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
-import App from './App.vue'
-import { initializeTheme } from './services/theme'
-import './style.css'
+import App from './app/App.vue'
+import { initializeTheme } from '@settings/services/theme'
+import '@app/styles/index.css'
 
 initializeTheme()
 createApp(App).mount('#app')

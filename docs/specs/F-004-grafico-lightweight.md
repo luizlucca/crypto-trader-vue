@@ -28,8 +28,8 @@ símbolo/período no fundo e movimentação horizontal e vertical.
   conjunto de tempo e preço.
 - `TradingWorkspace.vue` chama `updateMarketCandleStream` ao trocar período.
 
-Fontes de verdade: `src/components/chart/MarketChart.vue` e
-`src/plugins/roundedCandles/`.
+Fontes de verdade: `src/features/chart/components/MarketChart.vue` e
+`src/features/chart/plugins/rounded-candles/`.
 
 ## Testes
 

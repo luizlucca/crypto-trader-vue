@@ -1,8 +1,9 @@
 # F-012 — Arquitetura modular do renderer
 
-**Status:** em evolução  
-**Última revisão:** 2026-07-31  
-**ADR:** [ADR-0004](../adr/0004-camadas-e-fronteiras-de-modulo.md)
+**Status:** em evolução
+**Última revisão:** 2026-08-05
+**ADRs:** [ADR-0004](../adr/0004-camadas-e-fronteiras-de-modulo.md) e
+[ADR-0005](../adr/0005-pacotes-por-feature-no-renderer.md)
 
 ## Caso de uso
 
@@ -25,9 +26,10 @@ próximas features dependem dela e precisam de um critério de aceite comum.
 
 - `shared/contracts` e `shared/types` deixaram `src/`: o contrato de IPC agora
   é neutro entre os processos.
-- `src/domain/` recebeu a regra que morava em `src/types/workspace.ts`. Um
-  arquivo chamado `types` não deve conter comportamento.
-- `src/domain/marketSelection.ts` passou a ser a fonte única de
+- Na estrutura vigente à época, `src/domain/` recebeu a regra que morava em
+  `src/types/workspace.ts`. Um arquivo chamado `types` não deve conter
+  comportamento. Na fase 4 esse domínio foi movido para o pacote `workspace`.
+- `src/features/market/domain/marketSelection.ts` passou a ser a fonte única de
   `DEFAULT_MARKET_SELECTION`, `marketSelectionFingerprint` e
   `selectionForNewTab`. Antes o default estava duplicado entre o workspace e a
   janela de pesquisa, e a fingerprint estava reimplementada no `MarketChart`.
@@ -84,8 +86,8 @@ Nenhum dos cinco introduz estado reativo tocado por candle ou por snapshot.
 
 ### Fase 3 — estilos (concluída)
 
-`src/style.css` tinha 3.672 linhas globais e mais cores em hexadecimal fixo
-(301) do que em `var(--)` (248). Isso contradizia a F-009: os 30 presets só
+O antigo `src/style.css` tinha 3.672 linhas globais e mais cores em hexadecimal
+fixo (301) do que em `var(--)` (248). Isso contradizia a F-009: os 30 presets só
 recoloriam parte da interface, porque a maioria das cores não passava pelos
 tokens. Pior, 158 declarações de cor não tinham variante clara — elas eram
 idênticas nos dois temas.
@@ -104,24 +106,50 @@ superfície invertem entre os temas enquanto `--accent-contrast` continua
 branco. O conversor passou a rejeitar qualquer candidata que perdesse contraste
 no tema oposto.
 
-**Módulos.** O arquivo virou `src/styles/*.css` por domínio, e `style.css`
+**Módulos.** O arquivo virou `src/app/styles/*.css` por domínio, e `index.css`
 ficou só com os `@import`. A ordem desses imports **é** a ordem da cascata: a
 divisão foi feita garantindo que dois blocos com o mesmo seletor nunca caíssem
 em arquivos diferentes, e o CSS compilado foi comparado regra a regra com o
 anterior (494 antes, 494 depois, nenhuma perdida).
 
-**Fontes de verdade:** `eslint.config.js` (fronteiras), `shared/`,
-`src/domain/`, `src/composables/`, `src/services/imperativeChannel.ts`,
-`src/styles/tokens.css`, `electron.vite.config.ts`, `tsconfig.json`,
-`tsconfig.node.json`, `vitest.config.ts`.
+**Fontes de verdade:** `eslint.config.js` (fronteiras), `shared/`, `src/app/`,
+`src/features/`, `src/platform/`, `src/shared/`,
+`src/app/styles/tokens.css`, `electron.vite.config.ts`, `tsconfig.json`,
+`tsconfig.node.json` e `vitest.config.ts`.
 
 **Fora de escopo:** `<style scoped>` por componente. As 494 regras seguem
 globais; migrar exigiria revisar especificidade caso a caso, com um diff
 grande demais para ser revisável.
 
+### Fase 4 — pacotes verticais por feature (concluída)
+
+As camadas técnicas globais foram substituídas por pacotes de produto em
+`src/features`. Cada pacote mantém juntos seus componentes, composables,
+domínio, serviços, plugins e Workers. A mudança foi mecânica: arquivos e testes
+foram movidos, imports/configurações foram atualizados e nenhuma função, estado
+ou contrato foi reescrito.
+
+O renderer agora possui quatro áreas superiores:
+
+- `src/app`: composição, shell, serviços de layout e estilos globais;
+- `src/features`: chart, drawings, indicators, market, orderbook, positions,
+  settings, trading e workspace;
+- `src/platform/desktop`: adapter tipado para a API do preload;
+- `src/shared`: reúso exclusivo do renderer.
+
+Aliases por pacote reduzem caminhos longos e deixam propriedade explícita.
+Main, preload e utility não recebem esses aliases: resolvem apenas `@shared`.
+O ESLint também passou a impedir que `src/shared` dependa de features e que
+módulos `domain` importem Vue ou Electron.
+
+No Electron, o coordenador foi agrupado em `electron/main/market-data` e a
+entrada do utility process passou a morar em
+`electron/utility/market-data/index.ts`, junto do contrato de provider e das
+sessões que inicializa.
+
 ## Testes
 
-- Suíte existente sem alteração de asserções: 38 testes, 12 arquivos.
+- Suíte existente sem alteração de asserções: 38 arquivos de teste.
 - `npm run typecheck` cobre renderer e processos desktop separadamente.
 - `npm run lint` verifica as fronteiras de camada.
 - Validação manual: abrir o app, trocar de aba, par, mercado e período;
@@ -143,6 +171,12 @@ grande demais para ser revisável.
 - [x] Cores da interface acompanham o preset, não só claro/escuro.
 - [x] Nenhuma cor convertida perde contraste no tema oposto.
 - [x] O CSS compilado mantém as mesmas 494 regras após a modularização.
+- [x] Renderer organizado por feature, sem pastas globais de components,
+      composables, domain, services, plugins ou workers.
+- [x] Testes permanecem junto do módulo testado.
+- [x] Aliases de feature não são resolvidos pelos processos Electron.
+- [x] `src/shared` não depende de app, plataforma ou features.
+- [x] Domínios do renderer não importam Vue nem Electron.
 
 ## Evolução
 

@@ -32,9 +32,9 @@ realtime.
 - A seleção fica em `WorkspaceTab.orderBookAggregation`, isolada por aba e fora
   do ciclo de vida da conexão.
 
-Fontes de verdade: `src/components/orderbook/orderBookAggregation.ts`,
-`src/components/orderbook/OrderBook.vue`,
-`src/types/workspace.ts` e
+Fontes de verdade: `shared/domain/orderBook.ts`,
+`src/features/orderbook/components/OrderBook.vue`,
+`src/features/workspace/domain/workspace.ts` e
 `electron/utility/market-data/providers/binance/normalizers.ts`.
 
 ## Testes

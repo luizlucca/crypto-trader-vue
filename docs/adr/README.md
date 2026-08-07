@@ -19,3 +19,4 @@ novo ADR que cite o anterior.
 | [0002](./0002-isolamento-de-dados-realtime.md) | Dados de mercado em processos utilitários | Aceito |
 | [0003](./0003-renderizacao-imperativa-do-grafico.md) | Lightweight Charts imperativo no caminho quente | Aceito |
 | [0004](./0004-camadas-e-fronteiras-de-modulo.md) | Camadas `shared`/`src`/`electron` impostas por lint | Aceito |
+| [0005](./0005-pacotes-por-feature-no-renderer.md) | Renderer organizado em pacotes verticais por feature | Aceito |
