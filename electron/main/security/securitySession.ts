@@ -457,6 +457,9 @@ export class SecuritySession {
   }
 
   shutdown(): SecuritySnapshot {
+    if (this.state === 'locked') {
+      return this.getSnapshot()
+    }
     return this.lock('shutdown')
   }
 

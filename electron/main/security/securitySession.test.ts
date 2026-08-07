@@ -1,4 +1,5 @@
 import { mkdtemp, rm } from 'node:fs/promises'
+import { EventEmitter } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -16,6 +17,7 @@ import { VaultRepository } from './vaultRepository'
 import { SecurityPreferencesStore } from './securityPreferences'
 import { SecuritySession } from './securitySession'
 import { ProviderConnectionCoordinator } from './providerConnectionCoordinator'
+import { bindSecurityLifecycle } from './securityLifecycle'
 import {
   AccountProviderRegistry,
   type AccountProvider,
@@ -749,6 +751,29 @@ describe('SecuritySession credential vault mutation queue', () => {
       expect(session.getSnapshot().accounts).toEqual([
         expect.objectContaining({ accountId: 'one' }),
       ])
+    },
+  )
+
+  it('does not lock a session twice when shutdown follows a window close',
+    async () => {
+      const session = await createSession()
+      await session.setup(password)
+      const lock = vi.spyOn(session, 'lock')
+      const window = Object.assign(new EventEmitter(), { minimize: vi.fn() })
+      const dispose = bindSecurityLifecycle({
+        window,
+        powerMonitor: new EventEmitter(),
+        session,
+        isQuitting: () => false,
+        requestQuit: vi.fn(),
+      })
+
+      window.emit('close', { preventDefault: vi.fn() })
+      session.shutdown()
+
+      expect(lock).toHaveBeenCalledOnce()
+      expect(lock).toHaveBeenCalledWith('window-close')
+      dispose()
     },
   )
 
