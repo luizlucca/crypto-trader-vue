@@ -27,6 +27,20 @@ const account = {
   connection: 'disconnected' as const,
 }
 
+const accountTwo = {
+  ...account,
+  accountId: 'account-two',
+  label: 'Reserva',
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve
+  })
+  return { promise, resolve }
+}
+
 function snapshotWith(
   connection: SecuritySnapshot['connection'],
   accounts = [account],
@@ -90,6 +104,43 @@ describe('ProviderAccountsPanel connection feedback', () => {
       message: 'Conectado à Binance — Principal',
     })
     expect(wrapper.get('.provider-connect-button').text()).toBe('Conectar')
+  })
+
+  it('serializes two account selections while the first request is pending', async () => {
+    const first = deferred<SecuritySnapshot>()
+    const ignoredSecond = deferred<SecuritySnapshot>()
+    mocks.request
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(ignoredSecond.promise)
+    const wrapper = mountPanel(snapshotWith(
+      { state: 'disconnected' },
+      [account, accountTwo],
+    ))
+    const buttons = wrapper.findAll('.provider-connect-button')
+
+    await buttons[0].trigger('click')
+    expect(buttons[0].text()).toBe('Conectando…')
+    expect(buttons[1].attributes('disabled')).toBeDefined()
+    await buttons[1].trigger('click')
+
+    expect(mocks.request).toHaveBeenCalledTimes(1)
+
+    ignoredSecond.resolve(snapshotWith({
+      accountId: 'account-two',
+      state: 'connected',
+    }, [account, accountTwo]))
+    await flushPromises()
+    first.resolve(snapshotWith({
+      accountId: 'account-one',
+      state: 'connected',
+    }, [account, accountTwo]))
+    await flushPromises()
+
+    expect(mocks.notify).toHaveBeenCalledTimes(1)
+    expect(mocks.notify).toHaveBeenCalledWith({
+      tone: 'success',
+      message: 'Conectado à Binance — Principal',
+    })
   })
 
   it('notifies a failed connection with exact retry and settings actions', async () => {

@@ -34,6 +34,8 @@ const view = ref<'accounts' | 'catalog' | 'form'>('accounts')
 const saving = ref(false)
 const removingId = ref<string>()
 const connectingId = ref<string>()
+let activeConnectionAttempt: { accountId: string, id: number } | undefined
+let nextConnectionAttemptId = 1
 const unlocked = computed(() => props.snapshot.state === 'unlocked')
 
 function openCatalog(): void {
@@ -88,6 +90,14 @@ async function saveAccount(draft: BinanceAccountDraft): Promise<void> {
 }
 
 async function connectAccount(accountId: string): Promise<void> {
+  if (activeConnectionAttempt) {
+    return
+  }
+  const attempt = {
+    accountId,
+    id: nextConnectionAttemptId++,
+  }
+  activeConnectionAttempt = attempt
   connectingId.value = accountId
   try {
     const snapshot = await session.request({
@@ -98,7 +108,10 @@ async function connectAccount(accountId: string): Promise<void> {
   } catch {
     notifyConnectionFailure(accountId)
   } finally {
-    connectingId.value = undefined
+    if (activeConnectionAttempt === attempt) {
+      activeConnectionAttempt = undefined
+      connectingId.value = undefined
+    }
   }
 }
 
@@ -220,7 +233,7 @@ async function removeAccount(accountId: string): Promise<void> {
             : account.connection }}
         </span>
         <button
-          :disabled="connectingId === account.accountId
+          :disabled="connectingId !== undefined
             || isActiveAccount(account.accountId)"
           class="provider-connect-button"
           type="button"
