@@ -19,6 +19,13 @@
 - Existing encrypted vaults containing the legacy `enabled` property must remain readable.
 - New behavior follows strict red-green-refactor TDD.
 
+## Execution Note
+
+Tasks 1–3 form one atomic migration. The contract cannot remove the legacy
+`enabled` field or add explicit connection requests while the old session
+still performs automatic validation. Implement and verify their combined
+result before creating the migration commit; Tasks 4–8 remain independent.
+
 ---
 
 ### Task 1: Evolve security contracts and normalize legacy vault records
@@ -650,6 +657,17 @@ Expected: test and typecheck PASS.
 ---
 
 ### Task 8: Final documentation, regression and PR update
+
+**Verification record (2026-08-07):** `npm run typecheck`, `npm test`,
+`npm run build` and `git diff --check` completed successfully. `npm run lint`
+reported 14 preexisting `@stylistic/indent` errors in
+`electron/main/security/vaultCrypto.test.ts` (lines 92–105), plus warnings;
+this task does not alter that unrelated file merely to make the global command
+green. `npm run dev` built the main and preload processes and started the
+renderer server, but no graphical interaction or DevTools Performance capture
+was available. The manual UI path and the 50 ms renderer-long-task observation
+therefore remain pending. Balances, orders, positions, history and private
+streams remain explicitly excluded.
 
 **Files:**
 - Modify: `docs/specs/F-018-cofre-de-credenciais-e-conexoes-privadas.md`

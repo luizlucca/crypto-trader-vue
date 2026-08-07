@@ -1,6 +1,7 @@
 # F-018 — Cofre de credenciais e conexões privadas de providers
 
-**Status:** em evolução
+**Status:** validação final — automação concluída, com pendências de lint
+preexistentes e validação manual de UI
 **Última revisão:** 2026-08-07  
 **Relaciona-se a:** [F-002](./F-002-providers-binance.md),
 [F-009](./F-009-temas-configuracoes.md),
@@ -253,6 +254,25 @@ tick no renderer.
 - [x] A tela Segurança e sessão persiste os gatilhos e o tempo escolhidos.
 - [ ] Nenhum processo de dados públicos recebe credenciais, e gráfico/livro
       continuam atualizando durante os fluxos de segurança.
+
+## Verificação da entrega (2026-08-07)
+
+- A cobertura automatizada confirma o cofre cifrado, a recuperação com
+  confirmação `APAGAR`, a conexão explícita de uma única conta, o descarte de
+  resultados tardios, o catálogo declarativo, as decisões para zero/uma/várias
+  contas e o guarda que libera a boleta apenas em `connected`.
+- A verificação fresca executou `npm run typecheck`, `npm test` e `npm run
+  build` com sucesso; `git diff --check` também não encontrou erro de espaço.
+- `npm run lint` permanece pendente por 14 erros de indentação preexistentes em
+  `electron/main/security/vaultCrypto.test.ts` (linhas 92–105). Esta entrega
+  não alterou esse arquivo para ocultar o erro.
+- O processo de desenvolvimento iniciou o main, o preload e o servidor do
+  renderer, mas este ambiente não permitiu interação gráfica. Permanecem
+  pendentes de observação manual os fluxos visuais críticos, a continuidade de
+  candles/livro e a medição de long tasks acima de 50 ms.
+
+Saldos, ordens, posições, histórico e streams privados continuam fora de
+escopo; esta entrega valida somente a conexão autenticada de uma conta ativa.
 
 ## Evolução
 
