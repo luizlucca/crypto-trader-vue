@@ -656,7 +656,7 @@
     var(--market-handle-track, 6px)
     minmax(430px, 1fr)
     var(--order-book-track, 232px)
-    288px;
+    var(--trading-track, 288px);
   grid-template-rows: minmax(0, 1fr) 204px;
   gap: 2px;
   min-width: 0;
@@ -673,6 +673,22 @@
 
 .workspace-grid[data-order-book="hidden"] {
   --order-book-track: 0px;
+}
+
+.workspace-grid[data-trading="hidden"] {
+  --trading-track: 0px;
+}
+
+@media (max-width: 1360px) {
+  .workspace-grid {
+    grid-template-columns:
+      42px
+      var(--market-track, var(--market-sidebar-width, 220px))
+      var(--market-handle-track, 6px)
+      minmax(430px, 1fr)
+      var(--order-book-track, 210px)
+      var(--trading-track, 266px);
+  }
 }
 
 .navigation-rail {

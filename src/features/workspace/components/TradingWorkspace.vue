@@ -37,6 +37,7 @@ import ProviderConnectionDialog
   from '@providers/components/ProviderConnectionDialog.vue'
 import { useNotifications } from '@app/services/notifications'
 import { nextPrivateAccessAction } from '@providers/services/privateAccessFlow'
+import { canShowTradingTicket } from '@trading/domain/privateTradingAccess'
 import {
   createProviderConnectionAttempt,
 } from '@providers/services/providerConnectionAttempt'
@@ -106,6 +107,9 @@ const activeTabPosition = computed(
 )
 
 const statusLabel = computed(() => sessionStatusLabel(activeTab.value))
+const tradingTicketVisible = computed(
+  () => canShowTradingTicket(security.snapshot.value),
+)
 
 /**
  * The picker lives in its own BrowserWindow, so opening it is a window
@@ -350,6 +354,7 @@ function lockSecuritySession(): void {
       class="workspace-grid"
       :data-market="marketPanelVisible ? 'visible' : 'hidden'"
       :data-order-book="orderBookPanelVisible ? 'visible' : 'hidden'"
+      :data-trading="tradingTicketVisible ? 'visible' : 'hidden'"
       :style="workspaceStyle"
     >
       <NavigationRail
@@ -413,7 +418,10 @@ function lockSecuritySession(): void {
         :session-id="activeTab.id"
         @aggregation-step="workspace.changeOrderBookAggregation"
       />
-      <TradingTicket :selection="selection" />
+      <TradingTicket
+        v-if="tradingTicketVisible"
+        :selection="selection"
+      />
       <PositionsPanel />
     </main>
     <footer class="status-bar">
