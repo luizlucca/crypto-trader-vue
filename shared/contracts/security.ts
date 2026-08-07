@@ -1,0 +1,179 @@
+import type { Market } from '@shared/types/market'
+import { validatePersonalPassword } from '@shared/domain/personalPassword'
+
+export type SecurityState
+  = | 'setup-required'
+    | 'locked'
+    | 'unlocking'
+    | 'unlocked'
+
+export type AccountConnectionState
+  = | 'disconnected'
+    | 'connecting'
+    | 'connected'
+    | 'failed'
+
+export type AccountFailureCode
+  = | 'credentials'
+    | 'permission'
+    | 'clock'
+    | 'network'
+    | 'unknown'
+
+export type IdleTimeoutMinutes = 0 | 1 | 5 | 15 | 30 | 60 | 120
+
+export interface SecurityPreferences {
+  lockOnMinimize: boolean
+  lockOnSuspend: boolean
+  idleTimeoutMinutes: IdleTimeoutMinutes
+  closeAction: 'quit-and-lock' | 'lock-and-minimize'
+}
+
+export const DEFAULT_SECURITY_PREFERENCES: SecurityPreferences = {
+  lockOnMinimize: true,
+  lockOnSuspend: true,
+  idleTimeoutMinutes: 15,
+  closeAction: 'quit-and-lock',
+}
+
+export interface ProviderAccountSummary {
+  accountId: string
+  provider: 'binance'
+  label: string
+  markets: readonly Market[]
+  apiKeySuffix: string
+  enabled: boolean
+  connection: AccountConnectionState
+  failureCode?: AccountFailureCode
+}
+
+export interface BinanceAccountDraft {
+  accountId?: string
+  label: string
+  markets: readonly Market[]
+  apiKey: string
+  apiSecret: string
+  enabled: boolean
+}
+
+export interface SecuritySnapshot {
+  state: SecurityState
+  hasVault: boolean
+  accounts: readonly ProviderAccountSummary[]
+  preferences: SecurityPreferences
+}
+
+export type SecurityRequest
+  = | { kind: 'get-snapshot' }
+    | { kind: 'setup', password: string }
+    | { kind: 'unlock', password: string }
+    | { kind: 'lock' }
+    | { kind: 'change-password', currentPassword: string, nextPassword: string }
+    | { kind: 'reset-vault', confirmation: 'APAGAR' }
+    | { kind: 'save-binance-account', draft: BinanceAccountDraft }
+    | { kind: 'remove-account', accountId: string }
+    | { kind: 'update-preferences', preferences: SecurityPreferences }
+
+export interface SecurityEvent {
+  kind: 'state'
+  payload: SecuritySnapshot
+}
+
+export interface DesktopSecurityAPI {
+  getSnapshot(): Promise<SecuritySnapshot>
+  request(request: SecurityRequest): Promise<SecuritySnapshot>
+  onState(callback: (snapshot: SecuritySnapshot) => void): () => void
+}
+
+const ACCOUNT_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/
+const MAX_API_CREDENTIAL_LENGTH = 256
+
+function isAccountId(value: unknown): value is string {
+  return typeof value === 'string' && ACCOUNT_ID_PATTERN.test(value)
+}
+
+function isCredential(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length >= 8
+    && value.length <= MAX_API_CREDENTIAL_LENGTH
+}
+
+function isMarkets(value: unknown): value is readonly Market[] {
+  return Array.isArray(value)
+    && value.length > 0
+    && value.length <= 2
+    && value.every((market) => market === 'spot' || market === 'futures')
+    && new Set(value).size === value.length
+}
+
+function isPreferences(value: unknown): value is SecurityPreferences {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const preferences = value as Partial<SecurityPreferences>
+  return typeof preferences.lockOnMinimize === 'boolean'
+    && typeof preferences.lockOnSuspend === 'boolean'
+    && isIdleTimeoutMinutes(preferences.idleTimeoutMinutes)
+    && (
+      preferences.closeAction === 'quit-and-lock'
+      || preferences.closeAction === 'lock-and-minimize'
+    )
+}
+
+function isIdleTimeoutMinutes(value: unknown): value is IdleTimeoutMinutes {
+  return value === 0
+    || value === 1
+    || value === 5
+    || value === 15
+    || value === 30
+    || value === 60
+    || value === 120
+}
+
+function isBinanceAccountDraft(value: unknown): value is BinanceAccountDraft {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const draft = value as Partial<BinanceAccountDraft>
+  return (
+    draft.accountId === undefined || isAccountId(draft.accountId)
+  )
+  && typeof draft.label === 'string'
+  && draft.label.trim().length >= 1
+  && draft.label.trim().length <= 64
+  && isMarkets(draft.markets)
+  && isCredential(draft.apiKey)
+  && isCredential(draft.apiSecret)
+  && typeof draft.enabled === 'boolean'
+}
+
+export function isSecurityRequest(value: unknown): value is SecurityRequest {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const request = value as Partial<SecurityRequest>
+  switch (request.kind) {
+    case 'get-snapshot':
+    case 'lock':
+      return true
+    case 'setup':
+    case 'unlock':
+      return typeof request.password === 'string'
+        && validatePersonalPassword(request.password).valid
+    case 'change-password':
+      return typeof request.currentPassword === 'string'
+        && validatePersonalPassword(request.currentPassword).valid
+        && typeof request.nextPassword === 'string'
+        && validatePersonalPassword(request.nextPassword).valid
+    case 'reset-vault':
+      return request.confirmation === 'APAGAR'
+    case 'save-binance-account':
+      return isBinanceAccountDraft(request.draft)
+    case 'remove-account':
+      return isAccountId(request.accountId)
+    case 'update-preferences':
+      return isPreferences(request.preferences)
+    default:
+      return false
+  }
+}
