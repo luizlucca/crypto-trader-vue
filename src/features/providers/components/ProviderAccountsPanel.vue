@@ -6,9 +6,12 @@ import type {
   ProviderAccountSummary,
   SecuritySnapshot,
 } from '@shared/contracts/security'
+import type { ProviderDefinition } from '@providers/domain/providerCatalog'
 import { formatApiKeyHint } from '@providers/services/providerAccounts'
 import { useSecuritySession } from '@security/services/securitySession'
 import BinanceAccountForm from './BinanceAccountForm.vue'
+import ProviderCatalog from './ProviderCatalog.vue'
+import ProviderIcon from './ProviderIcon.vue'
 
 const props = defineProps<{
   snapshot: SecuritySnapshot
@@ -20,23 +23,34 @@ const emit = defineEmits<{
 
 const session = useSecuritySession()
 const editingAccount = ref<ProviderAccountSummary>()
-const formOpen = ref(false)
+const view = ref<'accounts' | 'catalog' | 'form'>('accounts')
 const saving = ref(false)
 const removingId = ref<string>()
+const connectingId = ref<string>()
 const unlocked = computed(() => props.snapshot.state === 'unlocked')
 
-function addAccount(): void {
-  editingAccount.value = undefined
-  formOpen.value = true
+function openCatalog(): void {
+  view.value = 'catalog'
+}
+
+function selectProvider(id: ProviderDefinition['id']): void {
+  if (id === 'binance') {
+    editingAccount.value = undefined
+    view.value = 'form'
+  }
 }
 
 function editAccount(account: ProviderAccountSummary): void {
   editingAccount.value = account
-  formOpen.value = true
+  view.value = 'form'
 }
 
-function closeForm(): void {
-  formOpen.value = false
+function cancelCatalog(): void {
+  view.value = 'accounts'
+}
+
+function cancelForm(): void {
+  view.value = editingAccount.value ? 'accounts' : 'catalog'
   editingAccount.value = undefined
 }
 
@@ -44,10 +58,25 @@ async function saveAccount(draft: BinanceAccountDraft): Promise<void> {
   saving.value = true
   try {
     await session.request({ kind: 'save-binance-account', draft })
-    closeForm()
+    view.value = 'accounts'
+    editingAccount.value = undefined
   } finally {
     saving.value = false
   }
+}
+
+async function connectAccount(accountId: string): Promise<void> {
+  connectingId.value = accountId
+  try {
+    await session.request({ kind: 'connect-account', accountId })
+  } finally {
+    connectingId.value = undefined
+  }
+}
+
+function isActiveAccount(accountId: string): boolean {
+  return props.snapshot.connection.accountId === accountId
+    && props.snapshot.connection.state === 'connected'
 }
 
 async function removeAccount(accountId: string): Promise<void> {
@@ -69,13 +98,13 @@ async function removeAccount(accountId: string): Promise<void> {
         <p>As credenciais ficam cifradas localmente e nunca são exibidas.</p>
       </div>
       <button
-        v-if="unlocked && !formOpen"
+        v-if="unlocked && view === 'accounts'"
         class="create-theme-button"
         type="button"
-        @click="addAccount"
+        @click="openCatalog"
       >
         <Plus aria-hidden="true" />
-        Adicionar Binance
+        Adicionar provedor
       </button>
     </div>
 
@@ -90,18 +119,24 @@ async function removeAccount(accountId: string): Promise<void> {
       </button>
     </div>
 
+    <ProviderCatalog
+      v-else-if="view === 'catalog'"
+      @cancel="cancelCatalog"
+      @select="selectProvider"
+    />
+
     <BinanceAccountForm
-      v-else-if="formOpen"
+      v-else-if="view === 'form'"
       :account="editingAccount"
       :pending="saving"
-      @cancel="closeForm"
+      @cancel="cancelForm"
       @save="saveAccount"
     />
 
     <div v-else class="provider-account-list">
       <article v-for="account in snapshot.accounts" :key="account.accountId">
         <span class="provider-account-icon">
-          <PlugZap aria-hidden="true" />
+          <ProviderIcon :id="account.provider" />
         </span>
         <div class="provider-account-copy">
           <strong>{{ account.label }}</strong>
@@ -110,9 +145,25 @@ async function removeAccount(accountId: string): Promise<void> {
             {{ formatApiKeyHint(account.apiKeySuffix) }}
           </small>
         </div>
-        <span :class="['provider-connection', account.connection]">
-          {{ account.connection }}
+        <span
+          :class="['provider-connection', account.connection]"
+          :aria-label="isActiveAccount(account.accountId)
+            ? 'Conta conectada'
+            : undefined"
+        >
+          {{ isActiveAccount(account.accountId)
+            ? 'Conectado'
+            : account.connection }}
         </span>
+        <button
+          :disabled="connectingId === account.accountId
+            || isActiveAccount(account.accountId)"
+          class="provider-connect-button"
+          type="button"
+          @click="connectAccount(account.accountId)"
+        >
+          {{ connectingId === account.accountId ? 'Conectando…' : 'Conectar' }}
+        </button>
         <button
           aria-label="Editar conta"
           type="button"

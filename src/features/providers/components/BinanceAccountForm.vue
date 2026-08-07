@@ -69,35 +69,72 @@ function submit(): void {
       </p>
     </header>
 
-    <label>
-      <span>Nome da conta</span>
-      <input v-model.trim="label" autocomplete="off" maxlength="64" required>
-    </label>
+    <section
+      aria-labelledby="provider-identification-title"
+      class="provider-form-section"
+    >
+      <h5 id="provider-identification-title">Identificação</h5>
+      <label>
+        <span>Nome da conta</span>
+        <input v-model.trim="label" autocomplete="off" maxlength="64" required>
+      </label>
+    </section>
 
-    <fieldset>
-      <legend>Mercados autorizados</legend>
-      <label><input v-model="spot" type="checkbox"> Spot</label>
-      <label><input v-model="futures" type="checkbox"> Futuros</label>
-    </fieldset>
+    <section
+      aria-labelledby="provider-markets-title"
+      class="provider-form-section"
+    >
+      <h5 id="provider-markets-title">Mercados</h5>
+      <fieldset>
+        <legend>Mercados autorizados</legend>
+        <label><input v-model="spot" type="checkbox"> Spot</label>
+        <label><input v-model="futures" type="checkbox"> Futuros</label>
+      </fieldset>
+    </section>
 
-    <label>
-      <span>API key</span>
-      <input v-model="apiKey" autocomplete="off" required spellcheck="false">
-    </label>
-    <label>
-      <span>API secret</span>
-      <input
-        v-model="apiSecret"
-        autocomplete="new-password"
-        required
-        spellcheck="false"
-        type="password"
-      >
-    </label>
-    <label class="provider-enabled">
-      <input v-model="validateAndConnect" type="checkbox">
-      Validar e conectar ao salvar
-    </label>
+    <section
+      aria-labelledby="provider-credentials-title"
+      class="provider-form-section"
+    >
+      <h5 id="provider-credentials-title">Credenciais</h5>
+      <div class="provider-credential-grid">
+        <label>
+          <span>API key</span>
+          <input
+            v-model="apiKey"
+            autocomplete="off"
+            required
+            spellcheck="false"
+          >
+        </label>
+        <label>
+          <span>API secret</span>
+          <input
+            v-model="apiSecret"
+            autocomplete="new-password"
+            required
+            spellcheck="false"
+            type="password"
+          >
+        </label>
+      </div>
+    </section>
+
+    <section
+      aria-labelledby="provider-save-title"
+      class="provider-form-section"
+    >
+      <h5 id="provider-save-title">Ao salvar</h5>
+      <label class="provider-connect-option">
+        <input v-model="validateAndConnect" type="checkbox">
+        <span>
+          <strong>Validar e conectar ao salvar</strong>
+          <small>
+            Faz uma chamada autenticada de leitura após cifrar a conta.
+          </small>
+        </span>
+      </label>
+    </section>
 
     <footer>
       <button
