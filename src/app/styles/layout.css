@@ -161,6 +161,191 @@
   background: rgba(47, 156, 255, .08);
 }
 
+.window-actions .account-access {
+  display: inline-flex;
+  gap: 6px;
+  width: auto;
+  min-width: 78px;
+  padding: 0 9px;
+  color: var(--text-strong);
+  border: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--control-bg) 82%, var(--panel));
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.window-actions .account-access svg {
+  width: 15px;
+  height: 15px;
+}
+
+.window-actions .account-access.unlocked {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 35%, var(--border));
+  background: color-mix(in srgb, var(--green) 10%, var(--control-bg));
+}
+
+.security-access-dialog {
+  position: fixed;
+  z-index: 1000;
+  top: 50%;
+  left: 50%;
+  width: min(420px, calc(100vw - 32px));
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  color: var(--text);
+  border: 1px solid var(--overlay-border);
+  border-radius: 10px;
+  background: var(--overlay-surface);
+  box-shadow: 0 18px 56px rgb(0 0 0 / 38%);
+}
+
+.security-access-header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 18px 18px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.security-access-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--accent-hover);
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+}
+
+.security-access-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.security-access-header p,
+.security-access-header h2 {
+  margin: 0;
+}
+
+.security-access-header p {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.security-access-header h2 {
+  color: var(--text-strong);
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.security-access-header > button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.security-access-header > button:hover {
+  color: var(--text-strong);
+  background: var(--hover-bg);
+}
+
+.security-access-header > button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.security-access-form {
+  display: grid;
+  gap: 13px;
+  padding: 18px;
+}
+
+.security-access-description,
+.security-access-hint,
+.security-access-error {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.security-access-description,
+.security-access-hint {
+  color: var(--muted);
+}
+
+.security-access-error {
+  color: var(--red);
+}
+
+.security-access-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-strong);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.security-access-form input {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  outline: 0;
+  background: var(--input-bg);
+}
+
+.security-access-form input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 16%, transparent);
+}
+
+.security-access-form footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.security-access-form footer button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 96px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.security-access-form .secondary {
+  background: var(--control-bg);
+}
+
+.security-access-form .primary {
+  color: var(--accent-contrast);
+  border-color: var(--blue);
+  background: var(--blue);
+}
+
+.security-access-form button:disabled,
+.security-access-form input:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+
 .window-actions button:hover {
   color: color-mix(in srgb, var(--text) 20%, var(--text-strong));
   background: var(--hover-bg);

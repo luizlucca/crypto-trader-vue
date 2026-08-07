@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import AppHeader from '@app/components/AppHeader.vue'
 import GeneralSettingsPanel from '@settings/components/GeneralSettingsPanel.vue'
+import SecurityAccessDialog from '@security/components/SecurityAccessDialog.vue'
 import NavigationRail from '@app/components/NavigationRail.vue'
 import PanelResizeHandle from '@app/components/PanelResizeHandle.vue'
 import MarketSidebar from '@market/components/MarketSidebar.vue'
@@ -19,6 +20,7 @@ import { loadFavoriteKeys, saveFavoriteKeys } from '@market/services/favorites'
 import { useCatalogCache } from '@market/composables/useCatalogCache'
 import { useGlobalShortcuts } from '@workspace/composables/useGlobalShortcuts'
 import { useResizableSidebar } from '@workspace/composables/useResizableSidebar'
+import { useSecuritySession } from '@security/services/securitySession'
 import {
   marketPanelVisible,
   orderBookPanelVisible,
@@ -37,7 +39,9 @@ const SIDEBAR_DEFAULT_WIDTH = 250
 const SIDEBAR_MIN_WIDTH = 190
 
 const settingsOpen = ref(false)
+const securityAccessOpen = ref(false)
 const favoriteKeys = shallowRef(loadFavoriteKeys())
+const security = useSecuritySession()
 
 const {
   width: sidebarWidth,
@@ -120,8 +124,10 @@ useGlobalShortcuts({
 })
 
 const releaseWindowEvents: (() => void)[] = []
+let releaseSecuritySession: (() => void) | undefined
 
 onMounted(() => {
+  releaseSecuritySession = security.start()
   const desktop = window.cryptoPro
   if (!desktop) {
     return
@@ -147,9 +153,19 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  releaseSecuritySession?.()
+  releaseSecuritySession = undefined
   releaseWindowEvents.forEach((release) => release())
   releaseWindowEvents.length = 0
 })
+
+function openSecurityAccess(): void {
+  securityAccessOpen.value = true
+}
+
+function lockSecuritySession(): void {
+  void security.request({ kind: 'lock' })
+}
 </script>
 
 <template>
@@ -157,7 +173,10 @@ onBeforeUnmount(() => {
     <AppHeader
       :selection="selection"
       :settings-open="settingsOpen"
+      :security-state="security.snapshot.value.state"
       :status="activeTab.status"
+      @access="openSecurityAccess"
+      @lock="lockSecuritySession"
       @settings="settingsOpen = !settingsOpen"
     />
     <!--
@@ -261,6 +280,12 @@ onBeforeUnmount(() => {
     <GeneralSettingsPanel
       :open="settingsOpen"
       @close="settingsOpen = false"
+      @request-access="openSecurityAccess"
+    />
+    <SecurityAccessDialog
+      :open="securityAccessOpen"
+      :state="security.snapshot.value.state"
+      @close="securityAccessOpen = false"
     />
   </div>
 </template>

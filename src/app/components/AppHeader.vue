@@ -3,6 +3,8 @@ import {
   Bell,
   ChevronDown,
   Gem,
+  Lock,
+  LockKeyhole,
   Minus,
   Moon,
   Settings,
@@ -13,15 +15,19 @@ import {
 import { computed } from 'vue'
 import { appTheme, toggleTheme } from '@settings/services/theme'
 import type { MarketSelection, StreamStatus } from '@shared/types/market'
+import type { SecurityState } from '@shared/contracts/security'
 
 const props = defineProps<{
   status: StreamStatus['state']
   selection: MarketSelection
   settingsOpen: boolean
+  securityState: SecurityState
 }>()
 
 const emit = defineEmits<{
   settings: []
+  access: []
+  lock: []
 }>()
 
 const connectionLabel = computed(() => {
@@ -36,6 +42,14 @@ const connectionLabel = computed(() => {
       return 'Conectando'
   }
 })
+
+function toggleAccountAccess(): void {
+  if (props.securityState === 'unlocked') {
+    emit('lock')
+    return
+  }
+  emit('access')
+}
 </script>
 
 <template>
@@ -75,6 +89,18 @@ const connectionLabel = computed(() => {
     </div>
 
     <div class="window-actions">
+      <button
+        :class="['account-access', securityState]"
+        :title="securityState === 'unlocked'
+          ? 'Bloquear contas privadas'
+          : 'Entrar nas contas privadas'"
+        type="button"
+        @click="toggleAccountAccess"
+      >
+        <Lock v-if="securityState === 'unlocked'" aria-hidden="true" />
+        <LockKeyhole v-else aria-hidden="true" />
+        {{ securityState === 'unlocked' ? 'Bloquear' : 'Entrar' }}
+      </button>
       <button
         :aria-label="appTheme === 'dark'
           ? 'Ativar tema claro'

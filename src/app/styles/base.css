@@ -33,6 +33,10 @@ input {
   font: inherit;
 }
 
+input[type="password"] {
+  user-select: text;
+}
+
 button {
   border: 0;
 }
