@@ -107,6 +107,7 @@ function isVaultContents(value: unknown): value is VaultContents {
         && stored.provider === 'binance'
         && typeof stored.label === 'string'
         && Array.isArray(stored.markets)
+        && stored.markets.length > 0
         && stored.markets.every(isMarket)
         && typeof stored.apiKey === 'string'
         && typeof stored.apiSecret === 'string'

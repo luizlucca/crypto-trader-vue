@@ -6,12 +6,12 @@ import {
   type AccountProvider,
 } from '../providers/accountProvider'
 
-function account(id: string): ProviderAccountRecord {
+function account(id: string, markets: ProviderAccountRecord['markets'] = ['spot']): ProviderAccountRecord {
   return {
     accountId: id,
     provider: 'binance',
     label: `Conta ${id}`,
-    markets: ['spot'],
+    markets,
     apiKey: `api-key-${id}`,
     apiSecret: `api-secret-${id}`,
   }
@@ -60,6 +60,36 @@ describe('ProviderConnectionCoordinator', () => {
       accountId: 'one',
       state: 'failed',
       failureCode: 'credentials',
+    })
+  })
+
+  it.each([
+    ['empty', ['spot'], []],
+    ['missing', ['spot', 'futures'], [{ market: 'spot', state: 'connected' }]],
+    ['extra', ['spot'], [
+      { market: 'spot', state: 'connected' },
+      { market: 'futures', state: 'connected' },
+    ]],
+    ['duplicate', ['spot'], [
+      { market: 'spot', state: 'connected' },
+      { market: 'spot', state: 'connected' },
+    ]],
+  ] as const)('fails %s provider results structurally', async (
+    _name,
+    markets,
+    results,
+  ) => {
+    const coordinator = createCoordinator({
+      id: 'binance',
+      validateConnection: async () => results,
+    })
+
+    await coordinator.connect(account('one', markets))
+
+    expect(coordinator.snapshot()).toEqual({
+      accountId: 'one',
+      state: 'failed',
+      failureCode: 'unknown',
     })
   })
 

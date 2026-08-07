@@ -18,7 +18,7 @@ function response(status: number, body: unknown = {}): Response {
 
 describe('BinanceAccountProvider', () => {
   it(
-    'signs the private Spot validation request without leaking the secret',
+    'signs the private Spot commission validation request without leaking the secret',
     async () => {
       const fetch = vi.fn().mockResolvedValue(response(200))
       const provider = new BinanceAccountProvider({
@@ -31,19 +31,20 @@ describe('BinanceAccountProvider', () => {
 
       const [url, options] = fetch.mock.calls[0] as [string, RequestInit]
       const request = new URL(url)
-      const payload = `timestamp=${timestamp}&recvWindow=5000`
+      const payload = `symbol=BTCUSDT&timestamp=${timestamp}&recvWindow=5000`
       const signature = createHmac('sha256', credentials.apiSecret)
         .update(payload)
         .digest('hex')
       expect(request.origin + request.pathname)
-        .toBe('https://api.binance.com/api/v3/account')
+        .toBe('https://api.binance.com/api/v3/account/commission')
+      expect(request.searchParams.get('symbol')).toBe('BTCUSDT')
       expect(request.searchParams.get('signature')).toBe(signature)
       expect(options.headers).toEqual({ 'X-MBX-APIKEY': credentials.apiKey })
       expect(url).not.toContain(credentials.apiSecret)
     },
   )
 
-  it('validates selected Spot and Futures endpoints independently',
+  it('uses signed commission endpoints without requesting balances or positions',
     async () => {
       const fetch = vi.fn().mockResolvedValue(response(200))
       const provider = new BinanceAccountProvider({
@@ -61,9 +62,15 @@ describe('BinanceAccountProvider', () => {
         { market: 'futures', state: 'connected' },
       ])
       expect(fetch.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
-        '/api/v3/account',
-        '/fapi/v2/account',
+        '/api/v3/account/commission',
+        '/fapi/v1/commissionRate',
       ])
+      for (const [url] of fetch.mock.calls as [string][]) {
+        const request = new URL(url)
+        expect(request.searchParams.get('symbol')).toBe('BTCUSDT')
+        expect(request.pathname).not.toBe('/api/v3/account')
+        expect(request.pathname).not.toBe('/fapi/v2/account')
+      }
     },
   )
 

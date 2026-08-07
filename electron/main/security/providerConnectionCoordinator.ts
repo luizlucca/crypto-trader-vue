@@ -50,19 +50,42 @@ export class ProviderConnectionCoordinator {
           apiKey: account.apiKey,
           apiSecret: account.apiSecret,
         }, account.markets)
-      return this.toConnection(results)
+      return this.toConnection(account.markets, results)
     } catch {
       return { state: 'failed', failureCode: 'unknown' }
     }
   }
 
   private toConnection(
+    markets: readonly ProviderAccountRecord['markets'][number][],
     results: readonly AccountMarketValidation[],
   ): { state: 'connected' | 'failed', failureCode?: AccountFailureCode } {
-    const failed = results.find((result) => result.state === 'failed')
-    return failed
-      ? { state: 'failed', failureCode: failed.failureCode ?? 'unknown' }
-      : { state: 'connected' }
+    if (markets.length === 0 || results.length !== markets.length) {
+      return { state: 'failed', failureCode: 'unknown' }
+    }
+
+    const expected = new Set(markets)
+    const received = new Set<AccountMarketValidation['market']>()
+    if (expected.size !== markets.length) {
+      return { state: 'failed', failureCode: 'unknown' }
+    }
+
+    for (const result of results) {
+      if (result.state === 'failed') {
+        return {
+          state: 'failed',
+          failureCode: result.failureCode ?? 'unknown',
+        }
+      }
+      if (!expected.has(result.market) || received.has(result.market)) {
+        return { state: 'failed', failureCode: 'unknown' }
+      }
+      received.add(result.market)
+    }
+
+    return received.size === expected.size
+      ? { state: 'connected' }
+      : { state: 'failed', failureCode: 'unknown' }
   }
 
   private set(snapshot: ProviderConnectionSnapshot): void {

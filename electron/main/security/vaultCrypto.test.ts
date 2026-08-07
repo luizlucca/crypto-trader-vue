@@ -86,4 +86,24 @@ describe('VaultCrypto', () => {
     })
     expect(unlocked.contents.accounts[0]).not.toHaveProperty('enabled')
   })
+
+  it('rejects a legacy account without an authorized market', async () => {
+    const crypto = new VaultCrypto()
+    const legacyContents = {
+      version: 1,
+      accounts: [{
+        accountId: 'legacy-without-market',
+        provider: 'binance',
+        label: 'Conta legada',
+        markets: [],
+        apiKey: 'legacy-api-key',
+        apiSecret: 'legacy-api-secret',
+        enabled: true,
+      }],
+    }
+    const encrypted = await crypto.create(password, legacyContents as VaultContents)
+
+    await expect(crypto.unlock(password, encrypted.envelope))
+      .rejects.toBeInstanceOf(VaultIntegrityError)
+  })
 })

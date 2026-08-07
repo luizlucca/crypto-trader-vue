@@ -24,9 +24,10 @@ interface BinanceAccountProviderOptions {
 }
 
 const RECV_WINDOW_MS = 5_000
+const VALIDATION_SYMBOL = 'BTCUSDT'
 const ENDPOINTS: Record<Market, string> = {
-  spot: 'https://api.binance.com/api/v3/account',
-  futures: 'https://fapi.binance.com/fapi/v2/account',
+  spot: 'https://api.binance.com/api/v3/account/commission',
+  futures: 'https://fapi.binance.com/fapi/v1/commissionRate',
 }
 
 export class BinanceAccountProvider implements AccountProvider {
@@ -75,6 +76,7 @@ export class BinanceAccountProvider implements AccountProvider {
 
   private createSignedUrl(market: Market, apiSecret: string): string {
     const parameters = new URLSearchParams({
+      symbol: VALIDATION_SYMBOL,
       timestamp: String(this.now()),
       recvWindow: String(RECV_WINDOW_MS),
     })

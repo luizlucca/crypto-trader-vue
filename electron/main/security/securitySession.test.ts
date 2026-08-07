@@ -350,4 +350,78 @@ describe('SecuritySession', () => {
 
     expect(session.getSnapshot().connection).toEqual({ state: 'disconnected' })
   })
+
+  it('disconnects an edited active account when validation is not requested',
+    async () => {
+      const session = await createSession()
+      await session.setup(password)
+      await session.saveBinanceAccount({
+        label: 'Spot',
+        markets: ['spot'],
+        apiKey: 'binance-api-key-OLD',
+        apiSecret: 'binance-api-secret-OLD',
+        validateAndConnect: false,
+      })
+      await session.connectAccount('new-account-id')
+
+      await session.saveBinanceAccount({
+        accountId: 'new-account-id',
+        label: 'Spot editada',
+        markets: ['spot'],
+        apiKey: 'binance-api-key-NEW',
+        apiSecret: 'binance-api-secret-NEW',
+        validateAndConnect: false,
+      })
+
+      expect(session.getSnapshot().connection).toEqual({ state: 'disconnected' })
+      expect(session.getSnapshot().accounts).toEqual([
+        expect.objectContaining({
+          accountId: 'new-account-id',
+          connection: 'disconnected',
+        }),
+      ])
+    },
+  )
+
+  it('disconnects before reconnecting an edited active account when requested',
+    async () => {
+      const validateConnection = vi.fn().mockResolvedValue([
+        { market: 'spot', state: 'connected' },
+      ])
+      const session = await createSession({
+        provider: { id: 'binance', validateConnection },
+      })
+      await session.setup(password)
+      await session.saveBinanceAccount({
+        label: 'Spot',
+        markets: ['spot'],
+        apiKey: 'binance-api-key-OLD',
+        apiSecret: 'binance-api-secret-OLD',
+        validateAndConnect: false,
+      })
+      await session.connectAccount('new-account-id')
+      validateConnection.mockClear()
+      const snapshots: SecuritySnapshot[] = []
+      session.subscribe((snapshot) => snapshots.push(snapshot))
+
+      await session.saveBinanceAccount({
+        accountId: 'new-account-id',
+        label: 'Spot editada',
+        markets: ['spot'],
+        apiKey: 'binance-api-key-NEW',
+        apiSecret: 'binance-api-secret-NEW',
+        validateAndConnect: true,
+      })
+
+      expect(snapshots[0].connection).toEqual({ state: 'disconnected' })
+      expect(validateConnection).toHaveBeenCalledWith({
+        apiKey: 'binance-api-key-NEW',
+        apiSecret: 'binance-api-secret-NEW',
+      }, ['spot'])
+      expect(session.getSnapshot().connection).toEqual({
+        accountId: 'new-account-id',
+        state: 'connected',
+      })
+    },
+  )
 })

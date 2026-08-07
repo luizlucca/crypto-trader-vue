@@ -269,6 +269,9 @@ export class SecuritySession {
     this.assertAccountDraft(draft)
     const vault = this.requireVault()
     const accountId = draft.accountId ?? this.createAccountId()
+    if (this.connections.snapshot().accountId === accountId) {
+      this.connections.disconnect()
+    }
     const record: ProviderAccountRecord = {
       accountId,
       provider: 'binance',
