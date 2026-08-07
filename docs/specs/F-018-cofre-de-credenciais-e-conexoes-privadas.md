@@ -2,7 +2,7 @@
 
 **Status:** validação final — automação concluída, com pendências de lint
 preexistentes e validação manual de UI
-**Última revisão:** 2026-08-07  
+**Última revisão:** 2026-08-07\
 **Relaciona-se a:** [F-002](./F-002-providers-binance.md),
 [F-009](./F-009-temas-configuracoes.md),
 [F-012](./F-012-arquitetura-modular.md) e

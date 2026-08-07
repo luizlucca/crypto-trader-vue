@@ -113,7 +113,7 @@ it('rejects a provider draft with oversized or missing secret fields', () => {
 
 - [ ] **Step 2: Executar os testes para confirmar a falha**
 
-Run: `npx vitest run shared/domain/personalPassword.test.ts shared/contracts/security.test.ts`  
+Run: `npx vitest run shared/domain/personalPassword.test.ts shared/contracts/security.test.ts`\
 Expected: FAIL because the modules do not exist.
 
 - [ ] **Step 3: Implementar tipos, canais e validação sem segredo de saída**
@@ -157,7 +157,7 @@ mas `SecurityEvent` e `SecuritySnapshot` não podem conter tais campos.
 
 - [ ] **Step 4: Executar os testes de contrato**
 
-Run: `npx vitest run shared/domain/personalPassword.test.ts shared/contracts/security.test.ts`  
+Run: `npx vitest run shared/domain/personalPassword.test.ts shared/contracts/security.test.ts`\
 Expected: PASS, incluindo senha de 8/128 caracteres, quatro classes, timeout
 permitido, lista de mercados sem duplicação e ausência de segredo no snapshot.
 
@@ -203,7 +203,7 @@ it('rejects a changed authentication tag and leaves the stored vault intact', as
 
 - [ ] **Step 2: Executar os testes para confirmar a falha**
 
-Run: `npx vitest run electron/main/security/vaultCrypto.test.ts electron/main/security/vaultRepository.test.ts`  
+Run: `npx vitest run electron/main/security/vaultCrypto.test.ts electron/main/security/vaultRepository.test.ts`\
 Expected: FAIL because crypto and repository are absent.
 
 - [ ] **Step 3: Implementar envelope autenticado e repositório**
@@ -246,7 +246,7 @@ cifrar/decifrar.
 
 - [ ] **Step 4: Executar os testes e a checagem de tipos**
 
-Run: `npm run typecheck && npx vitest run electron/main/security/vaultCrypto.test.ts electron/main/security/vaultRepository.test.ts`  
+Run: `npm run typecheck && npx vitest run electron/main/security/vaultCrypto.test.ts electron/main/security/vaultRepository.test.ts`\
 Expected: PASS para senha errada, tag alterada, IV diferente por escrita,
 envelope sem texto simples, rename atômico e `destroy()` removendo o arquivo.
 
@@ -295,7 +295,7 @@ it('maps 401, permission, timestamp and network failures to stable codes', async
 
 - [ ] **Step 2: Executar os testes para confirmar a falha**
 
-Run: `npx vitest run electron/main/providers/accountProvider.test.ts electron/main/providers/binance/binanceAccountProvider.test.ts`  
+Run: `npx vitest run electron/main/providers/accountProvider.test.ts electron/main/providers/binance/binanceAccountProvider.test.ts`\
 Expected: FAIL because the authenticated provider modules do not exist.
 
 - [ ] **Step 3: Implementar contrato e validação HMAC**
@@ -324,7 +324,7 @@ para provider não registrado.
 
 - [ ] **Step 4: Executar os testes de provider**
 
-Run: `npx vitest run electron/main/providers/accountProvider.test.ts electron/main/providers/binance/binanceAccountProvider.test.ts`  
+Run: `npx vitest run electron/main/providers/accountProvider.test.ts electron/main/providers/binance/binanceAccountProvider.test.ts`\
 Expected: PASS para Spot, Futures, ambos, assinatura estável, nenhum secret em
 URL/log de erro e mapeamento de todos os códigos de falha.
 
@@ -377,7 +377,7 @@ it('ignores a late validation after lock and clears the master key', async () =>
 
 - [ ] **Step 2: Executar os testes para confirmar a falha**
 
-Run: `npx vitest run electron/main/security/securityPreferences.test.ts electron/main/security/securitySession.test.ts`  
+Run: `npx vitest run electron/main/security/securityPreferences.test.ts electron/main/security/securitySession.test.ts`\
 Expected: FAIL because session and preference modules do not exist.
 
 - [ ] **Step 3: Implementar preferências e sessão com geração de cancelamento**
@@ -413,7 +413,7 @@ vez. O timer chama a função injetada `getSystemIdleTime()` a cada 30 segundos;
 
 - [ ] **Step 4: Executar os testes de sessão**
 
-Run: `npx vitest run electron/main/security/securityPreferences.test.ts electron/main/security/securitySession.test.ts`  
+Run: `npx vitest run electron/main/security/securityPreferences.test.ts electron/main/security/securitySession.test.ts`\
 Expected: PASS para setup, unlock, troca de senha, reset destrutivo, máscara de
 API key, multi-conta, lock, timeout, atualização de preferências e validação
 tardia descartada.
@@ -462,7 +462,7 @@ it('locks before minimizing and prevents close when configured to minimize', () 
 
 - [ ] **Step 2: Executar os testes para confirmar a falha**
 
-Run: `npx vitest run electron/main/security/securityLifecycle.test.ts electron/main/security/registerSecurityIPC.test.ts`  
+Run: `npx vitest run electron/main/security/securityLifecycle.test.ts electron/main/security/registerSecurityIPC.test.ts`\
 Expected: FAIL because lifecycle and IPC modules do not exist.
 
 - [ ] **Step 3: Implementar controle de ciclo e canal IPC**
@@ -532,7 +532,7 @@ sessão. Mantenha `let quitting = false` em `index.ts`, defina-o em
 
 - [ ] **Step 4: Executar testes de ciclo, IPC e preload**
 
-Run: `npm run typecheck && npx vitest run electron/main/security/securityLifecycle.test.ts electron/main/security/registerSecurityIPC.test.ts`  
+Run: `npm run typecheck && npx vitest run electron/main/security/securityLifecycle.test.ts electron/main/security/registerSecurityIPC.test.ts`\
 Expected: PASS para sender confiável, busca negada, evento sem segredo,
 minimização, suspensão, close/quit e cleanup dos listeners.
 
@@ -584,7 +584,7 @@ it('owns one desktop state subscription and releases it on stop', () => {
 
 - [ ] **Step 2: Executar os testes para confirmar a falha**
 
-Run: `npx vitest run src/platform/desktop/security.test.ts src/features/security/services/securitySession.test.ts`  
+Run: `npx vitest run src/platform/desktop/security.test.ts src/features/security/services/securitySession.test.ts`\
 Expected: FAIL because the renderer adapter and service do not exist.
 
 - [ ] **Step 3: Implementar o adapter e serviço reativo mínimo**
@@ -612,7 +612,7 @@ importe uma feature.
 
 - [ ] **Step 4: Executar os testes de renderer sem DOM**
 
-Run: `npm run typecheck && npx vitest run src/platform/desktop/security.test.ts src/features/security/services/securitySession.test.ts`  
+Run: `npm run typecheck && npx vitest run src/platform/desktop/security.test.ts src/features/security/services/securitySession.test.ts`\
 Expected: PASS para structured clone, estado inicial público, evento de lock e
 cleanup de listener.
 
@@ -659,7 +659,7 @@ it('only sends setup after confirmation matches and clears pending values', asyn
 
 - [ ] **Step 2: Executar o teste para confirmar a falha**
 
-Run: `npx vitest run src/features/security/services/securityAccessController.test.ts`  
+Run: `npx vitest run src/features/security/services/securityAccessController.test.ts`\
 Expected: FAIL because `createSecurityAccessController()` is absent.
 
 - [ ] **Step 3: Implementar o controlador e a interface**
@@ -685,7 +685,7 @@ perdidas. Não renderizar nem interpolar a senha em mensagens de erro.
 
 - [ ] **Step 4: Executar o teste e validar manualmente o fluxo público**
 
-Run: `npx vitest run src/features/security/services/securityAccessController.test.ts`  
+Run: `npx vitest run src/features/security/services/securityAccessController.test.ts`\
 Expected: PASS para confirmação, lock e limpeza de valores.
 
 Manual: iniciar sem cofre, abrir/fechar o diálogo, criar senha, bloquear e
@@ -735,7 +735,7 @@ it('renders only the suffix returned by the main process', () => {
 
 - [ ] **Step 2: Executar os testes para confirmar a falha**
 
-Run: `npx vitest run src/features/providers/services/providerAccounts.test.ts`  
+Run: `npx vitest run src/features/providers/services/providerAccounts.test.ts`\
 Expected: FAIL because the provider UI helpers do not exist.
 
 - [ ] **Step 3: Implementar a seção Provedores**
@@ -762,7 +762,7 @@ na tela, sem persistir nem copiar a mensagem bruta do provider.
 
 - [ ] **Step 4: Executar teste e validação manual de conta inválida**
 
-Run: `npx vitest run src/features/providers/services/providerAccounts.test.ts`  
+Run: `npx vitest run src/features/providers/services/providerAccounts.test.ts`\
 Expected: PASS para campos, mercados e máscara.
 
 Manual: inserir credencial inválida e confirmar que nenhum cartão novo aparece
@@ -812,7 +812,7 @@ it('does not attach unavailable lock-screen events on Linux', () => {
 
 - [ ] **Step 2: Executar os testes para confirmar a falha**
 
-Run: `npx vitest run electron/main/security/securityPreferences.test.ts electron/main/security/securityLifecycle.test.ts`  
+Run: `npx vitest run electron/main/security/securityPreferences.test.ts electron/main/security/securityLifecycle.test.ts`\
 Expected: FAIL for the newly specified timeout restart and platform guard.
 
 - [ ] **Step 3: Implementar o painel e completar o ciclo de vida**
@@ -839,7 +839,7 @@ com a próxima ocorrência do evento — sem recarregar gráfico ou reiniciar da
 
 - [ ] **Step 4: Executar os testes e validar os gatilhos**
 
-Run: `npx vitest run electron/main/security/securityPreferences.test.ts electron/main/security/securityLifecycle.test.ts`  
+Run: `npx vitest run electron/main/security/securityPreferences.test.ts electron/main/security/securityLifecycle.test.ts`\
 Expected: PASS para defaults, persistência, timeout, minimização, suspensão,
 Linux sem evento de lock-screen e as duas ações de fechar.
 
@@ -886,7 +886,7 @@ it('keeps public market data independent after security lock', async () => {
 
 - [ ] **Step 2: Executar a suíte específica para confirmar cobertura**
 
-Run: `npx vitest run shared/contracts/security.test.ts electron/main/security electron/main/providers src/platform/desktop/security.test.ts src/features/security`  
+Run: `npx vitest run shared/contracts/security.test.ts electron/main/security electron/main/providers src/platform/desktop/security.test.ts src/features/security`\
 Expected: PASS, incluindo serialização sem segredo, lock durante validação e
 independência de dados públicos.
 
@@ -903,7 +903,7 @@ em saída de teste.
 
 - [ ] **Step 4: Executar verificação completa e medição manual**
 
-Run: `npm run typecheck && npx eslint . && npx vitest run && npm run build`  
+Run: `npm run typecheck && npx eslint . && npx vitest run && npm run build`\
 Expected: exit code 0; warnings existentes de `max-len` permanecem tolerados,
 sem novos erros.
 

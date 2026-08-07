@@ -1,7 +1,7 @@
 # ADR-0006 — Cofre de credenciais por senha no processo principal
 
-**Status:** aceito  
-**Data:** 2026-08-07  
+**Status:** aceito\
+**Data:** 2026-08-07\
 **Relaciona-se a:** [F-018](../specs/F-018-cofre-de-credenciais-e-conexoes-privadas.md)
 
 ## Contexto

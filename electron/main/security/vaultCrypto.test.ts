@@ -89,20 +89,20 @@ describe('VaultCrypto', () => {
 
   it('opens and normalizes a legacy account without an authorized market',
     async () => {
-    const crypto = new VaultCrypto()
-    const legacyContents = {
-      version: 1,
-      accounts: [{
-        accountId: 'legacy-without-market',
-        provider: 'binance',
-        label: 'Conta legada',
-        markets: [],
-        apiKey: 'legacy-api-key',
-        apiSecret: 'legacy-api-secret',
-        enabled: true,
-      }],
-    }
-    const encrypted = await crypto.create(password, legacyContents as VaultContents)
+      const crypto = new VaultCrypto()
+      const legacyContents = {
+        version: 1,
+        accounts: [{
+          accountId: 'legacy-without-market',
+          provider: 'binance',
+          label: 'Conta legada',
+          markets: [],
+          apiKey: 'legacy-api-key',
+          apiSecret: 'legacy-api-secret',
+          enabled: true,
+        }],
+      }
+      const encrypted = await crypto.create(password, legacyContents as VaultContents)
 
       const unlocked = await crypto.unlock(password, encrypted.envelope)
 
