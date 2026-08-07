@@ -258,22 +258,24 @@ describe('SecuritySession', () => {
     })
   })
 
-  it('disconnects and discards a late connection result after locking',
+  it('aborts the provider request when locking an active connection',
     async () => {
-      let releaseValidation: (() => void) | undefined
       let validationStarted: (() => void) | undefined
+      let signal: AbortSignal | undefined
       const provider: AccountProvider = {
         id: 'binance',
-        validateConnection: async (credentials, markets) => {
+        validateConnection: async (credentials, markets, context) => {
           expect(credentials.apiSecret).toBe('api-secret-one')
+          signal = context?.signal
           validationStarted?.()
-          await new Promise<void>((resolve) => {
-            releaseValidation = resolve
+          return new Promise((resolve) => {
+            signal?.addEventListener('abort', () => {
+              resolve(markets.map((market) => ({
+                market,
+                state: 'connected' as const,
+              })))
+            }, { once: true })
           })
-          return markets.map((market) => ({
-            market,
-            state: 'connected' as const,
-          }))
         },
       }
       const session = await createSession({
@@ -288,9 +290,9 @@ describe('SecuritySession', () => {
       const connecting = session.connectAccount('one')
       await started
       session.lock('manual')
-      releaseValidation?.()
       await connecting
 
+      expect(signal?.aborted).toBe(true)
       expect(session.getSnapshot()).toMatchObject({
         state: 'locked',
         accounts: [],
@@ -298,6 +300,45 @@ describe('SecuritySession', () => {
       })
     },
   )
+
+  it('aborts the provider request when resetting the vault', async () => {
+    let validationStarted: (() => void) | undefined
+    let signal: AbortSignal | undefined
+    const provider: AccountProvider = {
+      id: 'binance',
+      validateConnection: async (_credentials, markets, context) => {
+        signal = context?.signal
+        validationStarted?.()
+        return new Promise((resolve) => {
+          signal?.addEventListener('abort', () => {
+            resolve(markets.map((market) => ({
+              market,
+              state: 'connected' as const,
+            })))
+          }, { once: true })
+        })
+      },
+    }
+    const session = await createSession({
+      accounts: [account('one')],
+      provider,
+    })
+    const started = new Promise<void>((resolve) => {
+      validationStarted = resolve
+    })
+
+    await session.unlock(password)
+    const connecting = session.connectAccount('one')
+    await started
+    await session.resetVault('APAGAR')
+    await connecting
+
+    expect(signal?.aborted).toBe(true)
+    expect(session.getSnapshot()).toMatchObject({
+      state: 'setup-required',
+      connection: { state: 'disconnected' },
+    })
+  })
 
   it('encrypts accounts, masks API keys and connects with explicit save intent',
     async () => {
@@ -322,6 +363,7 @@ describe('SecuritySession', () => {
           apiSecret: 'binance-api-secret',
         },
         ['futures'],
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       )
       expect(session.getSnapshot().accounts).toEqual([
         expect.objectContaining({
@@ -514,7 +556,7 @@ describe('SecuritySession', () => {
       expect(validateConnection).toHaveBeenCalledWith({
         apiKey: 'binance-api-key-NEW',
         apiSecret: 'binance-api-secret-NEW',
-      }, ['spot'])
+      }, ['spot'], expect.objectContaining({ signal: expect.any(AbortSignal) }))
       expect(session.getSnapshot().connection).toEqual({
         accountId: 'new-account-id',
         state: 'connected',

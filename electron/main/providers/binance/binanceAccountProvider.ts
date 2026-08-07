@@ -4,6 +4,7 @@ import type { Market } from '@shared/types/market'
 import type {
   AccountMarketValidation,
   AccountProvider,
+  AccountProviderValidationContext,
   BinanceCredentials,
 } from '../accountProvider'
 
@@ -44,20 +45,31 @@ export class BinanceAccountProvider implements AccountProvider {
   async validateConnection(
     credentials: BinanceCredentials,
     markets: readonly Market[],
+    context: AccountProviderValidationContext,
   ): Promise<readonly AccountMarketValidation[]> {
     return Promise.all(
-      markets.map((market) => this.validateMarket(credentials, market)),
+      markets.map((market) => this.validateMarket(
+        credentials,
+        market,
+        context.signal,
+      )),
     )
   }
 
   private async validateMarket(
     credentials: BinanceCredentials,
     market: Market,
+    signal: AbortSignal | undefined,
   ): Promise<AccountMarketValidation> {
     try {
       const response = await this.fetch(
         this.createSignedUrl(market, credentials.apiSecret),
-        { headers: { 'X-MBX-APIKEY': credentials.apiKey } },
+        {
+          method: 'GET',
+          redirect: 'error',
+          signal,
+          headers: { 'X-MBX-APIKEY': credentials.apiKey },
+        },
       )
 
       if (response.ok) {

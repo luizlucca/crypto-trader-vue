@@ -14,11 +14,16 @@ export interface AccountMarketValidation {
   failureCode?: AccountFailureCode
 }
 
+export interface AccountProviderValidationContext {
+  signal: AbortSignal
+}
+
 export interface AccountProvider {
   readonly id: 'binance'
   validateConnection(
     credentials: BinanceCredentials,
     markets: readonly Market[],
+    context: AccountProviderValidationContext,
   ): Promise<readonly AccountMarketValidation[]>
 }
 

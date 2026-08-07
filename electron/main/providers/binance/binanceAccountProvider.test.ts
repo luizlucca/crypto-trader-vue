@@ -8,6 +8,10 @@ const credentials = {
 }
 const timestamp = 1_723_984_000_000
 
+function validationContext(): { signal: AbortSignal } {
+  return { signal: new AbortController().signal }
+}
+
 function response(status: number, body: unknown = {}): Response {
   return {
     ok: status >= 200 && status < 300,
@@ -26,7 +30,11 @@ describe('BinanceAccountProvider', () => {
         now: () => timestamp,
       })
 
-      await expect(provider.validateConnection(credentials, ['spot']))
+      await expect(provider.validateConnection(
+        credentials,
+        ['spot'],
+        validationContext(),
+      ))
         .resolves.toEqual([{ market: 'spot', state: 'connected' }])
 
       const [url, options] = fetch.mock.calls[0] as [string, RequestInit]
@@ -55,6 +63,7 @@ describe('BinanceAccountProvider', () => {
       const result = await provider.validateConnection(
         credentials,
         ['spot', 'futures'],
+        validationContext(),
       )
 
       expect(result).toEqual([
@@ -74,6 +83,34 @@ describe('BinanceAccountProvider', () => {
     },
   )
 
+  it('constrains both market validation requests to their original origins',
+    async () => {
+      const fetch = vi.fn().mockResolvedValue(response(200))
+      const controller = new AbortController()
+      const provider = new BinanceAccountProvider({
+        fetch,
+        now: () => timestamp,
+      })
+
+      await provider.validateConnection(
+        credentials,
+        ['spot', 'futures'],
+        { signal: controller.signal },
+      )
+
+      expect(fetch.mock.calls).toHaveLength(2)
+      for (const [, options] of fetch.mock.calls as [string, RequestInit][]) {
+        expect(options).toMatchObject({
+          method: 'GET',
+          redirect: 'error',
+          signal: controller.signal,
+        })
+      }
+      expect((fetch.mock.calls[0]?.[1] as RequestInit).signal)
+        .toBe((fetch.mock.calls[1]?.[1] as RequestInit).signal)
+    },
+  )
+
   it.each([
     [401, {}, 'credentials'],
     [403, {}, 'permission'],
@@ -88,7 +125,11 @@ describe('BinanceAccountProvider', () => {
         now: () => timestamp,
       })
 
-      await expect(provider.validateConnection(credentials, ['futures']))
+      await expect(provider.validateConnection(
+        credentials,
+        ['futures'],
+        validationContext(),
+      ))
         .resolves.toEqual([
           { market: 'futures', state: 'failed', failureCode },
         ])
@@ -103,7 +144,11 @@ describe('BinanceAccountProvider', () => {
         now: () => timestamp,
       })
 
-      await expect(provider.validateConnection(credentials, ['spot']))
+      await expect(provider.validateConnection(
+        credentials,
+        ['spot'],
+        validationContext(),
+      ))
         .resolves.toEqual([
           { market: 'spot', state: 'failed', failureCode: 'network' },
         ])

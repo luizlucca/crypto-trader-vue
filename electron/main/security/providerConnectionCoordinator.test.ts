@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ProviderAccountRecord } from './vaultCrypto'
 import { ProviderConnectionCoordinator } from './providerConnectionCoordinator'
 import {
   AccountProviderRegistry,
+  type AccountMarketValidation,
   type AccountProvider,
 } from '../providers/accountProvider'
 
@@ -42,6 +43,113 @@ describe('ProviderConnectionCoordinator', () => {
       { accountId: 'one', state: 'connecting' },
       { accountId: 'one', state: 'connected' },
     ])
+  })
+
+  it('gives each validation attempt an abort signal', async () => {
+    let signal: AbortSignal | undefined
+    const coordinator = createCoordinator({
+      id: 'binance',
+      validateConnection: async (_credentials, _markets, context) => {
+        signal = context?.signal
+        return [{ market: 'spot', state: 'connected' }]
+      },
+    })
+
+    await coordinator.connect(account('one'))
+
+    expect(signal).toBeInstanceOf(AbortSignal)
+    expect(signal?.aborted).toBe(false)
+  })
+
+  it('aborts a pending validation when disconnected without provider release', async () => {
+    let signal: AbortSignal | undefined
+    let started: (() => void) | undefined
+    const coordinator = createCoordinator({
+      id: 'binance',
+      validateConnection: async (_credentials, _markets, context) => {
+        signal = context?.signal
+        started?.()
+        return new Promise<readonly AccountMarketValidation[]>(() => undefined)
+      },
+    })
+    const validationStarted = new Promise<void>((resolve) => {
+      started = resolve
+    })
+
+    void coordinator.connect(account('one'))
+    await validationStarted
+    coordinator.disconnect()
+
+    expect(signal?.aborted).toBe(true)
+    expect(coordinator.snapshot()).toEqual({ state: 'disconnected' })
+  })
+
+  it('aborts the replaced validation without aborting the replacement', async () => {
+    const signals: AbortSignal[] = []
+    let firstStarted: (() => void) | undefined
+    const coordinator = createCoordinator({
+      id: 'binance',
+      validateConnection: async (credentials, _markets, context) => {
+        const signal = context?.signal
+        if (signal) {
+          signals.push(signal)
+        }
+        if (credentials.apiKey === 'api-key-one') {
+          firstStarted?.()
+          return new Promise<readonly AccountMarketValidation[]>(() => undefined)
+        }
+        return [{ market: 'spot', state: 'connected' }]
+      },
+    })
+    const validationStarted = new Promise<void>((resolve) => {
+      firstStarted = resolve
+    })
+
+    void coordinator.connect(account('one'))
+    await validationStarted
+    await coordinator.connect(account('two'))
+
+    expect(signals).toHaveLength(2)
+    expect(signals[0]?.aborted).toBe(true)
+    expect(signals[1]?.aborted).toBe(false)
+    expect(coordinator.snapshot()).toEqual({
+      accountId: 'two',
+      state: 'connected',
+    })
+  })
+
+  it('fails the current validation as network when its deadline expires', async () => {
+    vi.useFakeTimers()
+    try {
+      let signal: AbortSignal | undefined
+      let started: (() => void) | undefined
+      const coordinator = createCoordinator({
+        id: 'binance',
+        validateConnection: async (_credentials, _markets, context) => {
+          signal = context?.signal
+          started?.()
+          return new Promise<readonly AccountMarketValidation[]>(() => undefined)
+        },
+      })
+      const validationStarted = new Promise<void>((resolve) => {
+        started = resolve
+      })
+
+      const pending = coordinator.connect(account('one'))
+      await validationStarted
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      expect(signal?.aborted).toBe(true)
+      await pending
+      expect(coordinator.snapshot()).toEqual({
+        accountId: 'one',
+        state: 'failed',
+        failureCode: 'network',
+      })
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('normalizes a provider validation failure', async () => {
