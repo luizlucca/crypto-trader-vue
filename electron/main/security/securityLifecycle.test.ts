@@ -83,6 +83,7 @@ describe('bindSecurityLifecycle', () => {
     window.emit('close', closeEvent)
 
     expect(session.lock).toHaveBeenCalledWith('window-close')
+    expect(session.lock).toHaveBeenCalledOnce()
     expect(closeEvent.preventDefault).toHaveBeenCalledOnce()
     expect(requestQuit).toHaveBeenCalledOnce()
     expect(reentryEvent.preventDefault).not.toHaveBeenCalled()
@@ -109,7 +110,7 @@ describe('bindSecurityLifecycle', () => {
     dispose()
   })
 
-  it('allows a real quit while still clearing the unlocked session', () => {
+  it('leaves a real quit for the before-quit shutdown handler', () => {
     const window = new FakeWindow()
     const session = createSession('lock-and-minimize')
     const event = { preventDefault: vi.fn() }
@@ -123,7 +124,7 @@ describe('bindSecurityLifecycle', () => {
 
     window.emit('close', event)
 
-    expect(session.lock).toHaveBeenCalledWith('window-close')
+    expect(session.lock).not.toHaveBeenCalled()
     expect(event.preventDefault).not.toHaveBeenCalled()
     expect(window.minimize).not.toHaveBeenCalled()
     dispose()

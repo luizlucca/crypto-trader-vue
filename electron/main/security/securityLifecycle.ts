@@ -44,11 +44,11 @@ export function bindSecurityLifecycle(
     options.session.lockIfEnabled('suspend')
   }
   const onClose = (event: unknown): void => {
-    options.session.lock('window-close')
     if (options.isQuitting()) {
       return
     }
 
+    options.session.lock('window-close')
     const closeEvent = event as CloseEvent
     if (options.session.closeAction() === 'lock-and-minimize') {
       closeEvent.preventDefault()
