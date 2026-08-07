@@ -2,7 +2,11 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { SecuritySnapshot } from '@shared/contracts/security'
+import {
+  DEFAULT_SECURITY_PREFERENCES,
+  type SecurityPreferences,
+  type SecuritySnapshot,
+} from '@shared/contracts/security'
 import type {
   EncryptedCredentialVaultV1,
   ProviderAccountRecord,
@@ -111,6 +115,15 @@ function connectedProvider(): AccountProvider {
   }
 }
 
+class InjectedPreferencesStore extends SecurityPreferencesStore {
+  override async read(): Promise<SecurityPreferences> {
+    return {
+      ...DEFAULT_SECURITY_PREFERENCES,
+      apiSecret: 'must-not-reach-snapshot',
+    } as SecurityPreferences
+  }
+}
+
 async function createSession(options: {
   accounts?: ProviderAccountRecord[]
   provider?: AccountProvider
@@ -119,6 +132,7 @@ async function createSession(options: {
   getSystemIdleTime?: () => number
   setInterval?: typeof setInterval
   clearInterval?: typeof clearInterval
+  preferences?: SecurityPreferencesStore
 } = {}): Promise<SecuritySession> {
   const directory = await mkdtemp(join(tmpdir(), 'cryptopro-session-'))
   temporaryDirectories.push(directory)
@@ -143,7 +157,7 @@ async function createSession(options: {
   const session = new SecuritySession({
     repository,
     crypto,
-    preferences: new SecurityPreferencesStore(
+    preferences: options.preferences ?? new SecurityPreferencesStore(
       join(directory, 'security-preferences.v1.json'),
     ),
     connections: new ProviderConnectionCoordinator(providers),
@@ -183,6 +197,15 @@ afterEach(async () => {
 })
 
 describe('SecuritySession', () => {
+  it('projects injected preferences out of public snapshots', async () => {
+    const session = await createSession({
+      preferences: new InjectedPreferencesStore('not-read-by-this-test'),
+    })
+
+    expect(session.getSnapshot().preferences)
+      .toEqual(DEFAULT_SECURITY_PREFERENCES)
+  })
+
   it('starts public and never discloses accounts while locked', async () => {
     const publicSession = await createSession()
     const lockedSession = await createSession({ accounts: [account('one')] })

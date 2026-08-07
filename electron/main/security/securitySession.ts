@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {
   DEFAULT_SECURITY_PREFERENCES,
+  projectSecurityPreferences,
   type BinanceAccountDraft,
   type ProviderConnectionSnapshot,
   type ProviderAccountSummary,
@@ -147,7 +148,7 @@ export class SecuritySession {
       hasVault: this.hasVault,
       accounts,
       connection: this.connections.snapshot(),
-      preferences: { ...this.preferences },
+      preferences: projectSecurityPreferences(this.preferences)!,
     }
   }
 

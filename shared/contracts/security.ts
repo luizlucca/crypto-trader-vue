@@ -95,6 +95,21 @@ export interface DesktopSecurityAPI {
 
 const ACCOUNT_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/
 const MAX_API_CREDENTIAL_LENGTH = 256
+const SECURITY_PREFERENCE_KEYS = [
+  'lockOnMinimize',
+  'lockOnSuspend',
+  'idleTimeoutMinutes',
+  'closeAction',
+] as const
+
+function hasExactKeys(value: unknown, keys: readonly string[]): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false
+  }
+  const actualKeys = Object.keys(value)
+  return actualKeys.length === keys.length
+    && keys.every((key) => Object.hasOwn(value, key))
+}
 
 function isAccountId(value: unknown): value is string {
   return typeof value === 'string' && ACCOUNT_ID_PATTERN.test(value)
@@ -114,18 +129,40 @@ function isMarkets(value: unknown): value is readonly Market[] {
     && new Set(value).size === value.length
 }
 
-function isPreferences(value: unknown): value is SecurityPreferences {
-  if (!value || typeof value !== 'object') {
-    return false
+export function projectSecurityPreferences(
+  value: unknown,
+): SecurityPreferences | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
   }
   const preferences = value as Partial<SecurityPreferences>
-  return typeof preferences.lockOnMinimize === 'boolean'
-    && typeof preferences.lockOnSuspend === 'boolean'
-    && isIdleTimeoutMinutes(preferences.idleTimeoutMinutes)
-    && (
+  if (!Object.hasOwn(preferences, 'lockOnMinimize')
+    || !Object.hasOwn(preferences, 'lockOnSuspend')
+    || !Object.hasOwn(preferences, 'idleTimeoutMinutes')
+    || !Object.hasOwn(preferences, 'closeAction')
+    || typeof preferences.lockOnMinimize !== 'boolean'
+    || typeof preferences.lockOnSuspend !== 'boolean'
+    || !isIdleTimeoutMinutes(preferences.idleTimeoutMinutes)
+    || !(
       preferences.closeAction === 'quit-and-lock'
       || preferences.closeAction === 'lock-and-minimize'
-    )
+    )) {
+    return undefined
+  }
+
+  return {
+    lockOnMinimize: preferences.lockOnMinimize,
+    lockOnSuspend: preferences.lockOnSuspend,
+    idleTimeoutMinutes: preferences.idleTimeoutMinutes,
+    closeAction: preferences.closeAction,
+  }
+}
+
+export function isSecurityPreferences(
+  value: unknown,
+): value is SecurityPreferences {
+  return hasExactKeys(value, SECURITY_PREFERENCE_KEYS)
+    && projectSecurityPreferences(value) !== undefined
 }
 
 function isIdleTimeoutMinutes(value: unknown): value is IdleTimeoutMinutes {
@@ -139,16 +176,30 @@ function isIdleTimeoutMinutes(value: unknown): value is IdleTimeoutMinutes {
 }
 
 function isBinanceAccountDraft(value: unknown): value is BinanceAccountDraft {
-  if (!value || typeof value !== 'object') {
+  if (!hasExactKeys(value, [
+    'label',
+    'markets',
+    'apiKey',
+    'apiSecret',
+    'validateAndConnect',
+  ]) && !hasExactKeys(value, [
+    'accountId',
+    'label',
+    'markets',
+    'apiKey',
+    'apiSecret',
+    'validateAndConnect',
+  ])) {
     return false
   }
+
   const draft = value as Partial<BinanceAccountDraft>
   return (
     draft.accountId === undefined || isAccountId(draft.accountId)
   )
   && typeof draft.label === 'string'
+  && draft.label.length <= 64
   && draft.label.trim().length >= 1
-  && draft.label.trim().length <= 64
   && isMarkets(draft.markets)
   && isCredential(draft.apiKey)
   && isCredential(draft.apiSecret)
@@ -163,27 +214,33 @@ export function isSecurityRequest(value: unknown): value is SecurityRequest {
   switch (request.kind) {
     case 'get-snapshot':
     case 'lock':
-      return true
+      return hasExactKeys(value, ['kind'])
     case 'setup':
     case 'unlock':
-      return typeof request.password === 'string'
+      return hasExactKeys(value, ['kind', 'password'])
+        && typeof request.password === 'string'
         && validatePersonalPassword(request.password).valid
     case 'change-password':
-      return typeof request.currentPassword === 'string'
+      return hasExactKeys(value, ['kind', 'currentPassword', 'nextPassword'])
+        && typeof request.currentPassword === 'string'
         && validatePersonalPassword(request.currentPassword).valid
         && typeof request.nextPassword === 'string'
         && validatePersonalPassword(request.nextPassword).valid
     case 'reset-vault':
-      return request.confirmation === 'APAGAR'
+      return hasExactKeys(value, ['kind', 'confirmation'])
+        && request.confirmation === 'APAGAR'
     case 'save-binance-account':
-      return isBinanceAccountDraft(request.draft)
+      return hasExactKeys(value, ['kind', 'draft'])
+        && isBinanceAccountDraft(request.draft)
     case 'remove-account':
     case 'connect-account':
-      return isAccountId(request.accountId)
+      return hasExactKeys(value, ['kind', 'accountId'])
+        && isAccountId(request.accountId)
     case 'disconnect-account':
-      return true
+      return hasExactKeys(value, ['kind'])
     case 'update-preferences':
-      return isPreferences(request.preferences)
+      return hasExactKeys(value, ['kind', 'preferences'])
+        && isSecurityPreferences(request.preferences)
     default:
       return false
   }

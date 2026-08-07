@@ -9,43 +9,24 @@ import { randomBytes } from 'node:crypto'
 import { dirname } from 'node:path'
 import {
   DEFAULT_SECURITY_PREFERENCES,
-  type IdleTimeoutMinutes,
+  isSecurityPreferences,
+  projectSecurityPreferences,
   type SecurityPreferences,
 } from '@shared/contracts/security'
 
 const FILE_MODE = 0o600
 
+export { isSecurityPreferences } from '@shared/contracts/security'
+
 function copyPreferences(
   preferences: SecurityPreferences,
 ): SecurityPreferences {
-  return { ...preferences }
-}
-
-function isIdleTimeoutMinutes(value: unknown): value is IdleTimeoutMinutes {
-  return value === 0
-    || value === 1
-    || value === 5
-    || value === 15
-    || value === 30
-    || value === 60
-    || value === 120
-}
-
-export function isSecurityPreferences(
-  value: unknown,
-): value is SecurityPreferences {
-  if (!value || typeof value !== 'object') {
-    return false
+  return {
+    lockOnMinimize: preferences.lockOnMinimize,
+    lockOnSuspend: preferences.lockOnSuspend,
+    idleTimeoutMinutes: preferences.idleTimeoutMinutes,
+    closeAction: preferences.closeAction,
   }
-
-  const preferences = value as Partial<SecurityPreferences>
-  return typeof preferences.lockOnMinimize === 'boolean'
-    && typeof preferences.lockOnSuspend === 'boolean'
-    && isIdleTimeoutMinutes(preferences.idleTimeoutMinutes)
-    && (
-      preferences.closeAction === 'quit-and-lock'
-      || preferences.closeAction === 'lock-and-minimize'
-    )
 }
 
 export class SecurityPreferencesStore {
@@ -54,10 +35,14 @@ export class SecurityPreferencesStore {
   async read(): Promise<SecurityPreferences> {
     try {
       const contents: unknown = JSON.parse(await readFile(this.path, 'utf8'))
-      if (!isSecurityPreferences(contents)) {
+      const preferences = projectSecurityPreferences(contents)
+      if (!preferences) {
         throw new Error('Preferências de segurança inválidas')
       }
-      return copyPreferences(contents)
+      if (!isSecurityPreferences(contents)) {
+        await this.write(preferences)
+      }
+      return copyPreferences(preferences)
     } catch (error: unknown) {
       if (this.isMissingFile(error)) {
         return copyPreferences(DEFAULT_SECURITY_PREFERENCES)
@@ -77,12 +62,13 @@ export class SecurityPreferencesStore {
     let handle: Awaited<ReturnType<typeof open>> | undefined
     try {
       handle = await open(temporaryPath, 'wx', FILE_MODE)
-      await handle.writeFile(JSON.stringify(preferences), 'utf8')
+      const projected = copyPreferences(preferences)
+      await handle.writeFile(JSON.stringify(projected), 'utf8')
       await handle.sync()
       await handle.close()
       handle = undefined
       await rename(temporaryPath, this.path)
-      return copyPreferences(preferences)
+      return projected
     } finally {
       await handle?.close()
       await rm(temporaryPath, { force: true })

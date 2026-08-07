@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -56,4 +56,32 @@ describe('SecurityPreferencesStore', () => {
       await expect(store.read()).resolves.toEqual(DEFAULT_SECURITY_PREFERENCES)
     },
   )
+
+  it('rejects injected fields without persisting them', async () => {
+    const path = await temporaryPath()
+    const store = new SecurityPreferencesStore(path)
+    await store.write(DEFAULT_SECURITY_PREFERENCES)
+
+    await expect(store.write({
+      ...DEFAULT_SECURITY_PREFERENCES,
+      apiSecret: 'must-not-be-persisted',
+    } as never)).rejects.toThrow('Preferências de segurança inválidas')
+
+    await expect(store.read()).resolves.toEqual(DEFAULT_SECURITY_PREFERENCES)
+    await expect(readFile(path, 'utf8').then(JSON.parse))
+      .resolves.toEqual(DEFAULT_SECURITY_PREFERENCES)
+  })
+
+  it('sanitizes legacy preference files with injected fields', async () => {
+    const path = await temporaryPath()
+    await writeFile(path, JSON.stringify({
+      ...DEFAULT_SECURITY_PREFERENCES,
+      apiSecret: 'legacy-value',
+    }), 'utf8')
+    const store = new SecurityPreferencesStore(path)
+
+    await expect(store.read()).resolves.toEqual(DEFAULT_SECURITY_PREFERENCES)
+    await expect(readFile(path, 'utf8').then(JSON.parse))
+      .resolves.toEqual(DEFAULT_SECURITY_PREFERENCES)
+  })
 })

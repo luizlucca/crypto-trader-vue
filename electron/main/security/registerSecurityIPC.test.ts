@@ -90,6 +90,29 @@ describe('registerSecurityIPC', () => {
     expect(send).toHaveBeenCalledWith(snapshot)
   })
 
+  it('rejects injected request fields before they reach the session',
+    async () => {
+      const ipc = createIPC()
+      const session = createSession()
+      registerSecurityIPC({
+        ipc,
+        getMainWebContentsId: () => 10,
+        session,
+        send: vi.fn(),
+      })
+
+      await expect(ipc.request({ sender: { id: 10 } }, {
+        kind: 'update-preferences',
+        preferences: {
+          ...snapshot.preferences,
+          apiSecret: 'must-not-reach-the-session',
+        },
+      })).rejects.toThrow('Comando de segurança inválido')
+
+      expect(session.request).not.toHaveBeenCalled()
+    },
+  )
+
   it('forwards valid explicit connections and rejects invalid account ids',
     async () => {
       const ipc = createIPC()
