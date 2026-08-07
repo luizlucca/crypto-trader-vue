@@ -489,6 +489,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleWindowKey)
   window.removeEventListener('resize', handleViewportResize)
 })
+
+defineExpose({ selectSection })
 </script>
 
 <template>

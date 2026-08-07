@@ -1171,6 +1171,11 @@
   height: 15px;
 }
 
+.provider-account-icon .provider-icon {
+  width: 18px;
+  height: 18px;
+}
+
 .provider-connect-button {
   min-width: 74px;
   color: var(--blue);

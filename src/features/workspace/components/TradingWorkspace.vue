@@ -1,6 +1,18 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch,
+} from 'vue'
+import type {
+  AccountFailureCode,
+  SecuritySnapshot,
+} from '@shared/contracts/security'
 import AppHeader from '@app/components/AppHeader.vue'
+import AppToastHost from '@app/components/AppToastHost.vue'
 import GeneralSettingsPanel from '@settings/components/GeneralSettingsPanel.vue'
 import SecurityAccessDialog from '@security/components/SecurityAccessDialog.vue'
 import NavigationRail from '@app/components/NavigationRail.vue'
@@ -21,6 +33,10 @@ import { useCatalogCache } from '@market/composables/useCatalogCache'
 import { useGlobalShortcuts } from '@workspace/composables/useGlobalShortcuts'
 import { useResizableSidebar } from '@workspace/composables/useResizableSidebar'
 import { useSecuritySession } from '@security/services/securitySession'
+import ProviderConnectionDialog
+  from '@providers/components/ProviderConnectionDialog.vue'
+import { useNotifications } from '@app/services/notifications'
+import { nextPrivateAccessAction } from '@providers/services/privateAccessFlow'
 import {
   marketPanelVisible,
   orderBookPanelVisible,
@@ -40,8 +56,13 @@ const SIDEBAR_MIN_WIDTH = 190
 
 const settingsOpen = ref(false)
 const securityAccessOpen = ref(false)
+const providerConnectionOpen = ref(false)
+const settingsPanel = ref<{
+  selectSection(section: 'providers'): void
+} | null>(null)
 const favoriteKeys = shallowRef(loadFavoriteKeys())
 const security = useSecuritySession()
+const notifications = useNotifications()
 
 const {
   width: sidebarWidth,
@@ -163,6 +184,103 @@ function openSecurityAccess(): void {
   securityAccessOpen.value = true
 }
 
+function openProviderSettings(): void {
+  providerConnectionOpen.value = false
+  settingsPanel.value?.selectSection('providers')
+  settingsOpen.value = true
+}
+
+function connectionFailureMessage(failureCode: AccountFailureCode): string {
+  switch (failureCode) {
+    case 'credentials':
+      return 'Não foi possível validar as credenciais da conta.'
+    case 'permission':
+      return 'A conta não tem a permissão necessária para conectar.'
+    case 'clock':
+      return 'A data e a hora do computador precisam ser ajustadas.'
+    case 'network':
+      return 'Não foi possível alcançar a Binance. Tente novamente.'
+    case 'unknown':
+      return 'Não foi possível conectar a conta agora. Tente novamente.'
+  }
+}
+
+function notifyConnectionFailure(
+  accountId: string,
+  failureCode: AccountFailureCode,
+): void {
+  notifications.notify({
+    tone: 'error',
+    message: connectionFailureMessage(failureCode),
+    retry: () => {
+      providerConnectionOpen.value = true
+      void connectProviderAccount(accountId)
+    },
+    openSettings: openProviderSettings,
+  })
+}
+
+async function connectProviderAccount(accountId: string): Promise<void> {
+  const account = security.snapshot.value.accounts.find(
+    (candidate) => candidate.accountId === accountId,
+  )
+  if (!account) {
+    providerConnectionOpen.value = false
+    return
+  }
+
+  try {
+    const snapshot = await security.request({
+      kind: 'connect-account',
+      accountId,
+    })
+    const connection = snapshot.connection
+    if (connection.accountId !== accountId) {
+      providerConnectionOpen.value = false
+      return
+    }
+    if (connection.state === 'connected') {
+      providerConnectionOpen.value = false
+      notifications.notify({
+        tone: 'success',
+        message: `Conectado à Binance — ${account.label}`,
+      })
+      return
+    }
+    if (connection.state === 'failed') {
+      providerConnectionOpen.value = false
+      notifyConnectionFailure(accountId, connection.failureCode ?? 'unknown')
+    }
+  } catch {
+    providerConnectionOpen.value = false
+    notifyConnectionFailure(accountId, 'unknown')
+  }
+}
+
+function handleAuthenticated(snapshot: SecuritySnapshot): void {
+  const action = nextPrivateAccessAction(snapshot)
+  switch (action.kind) {
+    case 'open-providers':
+      openProviderSettings()
+      return
+    case 'connect-account':
+      providerConnectionOpen.value = true
+      void connectProviderAccount(action.accountId)
+      return
+    case 'choose-account':
+      providerConnectionOpen.value = true
+  }
+}
+
+watch(
+  () => security.snapshot.value.state,
+  (state) => {
+    if (state !== 'unlocked') {
+      providerConnectionOpen.value = false
+    }
+  },
+)
+
 function lockSecuritySession(): void {
   void security.request({ kind: 'lock' })
 }
@@ -278,6 +396,7 @@ function lockSecuritySession(): void {
       </span>
     </footer>
     <GeneralSettingsPanel
+      ref="settingsPanel"
       :open="settingsOpen"
       @close="settingsOpen = false"
       @request-access="openSecurityAccess"
@@ -286,6 +405,16 @@ function lockSecuritySession(): void {
       :open="securityAccessOpen"
       :state="security.snapshot.value.state"
       @close="securityAccessOpen = false"
+      @authenticated="handleAuthenticated"
     />
+    <ProviderConnectionDialog
+      :accounts="security.snapshot.value.accounts"
+      :connection="security.snapshot.value.connection"
+      :open="providerConnectionOpen"
+      @close="providerConnectionOpen = false"
+      @open-settings="openProviderSettings"
+      @select="connectProviderAccount"
+    />
+    <AppToastHost />
   </div>
 </template>

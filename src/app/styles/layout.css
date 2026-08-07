@@ -360,6 +360,266 @@
   text-decoration: underline;
 }
 
+.provider-connection-dialog {
+  position: fixed;
+  z-index: 1000;
+  top: 50%;
+  left: 50%;
+  width: min(420px, calc(100vw - 32px));
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  color: var(--text);
+  border: 1px solid var(--overlay-border);
+  border-radius: 10px;
+  background: var(--overlay-surface);
+  box-shadow: 0 18px 56px rgb(0 0 0 / 38%);
+}
+
+.provider-connection-dialog header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.provider-connection-dialog header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.provider-connection-dialog header span {
+  color: var(--blue);
+  font-size: 9.5px;
+  font-weight: 750;
+  letter-spacing: .1em;
+}
+
+.provider-connection-dialog h2,
+.provider-connection-dialog p {
+  margin: 0;
+}
+
+.provider-connection-dialog h2 {
+  color: var(--text-strong);
+  font-size: 16px;
+}
+
+.provider-connection-dialog header > button,
+.app-toast-dismiss {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.provider-connection-dialog header > button:hover,
+.app-toast-dismiss:hover {
+  color: var(--text-strong);
+  background: var(--hover-bg);
+}
+
+.provider-connection-dialog header > button svg,
+.app-toast-dismiss svg {
+  width: 16px;
+  height: 16px;
+}
+
+.provider-connection-options {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+}
+
+.provider-connection-options > p,
+.provider-connection-loading p {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.provider-connection-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  color: var(--text);
+  text-align: left;
+  background: var(--panel-raised);
+}
+
+.provider-connection-option:hover {
+  border-color: var(--accent-hover);
+  background: var(--hover-bg);
+}
+
+.provider-connection-option > span:last-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.provider-connection-option strong {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-connection-option small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.provider-connection-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 96px;
+  padding: 18px;
+}
+
+.provider-connection-loading strong {
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+.provider-connection-spinner {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 13%, transparent);
+}
+
+.provider-connection-spinner svg {
+  width: 17px;
+  height: 17px;
+  animation: provider-connection-spin .8s linear infinite;
+}
+
+@keyframes provider-connection-spin {
+  to { transform: rotate(360deg); }
+}
+
+.provider-connection-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.provider-connection-dialog footer button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  background: var(--control-bg);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.provider-connection-dialog footer button:hover {
+  border-color: var(--accent-hover);
+  background: var(--hover-bg);
+}
+
+.provider-connection-settings {
+  color: var(--blue) !important;
+}
+
+.provider-connection-settings svg {
+  width: 14px;
+  height: 14px;
+}
+
+.app-toast-host {
+  position: fixed;
+  z-index: 1100;
+  right: 16px;
+  bottom: 36px;
+  display: grid;
+  gap: 8px;
+  width: min(390px, calc(100vw - 32px));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.app-toast {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 7px;
+  background: var(--overlay-surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 24%);
+}
+
+.app-toast.success { border-left-color: var(--green); }
+.app-toast.error { border-left-color: var(--red); }
+
+.app-toast > svg {
+  width: 17px;
+  height: 17px;
+}
+
+.app-toast.success > svg { color: var(--green); }
+.app-toast.error > svg { color: var(--red); }
+
+.app-toast p {
+  margin: 1px 0 0;
+  color: var(--text-strong);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.app-toast-actions {
+  grid-column: 2 / 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.app-toast-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  color: var(--blue);
+  background: transparent;
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.app-toast-actions button:hover { color: var(--accent-hover); }
+
+.app-toast-actions svg {
+  width: 13px;
+  height: 13px;
+}
+
 .security-access-form .primary {
   color: var(--accent-contrast);
   border-color: var(--blue);
