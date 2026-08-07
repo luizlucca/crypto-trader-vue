@@ -69,6 +69,10 @@ domínio e impede `src/shared` de apontar para app, plataforma ou features.
 
 - `electron/main`: ciclo de vida das janelas, validação IPC,
   coordenação e reinício dos processos auxiliares.
+- `electron/main/security`: cofre cifrado por senha, estado desbloqueado
+  exclusivo do main, preferências de bloqueio, IPC e ciclo de vida.
+- `electron/main/providers`: conectores autenticados de conta; atualmente a
+  validação HMAC de leitura da Binance para Spot e Futures.
 - `electron/preload`: API mínima exposta por `contextBridge`; o
   renderer não recebe Node.js nem acesso direto ao Electron.
 - `electron/utility/market-data`: sessão RxJS e contrato modular de
@@ -88,6 +92,13 @@ outro para catálogo. Cada um possui timeout, falha de pendências e reinício
 automático. O processo realtime mantém um mapa de assinaturas por `sessionId`
 e restaura todas elas após um crash. O encerramento da aplicação finaliza ambos
 explicitamente.
+
+Credenciais nunca chegam a `electron/utility`: o processo principal recebe os
+dados pelo preload, cifra-os no diretório `userData` e mantém a chave derivada
+somente na sessão desbloqueada. O renderer recebe apenas `SecuritySnapshot`,
+com apelido, mercados, estado da conexão e sufixo mascarado da API key. O IPC
+de segurança aceita somente o `webContents` da janela principal; a janela de
+busca não pode consultar ou alterar contas.
 
 ## Providers e mercados
 
