@@ -34,9 +34,17 @@ vi.mock('./websocket', async () => {
     websocketJSON$: vi.fn((
       _url: string,
       onState: ConnectionStateHandler,
+      validateFrame?: (frame: unknown) => void,
     ) => new Observable<unknown>((subscriber) => {
       websocketHarness.state = onState
-      websocketHarness.next = (value) => subscriber.next(value)
+      websocketHarness.next = (value) => {
+        try {
+          validateFrame?.(value)
+          subscriber.next(value)
+        } catch (error) {
+          subscriber.error(error)
+        }
+      }
       return () => {
         websocketHarness.state = undefined
         websocketHarness.next = undefined
@@ -201,6 +209,25 @@ describe('BinanceProvider candle history', () => {
     expect(futuresURL.searchParams.get('limit')).toBe('400')
     expect(futuresURL.searchParams.get('endTime')).toBe('1722398399999')
     expect(spotURL.searchParams.get('endTime')).toBe('1722398399999')
+  })
+})
+
+describe('BinanceProvider candle stream', () => {
+  it('propaga uma assinatura recusada como falha do stream', () => {
+    const errors: unknown[] = []
+    new BinanceProvider().streamCandles(
+      futuresSelection,
+      () => {},
+    ).subscribe({ error: (error) => errors.push(error) })
+
+    websocketHarness.next?.({
+      error: { code: -1121, msg: 'Invalid symbol.' },
+    })
+
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toEqual(expect.objectContaining({
+      message: expect.stringContaining('A Binance recusou a assinatura'),
+    }))
   })
 })
 

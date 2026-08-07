@@ -5,6 +5,7 @@ import type {
 import type { TextAppearance } from '@renderer-shared/domain/textAppearance'
 import {
   DEFAULT_TEXT_APPEARANCE,
+  DEFAULT_TEXT_BACKGROUND_COLOR,
   textBoxHeight,
   textCanvasFont,
 } from '@renderer-shared/domain/textAppearance'
@@ -30,6 +31,7 @@ export interface CatalogRenderOptions {
   levels: readonly DrawingLevel[]
   text: string
   textAppearance: TextAppearance
+  textBackgroundColor: string
 }
 
 export function drawTool(
@@ -166,20 +168,20 @@ export function drawTool(
       drawProjection(context, p1, p2, p3, true)
       return
     case 'text-annotation':
-      label(context, p1.x, p1.y, options.text, options.textAppearance)
+      textLabel(context, p1.x, p1.y, options)
       return
     case 'callout':
       line(context, p1, p2)
       arrowHead(context, p2, p1)
-      label(context, p2.x, p2.y, options.text, options.textAppearance)
+      textLabel(context, p2.x, p2.y, options)
       return
     case 'anchored-text':
       line(context, p1, p2)
-      label(context, p2.x, p2.y, options.text, options.textAppearance)
+      textLabel(context, p2.x, p2.y, options)
       return
     case 'note':
       drawMarker(context, p1, 'N', 'square')
-      markerLabel(context, p1, options.text, options.textAppearance)
+      markerLabel(context, p1, options)
       return
     case 'price-note':
       line(context, { x: 0, y: p1.y }, p1)
@@ -189,6 +191,7 @@ export function drawTool(
         options.text,
         logicalPoints[0]?.price,
         options.textAppearance,
+        options.textBackgroundColor,
       )
       return
     case 'price-label':
@@ -198,27 +201,28 @@ export function drawTool(
         options.text,
         logicalPoints[0]?.price,
         options.textAppearance,
+        options.textBackgroundColor,
       )
       return
     case 'flag-mark':
       drawFlag(context, p1)
-      markerLabel(context, p1, options.text, options.textAppearance)
+      markerLabel(context, p1, options)
       return
     case 'pin':
       drawPin(context, p1)
-      markerLabel(context, p1, options.text, options.textAppearance)
+      markerLabel(context, p1, options)
       return
     case 'comment':
       drawMarker(context, p1, '…', 'bubble')
-      markerLabel(context, p1, options.text, options.textAppearance)
+      markerLabel(context, p1, options)
       return
     case 'signpost':
       drawSignpost(context, p1)
-      markerLabel(context, p1, options.text, options.textAppearance)
+      markerLabel(context, p1, options)
       return
     case 'table':
       drawTable(context, p1)
-      markerLabel(context, p1, options.text, options.textAppearance)
+      markerLabel(context, p1, options)
       return
     case 'brush':
       drawStroke(context, p1, p2, 3, 1)
@@ -228,15 +232,15 @@ export function drawTool(
       return
     case 'arrow-marker':
       drawMarker(context, p1, '↗', 'none')
-      markerLabel(context, p1, options.text, options.textAppearance)
+      markerLabel(context, p1, options)
       return
     case 'arrow-mark-up':
       drawMarker(context, p1, '↑', 'none')
-      markerLabel(context, p1, options.text, options.textAppearance)
+      markerLabel(context, p1, options)
       return
     case 'arrow-mark-down':
       drawMarker(context, p1, '↓', 'none')
-      markerLabel(context, p1, options.text, options.textAppearance)
+      markerLabel(context, p1, options)
       return
     default:
       assertNever(tool)
@@ -716,6 +720,7 @@ function label(
   y: number,
   text: string,
   appearance: TextAppearance = DEFAULT_TEXT_APPEARANCE,
+  backgroundColor = DEFAULT_TEXT_BACKGROUND_COLOR,
 ): void {
   context.save()
   context.font = textCanvasFont(appearance)
@@ -723,10 +728,7 @@ function label(
   context.textBaseline = 'middle'
   const width = context.measureText(text).width + 12
   const height = textBoxHeight(appearance)
-  context.fillStyle = 'rgba(7, 20, 28, 0.9)'
-  context.strokeStyle = 'rgba(148, 176, 192, 0.45)'
-  context.lineWidth = 1
-  context.setLineDash([])
+  context.fillStyle = backgroundColor
   context.beginPath()
   context.roundRect(x - 5, y - height / 2, width, height, 4)
   context.fill()
@@ -736,16 +738,31 @@ function label(
   context.restore()
 }
 
+function textLabel(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  options: CatalogRenderOptions,
+): void {
+  label(
+    context,
+    x,
+    y,
+    options.text,
+    options.textAppearance,
+    options.textBackgroundColor,
+  )
+}
+
 function markerLabel(
   context: CanvasRenderingContext2D,
   point: ViewPoint,
-  text: string,
-  appearance: TextAppearance,
+  options: CatalogRenderOptions,
 ): void {
-  if (text.trim().length === 0) {
+  if (options.text.trim().length === 0) {
     return
   }
-  label(context, point.x + 18, point.y - 18, text, appearance)
+  textLabel(context, point.x + 18, point.y - 18, options)
 }
 
 function labelWithPrice(
@@ -754,6 +771,7 @@ function labelWithPrice(
   text: string,
   price: number | undefined,
   appearance: TextAppearance,
+  backgroundColor: string,
 ): void {
   const prefix = text.trim()
   const value = formatPrice(price)
@@ -763,6 +781,7 @@ function labelWithPrice(
     point.y,
     prefix ? `${prefix} · ${value}` : value,
     appearance,
+    backgroundColor,
   )
 }
 
@@ -894,6 +913,14 @@ export function hitsDrawing(
   if (!first) {
     return false
   }
+  if (tool === 'gann-square-fixed') {
+    return pointInBounds(target, {
+      left: first.x - 60,
+      right: first.x + 60,
+      top: first.y - 60,
+      bottom: first.y + 60,
+    })
+  }
   if (!second) {
     return Math.hypot(target.x - first.x, target.y - first.y) <= 22
   }
@@ -903,16 +930,222 @@ export function hitsDrawing(
   if (tool === 'ray') {
     return distanceToRay(target, first, second) <= 6
   }
+  if (tool === 'ellipse') {
+    return distanceToEllipse(target, first, second) <= 7
+  }
+  if (tool === 'path') {
+    const dx = second.x - first.x
+    return distanceToBezier(
+      target,
+      first,
+      { x: first.x + dx * 0.34, y: first.y },
+      { x: first.x + dx * 0.66, y: second.y },
+      second,
+    ) <= 7
+  }
+  if (tool === 'arc' && points[2]) {
+    return distanceToBezier(
+      target,
+      first,
+      second,
+      second,
+      points[2],
+    ) <= 7
+  }
+  if (tool === 'curve' && points[2] && points[3]) {
+    return distanceToBezier(
+      target,
+      first,
+      second,
+      points[2],
+      points[3],
+    ) <= 7
+  }
+  if (tool === 'double-curve' && points[2]) {
+    const center = midpoint(first, points[2])
+    return distanceToQuadratic(target, first, second, points[2]) <= 7
+      || distanceToQuadratic(
+        target,
+        first,
+        mirror(second, center),
+        points[2],
+      ) <= 7
+  }
+  if (tool === 'rotated-rectangle' && points[2]) {
+    const edge = subtract(second, first)
+    const length = Math.max(1, Math.hypot(edge.x, edge.y))
+    const normal = { x: -edge.y / length, y: edge.x / length }
+    const offset = scale(normal, dot(subtract(points[2], first), normal))
+    return pointInOrNearPolygon(target, [
+      first,
+      second,
+      add(second, offset),
+      add(first, offset),
+    ])
+  }
+  if (tool === 'gann-box' || tool === 'gann-square') {
+    return pointInBounds(target, boundingBox([first, second]))
+  }
+  if (tool === 'forecast') {
+    const spread = Math.max(12, Math.abs(second.y - first.y) * 0.2)
+    return pointInOrNearPolygon(target, [
+      first,
+      { x: second.x, y: second.y - spread },
+      { x: second.x, y: second.y + spread },
+    ])
+  }
+  if (tool === 'disjoint-channel' && points[2] && points[3]) {
+    return distanceToSegment(target, first, second) <= 7
+      || distanceToSegment(target, points[2], points[3]) <= 7
+  }
+  if (!CHAIN_SEGMENT_HIT_TEST_TOOLS.has(tool)) {
+    return false
+  }
   for (let index = 0; index < points.length - 1; index += 1) {
     if (distanceToSegment(target, points[index], points[index + 1]) <= 7) {
       return true
     }
   }
-  const bounds = boundingBox(points)
-  return target.x >= bounds.left - 6
-    && target.x <= bounds.right + 6
-    && target.y >= bounds.top - 6
-    && target.y <= bounds.bottom + 6
+  return false
+}
+
+const CHAIN_SEGMENT_HIT_TEST_TOOLS = new Set<CatalogDrawingToolId>([
+  'anchored-text',
+  'arrow',
+  'bars-pattern',
+  'brush',
+  'callout',
+  'gann-fan',
+  'highlighter',
+  'info-line',
+  'path',
+  'polyline',
+  'price-label',
+  'price-note',
+  'projection',
+  'trend-angle',
+])
+
+function pointInOrNearPolygon(
+  point: ViewPoint,
+  polygon: readonly ViewPoint[],
+): boolean {
+  if (pointInPolygon(point, polygon)) {
+    return true
+  }
+  for (let index = 0; index < polygon.length; index += 1) {
+    const next = (index + 1) % polygon.length
+    if (distanceToSegment(point, polygon[index], polygon[next]) <= 7) {
+      return true
+    }
+  }
+  return false
+}
+
+function distanceToEllipse(
+  point: ViewPoint,
+  start: ViewPoint,
+  end: ViewPoint,
+): number {
+  const center = midpoint(start, end)
+  const radiusX = Math.abs(end.x - start.x) / 2
+  const radiusY = Math.abs(end.y - start.y) / 2
+  if (radiusX < 0.001 || radiusY < 0.001) {
+    return distanceToSegment(point, start, end)
+  }
+  const dx = point.x - center.x
+  const dy = point.y - center.y
+  const angle = Math.atan2(dy * radiusX, dx * radiusY)
+  const edge = {
+    x: center.x + Math.cos(angle) * radiusX,
+    y: center.y + Math.sin(angle) * radiusY,
+  }
+  return Math.hypot(point.x - edge.x, point.y - edge.y)
+}
+
+function distanceToBezier(
+  point: ViewPoint,
+  start: ViewPoint,
+  control1: ViewPoint,
+  control2: ViewPoint,
+  end: ViewPoint,
+): number {
+  return distanceToSampledCurve(point, (ratio) => {
+    const inverse = 1 - ratio
+    const a = inverse ** 3
+    const b = 3 * inverse ** 2 * ratio
+    const c = 3 * inverse * ratio ** 2
+    const d = ratio ** 3
+    return {
+      x: a * start.x + b * control1.x + c * control2.x + d * end.x,
+      y: a * start.y + b * control1.y + c * control2.y + d * end.y,
+    }
+  })
+}
+
+function distanceToQuadratic(
+  point: ViewPoint,
+  start: ViewPoint,
+  control: ViewPoint,
+  end: ViewPoint,
+): number {
+  return distanceToSampledCurve(point, (ratio) => {
+    const inverse = 1 - ratio
+    return {
+      x: inverse ** 2 * start.x
+        + 2 * inverse * ratio * control.x
+        + ratio ** 2 * end.x,
+      y: inverse ** 2 * start.y
+        + 2 * inverse * ratio * control.y
+        + ratio ** 2 * end.y,
+    }
+  })
+}
+
+function distanceToSampledCurve(
+  point: ViewPoint,
+  sample: (ratio: number) => ViewPoint,
+): number {
+  let nearest = Number.POSITIVE_INFINITY
+  let previous = sample(0)
+  for (let step = 1; step <= 24; step += 1) {
+    const current = sample(step / 24)
+    nearest = Math.min(nearest, distanceToSegment(point, previous, current))
+    previous = current
+  }
+  return nearest
+}
+
+function pointInBounds(
+  point: ViewPoint,
+  bounds: { left: number, right: number, top: number, bottom: number },
+): boolean {
+  return point.x >= bounds.left
+    && point.x <= bounds.right
+    && point.y >= bounds.top
+    && point.y <= bounds.bottom
+}
+
+function pointInPolygon(
+  point: ViewPoint,
+  polygon: readonly ViewPoint[],
+): boolean {
+  let inside = false
+  for (
+    let current = 0, previous = polygon.length - 1;
+    current < polygon.length;
+    previous = current, current += 1
+  ) {
+    const first = polygon[current]
+    const second = polygon[previous]
+    const crosses = (first.y > point.y) !== (second.y > point.y)
+      && point.x < (second.x - first.x) * (point.y - first.y)
+      / (second.y - first.y) + first.x
+    if (crosses) {
+      inside = !inside
+    }
+  }
+  return inside
 }
 
 function distanceToSegment(

@@ -11,6 +11,7 @@ import {
   ColorType,
   CrosshairMode,
   HistogramSeries,
+  LineSeries,
   createChart,
   createTextWatermark,
   type HistogramData,
@@ -22,6 +23,7 @@ import {
   type SeriesType,
   type Time,
   type UTCTimestamp,
+  type WhitespaceData,
 } from 'lightweight-charts'
 import {
   RoundedCandleSeries,
@@ -33,9 +35,13 @@ import { uniqueSortedCandles } from '@chart/domain/candles'
 import { marketSelectionFingerprint } from '@market/domain/marketSelection'
 import { useChartIndicators } from '@indicators/composables/useChartIndicators'
 import { useChartDrawings } from '@drawings/composables/useChartDrawings'
+import { buildDrawingTimeline } from '@drawings/domain/drawingTimeline'
 import { useIndicatorPanel } from '@indicators/composables/useIndicatorPanel'
 import { useChartTheme, volumePoint } from '@chart/composables/useChartTheme'
-import type { DrawingToolId } from '@drawings/domain/chartDrawings'
+import type {
+  ChartDrawing,
+  DrawingToolId,
+} from '@drawings/domain/chartDrawings'
 import { defaultDrawingText } from '@drawings/domain/chartDrawings'
 import type { TextAppearance } from '@renderer-shared/domain/textAppearance'
 import {
@@ -84,6 +90,7 @@ const indicatorErrorMessage = ref('')
 const chart = shallowRef<IChartApi | null>(null)
 const candleSeries = shallowRef<RoundedCandleSeriesApi | null>(null)
 const volumeSeries = shallowRef<ISeriesApi<'Histogram'> | null>(null)
+const drawingAnchorSeries = shallowRef<ISeriesApi<'Line'> | null>(null)
 let watermark: ITextWatermarkPluginApi<Time> | undefined
 let unsubscribeCandle: (() => void) | undefined
 let releaseVerticalPricePan: (() => void) | undefined
@@ -91,6 +98,12 @@ let lastTimestamp = 0
 let historyGeneration = 0
 let pendingCandle: Candle | undefined
 let displayedCandles: Candle[] = []
+let drawingTimeline: { time: number }[] = []
+let drawingSupportTimes: number[] = []
+let drawingTimelineFirstCandle = 0
+let drawingTimelineLastCandle = 0
+let drawingTimelineCandleCount = 0
+let drawingTimelineLastCandleIndex = -1
 let historyExhausted = false
 /*
  * Set when a page failed, and read only by the prefetch.
@@ -205,12 +218,24 @@ const chartTheme = useChartTheme({
  * Drawings live on the candle series and are saved per asset: a trend line is
  * manual work, and losing it on restart would be losing the analysis.
  */
+let scheduleDrawingRebuild = (): void => {}
 const drawings = useChartDrawings({
   chart: () => chart.value,
   series: () => candleSeries.value,
-  bars: () => displayedCandles,
-  onChange: (list) => writeDrawings(props.selection, list),
+  bars: () => drawingTimeline,
+  supportsTime: (time) => time >= (
+    drawingTimeline[0]?.time ?? Number.POSITIVE_INFINITY
+  ) && time <= (
+    drawingTimeline.at(-1)?.time ?? Number.NEGATIVE_INFINITY
+  ),
+  onChange: (list) => {
+    writeDrawings(props.selection, list)
+    if (refreshDrawingTimeline(list)) {
+      scheduleDrawingRebuild()
+    }
+  },
 })
+scheduleDrawingRebuild = () => requestAnimationFrame(() => drawings.rebuild())
 
 interface InlineTextEditor {
   drawingId: string
@@ -412,14 +437,34 @@ function volumeBar(candle: Candle): HistogramData<UTCTimestamp> {
   return volumePoint(candle, appThemePalette.value)
 }
 
-function rememberDisplayedCandle(candle: Candle): void {
+function rememberDisplayedCandle(
+  candle: Candle,
+  knownDrawings: readonly ChartDrawing[] = drawings.drawings(),
+): boolean {
   const lastIndex = displayedCandles.length - 1
   const last = displayedCandles[lastIndex]
   if (last?.time === candle.time) {
     displayedCandles[lastIndex] = candle
+    return false
   } else if (!last || candle.time > last.time) {
     displayedCandles.push(candle)
+    const lastSupportTime = drawingSupportTimes.at(-1)
+    const hasFutureDrawingAnchor = lastSupportTime !== undefined
+      && lastSupportTime > (last?.time ?? Number.NEGATIVE_INFINITY)
+    if (hasFutureDrawingAnchor) {
+      refreshDrawingTimeline(knownDrawings)
+      return true
+    } else {
+      drawingTimelineLastCandleIndex = drawingTimeline.length
+      drawingTimeline.push({ time: candle.time })
+      drawingTimelineLastCandle = candle.time
+      drawingTimelineCandleCount = displayedCandles.length
+      if (displayedCandles.length === 1) {
+        drawingTimelineFirstCandle = candle.time
+      }
+    }
   }
+  return false
 }
 
 function setChartInteractionsLocked(locked: boolean): void {
@@ -443,14 +488,76 @@ function setChartInteractionsLocked(locked: boolean): void {
   })
 }
 
-function showInitialCandleWindow(candleCount: number): void {
-  if (candleCount < 1) {
+function showInitialCandleWindow(lastCandleIndex: number): void {
+  if (lastCandleIndex < 0) {
     return
   }
   chart.value?.timeScale().setVisibleLogicalRange({
-    from: Math.max(0, candleCount - INITIAL_VISIBLE_BARS),
-    to: candleCount - 1 + INITIAL_RIGHT_SPACE_BARS,
+    from: Math.max(0, lastCandleIndex - INITIAL_VISIBLE_BARS + 1),
+    to: lastCandleIndex + INITIAL_RIGHT_SPACE_BARS,
   })
+}
+
+/**
+ * Extends the chart's categorical time scale with drawing anchors outside the
+ * loaded candle range.
+ *
+ * A drawing made on a wide period can predate the 500 bars loaded on a smaller
+ * one. Extrapolating a negative logical index leaves it clipped at the first
+ * pixel because Lightweight Charts cannot pan before its first time point.
+ * Whitespace points make those instants real positions without downloading a
+ * huge candle gap or feeding synthetic history into indicators. Future
+ * anchors need the same treatment: otherwise a projection drawn in the right
+ * margin can become pinned to the last pixel after an interval change.
+ */
+function refreshDrawingTimeline(
+  storedDrawings: readonly ChartDrawing[],
+): boolean {
+  const firstCandle = displayedCandles[0]?.time ?? Number.POSITIVE_INFINITY
+  const lastCandle = displayedCandles.at(-1)?.time ?? 0
+  const nextTimeline = buildDrawingTimeline(
+    displayedCandles,
+    storedDrawings,
+    drawingBarSpanSeconds(),
+  )
+  const nextSupportTimes = nextTimeline.supportTimes
+  const anchorsChanged = nextSupportTimes.length !== drawingSupportTimes.length
+    || nextSupportTimes.some((time, index) => (
+      time !== drawingSupportTimes[index]
+    ))
+  const candlesChanged = displayedCandles.length !== drawingTimelineCandleCount
+    || firstCandle !== drawingTimelineFirstCandle
+    || lastCandle !== drawingTimelineLastCandle
+  if (!anchorsChanged && !candlesChanged) {
+    return false
+  }
+  drawingSupportTimes = nextSupportTimes
+  if (anchorsChanged) {
+    drawingAnchorSeries.value?.setData(nextSupportTimes.map((time) => ({
+      time: time as UTCTimestamp,
+    } satisfies WhitespaceData<UTCTimestamp>)))
+  }
+  drawingTimeline = nextTimeline.points
+  drawingTimelineLastCandleIndex = nextTimeline.lastCandleIndex
+  drawingTimelineFirstCandle = firstCandle
+  drawingTimelineLastCandle = lastCandle
+  drawingTimelineCandleCount = displayedCandles.length
+  return true
+}
+
+function drawingBarSpanSeconds(): number {
+  const match = /^(\d+)([mhd])$/.exec(props.selection.interval)
+  if (match) {
+    const unitSeconds = match[2] === 'd'
+      ? 86_400
+      : match[2] === 'h' ? 3_600 : 60
+    return Number(match[1]) * unitSeconds
+  }
+  const first = displayedCandles[0]
+  const second = displayedCandles[1]
+  return first && second && second.time > first.time
+    ? second.time - first.time
+    : 60
 }
 
 async function loadHistory(): Promise<void> {
@@ -468,10 +575,18 @@ async function loadHistory(): Promise<void> {
   lastTimestamp = 0
   pendingCandle = undefined
   displayedCandles = []
+  drawingTimeline = []
+  drawingSupportTimes = []
+  drawingTimelineFirstCandle = 0
+  drawingTimelineLastCandle = 0
+  drawingTimelineCandleCount = 0
+  drawingTimelineLastCandleIndex = -1
   const generation = ++historyGeneration
   const fingerprint = selectionFingerprint()
+  const storedDrawings = readDrawings(props.selection)
   candleSeries.value.setData([])
   volumeSeries.value.setData([])
+  drawingAnchorSeries.value?.setData([])
   try {
     const cachedHistory = props.initialHistory
     const hasCachedHistory = Boolean(cachedHistory?.length)
@@ -488,6 +603,7 @@ async function loadHistory(): Promise<void> {
     historyExhausted = !hasCachedHistory
       && history.length < INITIAL_HISTORY_SIZE
     displayedCandles = candles
+    refreshDrawingTimeline(storedDrawings)
     candleSeries.value.setData(candles.map(candlePoint))
     volumeSeries.value.setData(candles.map(volumeBar))
     const lastCandle = candles.at(-1)
@@ -500,11 +616,11 @@ async function loadHistory(): Promise<void> {
       candleSeries.value.update(candlePoint(latestPendingCandle))
       volumeSeries.value.update(volumeBar(latestPendingCandle))
       lastTimestamp = latestPendingCandle.time
-      rememberDisplayedCandle(latestPendingCandle)
+      rememberDisplayedCandle(latestPendingCandle, storedDrawings)
       updateLegend(latestPendingCandle)
     }
     emit('history', props.sessionId, fingerprint, candles)
-    showInitialCandleWindow(displayedCandles.length)
+    showInitialCandleWindow(drawingTimelineLastCandleIndex)
     indicators.invalidate()
   } catch (error) {
     if (ownsChart(generation, fingerprint)) {
@@ -521,7 +637,7 @@ async function loadHistory(): Promise<void> {
      * keeps the ones it cannot place and puts them up on the next rebuild.
      */
     if (ownsChart(generation, fingerprint)) {
-      drawings.restore(readDrawings(props.selection))
+      drawings.restore(storedDrawings)
     }
     if (generation === historyGeneration) {
       loading.value = false
@@ -594,16 +710,19 @@ async function loadOlderHistory(): Promise<void> {
     // Replacing the full data set is the supported prepend operation in
     // Lightweight Charts. The renderer keeps processing live updates while
     // the REST request runs in Electron's utility process.
+    const previousTimelineLength = drawingTimeline.length
     displayedCandles = [...olderCandles, ...displayedCandles]
+    refreshDrawingTimeline(drawings.drawings())
     candles.setData(displayedCandles.map(candlePoint))
     volume.setData(displayedCandles.map(volumeBar))
 
     // Prepending shifts every previous logical index by the inserted count.
     // Restoring that shifted range keeps the same candles under the cursor.
     if (visibleRange) {
+      const logicalShift = drawingTimeline.length - previousTimelineLength
       chartApi.timeScale().setVisibleLogicalRange({
-        from: visibleRange.from + olderCandles.length,
-        to: visibleRange.to + olderCandles.length,
+        from: visibleRange.from + logicalShift,
+        to: visibleRange.to + logicalShift,
       })
     }
     historyExhausted = page.length < HISTORY_PAGE_SIZE
@@ -782,6 +901,17 @@ onMounted(() => {
       : Math.min(4, barSpacing / 3),
   }, 0)
 
+  // Whitespace-only: it extends the horizontal domain for external drawing
+  // anchors without entering candle or indicator calculations. The series
+  // remains part of the time scale, but has no drawable line or price labels.
+  const drawingAnchors = chartApi.addSeries(LineSeries, {
+    lineVisible: false,
+    priceScaleId: '',
+    priceLineVisible: false,
+    lastValueVisible: false,
+    crosshairMarkerVisible: false,
+  }, 0)
+
   const volume = chartApi.addSeries(HistogramSeries, {
     priceFormat: { type: 'volume' },
     priceScaleId: '',
@@ -830,6 +960,7 @@ onMounted(() => {
 
   chart.value = chartApi
   candleSeries.value = candles
+  drawingAnchorSeries.value = drawingAnchors
   volumeSeries.value = volume
   visibleLogicalRangeHandler = handleVisibleLogicalRangeChange
   chartApi.timeScale().subscribeVisibleLogicalRangeChange(
@@ -870,7 +1001,7 @@ onMounted(() => {
       event.stopPropagation()
     }
   }
-  host.addEventListener('mousedown', onDrawingPointerDown)
+  host.addEventListener('mousedown', onDrawingPointerDown, true)
   host.addEventListener('dblclick', onDrawingDoubleClick, true)
   /*
    * The release listens on the document, not on the chart. A button let go
@@ -883,7 +1014,7 @@ onMounted(() => {
    */
   document.addEventListener('mouseup', onDrawingPointerUp)
   releaseDrawingPointer = () => {
-    host.removeEventListener('mousedown', onDrawingPointerDown)
+    host.removeEventListener('mousedown', onDrawingPointerDown, true)
     host.removeEventListener('dblclick', onDrawingDoubleClick, true)
     document.removeEventListener('mouseup', onDrawingPointerUp)
   }
@@ -909,7 +1040,7 @@ onMounted(() => {
     candles.update(candlePoint(candle))
     volume.update(volumeBar(candle))
     lastTimestamp = candle.time
-    rememberDisplayedCandle(candle)
+    const drawingsReindexed = rememberDisplayedCandle(candle)
     updateLegend(candle)
     indicators.refresh({
       time: candle.time,
@@ -920,6 +1051,9 @@ onMounted(() => {
       volume: candle.volume,
     })
     if (wasEmpty) {
+      refreshDrawingTimeline(drawings.drawings())
+      drawings.rebuild()
+    } else if (drawingsReindexed) {
       drawings.rebuild()
     }
   })
@@ -956,8 +1090,12 @@ onBeforeUnmount(() => {
   releaseVerticalPricePan = undefined
   unsubscribeCandle?.()
   candleSeries.value = null
+  drawingAnchorSeries.value = null
   volumeSeries.value = null
   displayedCandles = []
+  drawingTimeline = []
+  drawingSupportTimes = []
+  drawingTimelineLastCandleIndex = -1
   watermark = undefined
   chart.value?.remove()
   chart.value = null
@@ -1029,7 +1167,7 @@ watch(appThemePalette, chartTheme.apply, { flush: 'sync' })
       />
       <div v-if="errorMessage" class="chart-message error">
         <span>{{ errorMessage }}</span>
-        <button type="button" @click="loadHistory">
+        <button type="button" @click="initializeChartData">
           Tentar novamente
         </button>
       </div>

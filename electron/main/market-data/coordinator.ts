@@ -36,6 +36,8 @@ export class MarketDataCoordinator {
   private restartAttempt = 0
   private lastMessageAt = 0
   private activeSubscriptions = new Map<string, StartStreamRequest>()
+  /** Starts already waiting for a fresh child and not needing restoration. */
+  private waitingStarts = new Map<string, number>()
 
   constructor(
     private readonly onEvent: (event: MarketDataEvent) => void,
@@ -76,17 +78,28 @@ export class MarketDataCoordinator {
   }
 
   async request<T>(request: MarketDataRequest): Promise<T> {
-    await this.waitUntilReady()
+    /*
+     * Intent is known before process readiness. In particular, closing a tab
+     * while the utility process restarts must remove it before `ready`
+     * snapshots subscriptions for restoration.
+    */
+    this.trackIntent(request)
+    const waitingStart = request.kind === 'start-stream'
+      && (!this.ready || !this.child)
+    if (waitingStart) {
+      this.incrementWaitingStart(request.sessionId)
+    }
+    try {
+      await this.waitUntilReady()
+    } finally {
+      if (waitingStart) {
+        this.decrementWaitingStart(request.sessionId)
+      }
+    }
     const child = this.child
     if (!child) {
       throw new Error('Processo de market data indisponível')
     }
-
-    // Recorded before the round trip, not after it. The map holds what the
-    // renderer asked for, and that is known now: a `stop-stream` that times out
-    // must not leave a subscription behind for the next restart to revive, and
-    // a `start-stream` that times out must still be restored.
-    this.trackIntent(request)
 
     const requestId = randomUUID()
     const command: UtilityRequest = {
@@ -174,6 +187,20 @@ export class MarketDataCoordinator {
     }
   }
 
+  private incrementWaitingStart(sessionId: string): void {
+    const count = this.waitingStarts.get(sessionId) ?? 0
+    this.waitingStarts.set(sessionId, count + 1)
+  }
+
+  private decrementWaitingStart(sessionId: string): void {
+    const count = this.waitingStarts.get(sessionId) ?? 0
+    if (count <= 1) {
+      this.waitingStarts.delete(sessionId)
+    } else {
+      this.waitingStarts.set(sessionId, count - 1)
+    }
+  }
+
   private patchSubscription(
     sessionId: string,
     patch: Partial<StartStreamRequest>,
@@ -229,9 +256,15 @@ export class MarketDataCoordinator {
     if (response.type === 'ready') {
       this.ready = true
       this.restartAttempt = 0
+      /*
+       * Queue restoration before releasing requests that accumulated during
+       * the restart. Updates and visibility changes require their session to
+       * exist in the fresh process first. Pending starts are filtered below,
+       * so they are still posted exactly once.
+       */
+      this.restoreSubscriptions()
       const waiters = this.readyWaiters.splice(0)
       waiters.forEach((waiter) => waiter.resolve())
-      this.restoreSubscriptions()
       return
     }
     if (response.type === 'event') {
@@ -324,6 +357,7 @@ export class MarketDataCoordinator {
 
   private restoreSubscriptions(): void {
     const subscriptions = [...this.activeSubscriptions.values()]
+      .filter(({ sessionId }) => !this.waitingStarts.has(sessionId))
     subscriptions.forEach((subscription) => {
       void this.request(subscription).catch((error) => {
         this.emitSessionError(

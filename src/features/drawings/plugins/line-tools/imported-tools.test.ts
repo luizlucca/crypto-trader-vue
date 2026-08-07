@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import type { CanvasRenderingTarget2D } from 'fancy-canvas'
 import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts'
 import { CrossLine } from './cross-line'
+import { coordinateForLogical } from './base-types'
 import { DatePriceRange } from './date-price-range'
 import { LongPosition } from './long-position'
 import { ShortPosition } from './short-position'
+import { TrendLine } from './trend-line'
 
 function chartStub() {
   const applyOptions = vi.fn()
@@ -21,8 +23,9 @@ function chartStub() {
   return { chart, series, applyOptions }
 }
 
-function renderingTargetStub(): CanvasRenderingTarget2D {
-  const values: Record<PropertyKey, unknown> = {}
+function renderingTargetStub(
+  values: Record<PropertyKey, unknown> = {},
+): CanvasRenderingTarget2D {
   const context = new Proxy(values, {
     get(target, property) {
       if (property === 'measureText') {
@@ -51,6 +54,25 @@ function renderingTargetStub(): CanvasRenderingTarget2D {
 }
 
 describe('primitives incorporadas de line-tools', () => {
+  it('interpola uma âncora entre candles sem enviá-la à API como índice fracionário', () => {
+    const logicalToCoordinate = vi.fn((logical: number) => {
+      if (logical === 8) {
+        return 100
+      }
+      if (logical === 9) {
+        return 148
+      }
+      // Simula o comportamento do Lightweight Charts 5.2 para frações.
+      return 0
+    })
+
+    expect(coordinateForLogical({ logicalToCoordinate }, 8.25))
+      .toBe(112)
+    expect(logicalToCoordinate).toHaveBeenCalledWith(8)
+    expect(logicalToCoordinate).toHaveBeenCalledWith(9)
+    expect(logicalToCoordinate).not.toHaveBeenCalledWith(8.25)
+  })
+
   it('reutiliza o renderer e prioriza a alça da linha cruzada', () => {
     const { chart, series } = chartStub()
     const drawing = new CrossLine(chart, series, {
@@ -129,5 +151,24 @@ describe('primitives incorporadas de line-tools', () => {
     long.updateAllViews()
     expect(() => long.paneViews()[0].renderer().draw(renderingTargetStub()))
       .not.toThrow()
+  })
+
+  it('escala espessura e tracejado no bitmap HiDPI', () => {
+    const { chart, series } = chartStub()
+    const setLineDash = vi.fn()
+    const canvasState: Record<PropertyKey, unknown> = { setLineDash }
+    const line = new TrendLine(
+      chart,
+      series,
+      { logical: 1, price: 100 },
+      { logical: 3, price: 80 },
+      { width: 2, lineStyle: 2 },
+    )
+    line.updateAllViews()
+
+    line.paneViews()[0].renderer().draw(renderingTargetStub(canvasState))
+
+    expect(canvasState.lineWidth).toBe(4)
+    expect(setLineDash).toHaveBeenCalledWith([12, 12])
   })
 })

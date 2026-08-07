@@ -5,7 +5,6 @@ import {
     ISeriesPrimitive,
     IPrimitivePaneRenderer,
     IPrimitivePaneView,
-    Logical,
     SeriesOptionsMap,
     SeriesType,
     Time,
@@ -14,6 +13,7 @@ import {
     LogicalPoint,
     ViewPoint,
     HitTestResult,
+    coordinateForLogical,
     pointToCoordinate,
     scaleCoordinate,
     drawAnchor,
@@ -87,10 +87,14 @@ class ParallelChannelPaneRenderer implements IPrimitivePaneRenderer {
             const y1_mid = y1 + verticalOffset / 2;
             const y2_mid = y2 + verticalOffset / 2;
 
-            ctx.lineWidth = this._options.width;
+            ctx.lineWidth = this._options.width * scope.verticalPixelRatio;
             ctx.strokeStyle = this._options.lineColor;
             ctx.fillStyle = this._options.backgroundColor;
-            setLineStyle(ctx, this._options.lineStyle);
+            setLineStyle(
+                ctx,
+                this._options.lineStyle,
+                scope.horizontalPixelRatio,
+            );
 
             // Draw Channel Background
             ctx.beginPath();
@@ -283,11 +287,11 @@ export class ParallelChannel implements ISeriesPrimitive<Time> {
         const timeScale = this._chart.timeScale();
         const series = this._series;
 
-        const x1 = timeScale.logicalToCoordinate(this._p1.logical as Logical);
+        const x1 = coordinateForLogical(timeScale, this._p1.logical);
         const y1 = series.priceToCoordinate(this._p1.price);
-        const x2 = timeScale.logicalToCoordinate(this._p2.logical as Logical);
+        const x2 = coordinateForLogical(timeScale, this._p2.logical);
         const y2 = series.priceToCoordinate(this._p2.price);
-        const x3 = timeScale.logicalToCoordinate(this._p3.logical as Logical);
+        const x3 = coordinateForLogical(timeScale, this._p3.logical);
         const y3 = series.priceToCoordinate(this._p3.price);
 
         if (

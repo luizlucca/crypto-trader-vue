@@ -56,9 +56,13 @@ import { PriceRange } from '@drawings/plugins/line-tools/price-range'
 import { DateRange } from '@drawings/plugins/line-tools/date-range'
 import { DatePriceRange } from '@drawings/plugins/line-tools/date-price-range'
 import { RepaintPump } from '@drawings/plugins/repaintPump'
-import type { LogicalPoint } from '@drawings/plugins/line-tools/base-types'
+import {
+  coordinateForLogical,
+  type LogicalPoint,
+} from '@drawings/plugins/line-tools/base-types'
 import {
   DEFAULT_TEXT_APPEARANCE,
+  DEFAULT_TEXT_BACKGROUND_COLOR,
   copyTextAppearance,
   estimateTextWidth,
   normalizeTextAppearance,
@@ -89,8 +93,10 @@ export interface ChartDrawingsOptions {
    * the owner of the candles can say where an instant sits among them. Passed
    * as the live array — never a copy — because the preview reads it per
    * pointer move.
-   */
+  */
   bars: () => readonly { time: number }[]
+  /** Optional cap for times the host deliberately left outside its domain. */
+  supportsTime?: (time: number) => boolean
   /** Called when the set of drawings changes, so it can be persisted. */
   onChange?: (drawings: ChartDrawing[]) => void
 }
@@ -242,6 +248,8 @@ export function styleFor(drawing: ChartDrawing): Record<string, unknown> {
     style.textAppearance = normalizeTextAppearance(
       drawing.configuration?.textAppearance ?? DEFAULT_TEXT_APPEARANCE,
     )
+    style.textBackgroundColor = drawing.configuration?.textBackgroundColor
+      ?? DEFAULT_TEXT_BACKGROUND_COLOR
   }
   return style
 }
@@ -461,7 +469,11 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
     }
     for (let index = mounted.length - 1; index >= 0; index -= 1) {
       const entry = mounted[index]
-      if (editable(entry.primitive).toolHitTest?.(x, y)?.hit) {
+      const primitiveHit = editable(entry.primitive)
+        .toolHitTest?.(x, y)?.hit
+      const textHit = drawingStyleCapabilities(entry.drawing.tool).text
+        && textLabelContains(entry.drawing, x, y)
+      if (primitiveHit || textHit) {
         return entry
       }
     }
@@ -561,11 +573,29 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
     return drawing.anchors.map((anchor) => {
       const logical = toLogical(anchor.time)
       return {
-        x: (logical === null ? null : scale.logicalToCoordinate(logical))
+        x: (logical === null ? null : coordinateForLogical(scale, logical))
           ?? Number.NEGATIVE_INFINITY,
         y: series.priceToCoordinate(anchor.price) ?? Number.NEGATIVE_INFINITY,
       }
     })
+  }
+
+  /** Resolves a press/release without depending on a prior crosshair event. */
+  function positionForEvent(event: MouseEvent): CursorPosition | null {
+    const chart = options.chart()
+    const series = options.series()
+    const pane = series?.getPane().getHTMLElement()
+    if (!chart || !series || !pane) {
+      return null
+    }
+    const bounds = pane.getBoundingClientRect()
+    const x = event.clientX - bounds.left
+    const y = event.clientY - bounds.top
+    const logical = chart.timeScale().coordinateToLogical(x)
+    const price = series.coordinateToPrice(y)
+    return logical === null || price === null
+      ? null
+      : { logical, price, x, y }
   }
 
   /**
@@ -661,11 +691,14 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
   }
 
   /** An anchor as the primitives want it, or null when it cannot be placed. */
-  function toPoint(anchor: DrawingAnchor | undefined): LogicalPoint | null {
+  function toPoint(
+    anchor: DrawingAnchor | undefined,
+    allowOutsideDomain = false,
+  ): LogicalPoint | null {
     if (!anchor) {
       return null
     }
-    const logical = toLogical(anchor.time)
+    const logical = toLogical(anchor.time, allowOutsideDomain)
     return logical === null ? null : { logical, price: anchor.price }
   }
 
@@ -676,8 +709,12 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
    * bar times, so a line drawn on the 1h chart would disappear on the 4h one,
    * where its timestamps are not bars.
    */
-  function toLogical(time: number): Logical | null {
-    const logical = logicalForTime(options.bars(), time)
+  function toLogical(time: number, allowOutsideDomain = false): Logical | null {
+    const bars = options.bars()
+    if (!allowOutsideDomain && options.supportsTime?.(time) === false) {
+      return null
+    }
+    const logical = logicalForTime(bars, time)
     return logical === null ? null : logical as Logical
   }
 
@@ -693,6 +730,7 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
 
   function buildPrimitive(
     drawing: ChartDrawing,
+    allowOutsideDomain = false,
   ): ISeriesPrimitive<Time> | null {
     const chart = options.chart()
     const series = options.series()
@@ -705,7 +743,7 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       ? drawing.anchors.length
       : spec.points
     for (let index = 0; index < pointCount; index += 1) {
-      const point = toPoint(drawing.anchors[index])
+      const point = toPoint(drawing.anchors[index], allowOutsideDomain)
       if (!point) {
         return null
       }
@@ -821,14 +859,14 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       color: DRAWING_DEFAULT_COLOR,
       lineWidth: DRAWING_DEFAULT_WIDTH,
       lineStyle: DRAWING_DEFAULT_LINE_STYLE,
-    })
+    }, true)
     if (built && attach(built)) {
       preview = built as unknown as MutablePreview
     }
   }
 
   function commit(drawing: ChartDrawing): void {
-    const primitive = buildPrimitive(drawing)
+    const primitive = buildPrimitive(drawing, true)
     if (!primitive) {
       return
     }
@@ -935,13 +973,16 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
         releaseChartPan()
         drag = null
       }
-      const position = cursor
+      const position = positionForEvent(event)
       if (activeTool.value || !position) {
         return
       }
       const entry = drawingAt(position.x, position.y)
-      if (!entry || entry.drawing.id !== selected.value?.id) {
+      if (!entry) {
         return
+      }
+      if (entry.drawing.id !== selected.value?.id) {
+        markSelected(entry.drawing.id)
       }
       const grabbed = editable(entry.primitive)
         .toolHitTest?.(position.x, position.y)
@@ -951,7 +992,7 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
         price: position.price,
         anchors: entry.drawing.anchors.map((anchor) => ({ ...anchor })),
         movedAnchors: entry.drawing.anchors.map((anchor) => ({ ...anchor })),
-        edit: grabbed?.type === 'point'
+        edit: grabbed?.type === 'point' && entry.drawing.anchors.length > 1
           ? anchorEditAt(paneCoordinates(entry.drawing), position.x, position.y)
           : null,
         moved: false,
@@ -991,7 +1032,7 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
       }
       const tool = activeTool.value
       const series = options.series()
-      const position = cursor
+      const position = positionForEvent(event)
       if (!start || !series || !position) {
         return
       }
@@ -1228,6 +1269,9 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
                   configuration.textAppearance,
                 ),
               }
+            : {}),
+          ...(configuration.textBackgroundColor
+            ? { textBackgroundColor: configuration.textBackgroundColor }
             : {}),
         },
       }))

@@ -12,6 +12,7 @@ import {
 } from 'lightweight-charts';
 import {
     HitTestResult,
+    coordinateForLogical,
     scaleCoordinate,
     drawAnchor,
     setLineStyle,
@@ -39,9 +40,13 @@ class VerticalLinePaneRenderer implements IPrimitivePaneRenderer {
             const height = scope.mediaSize.height * scope.verticalPixelRatio;
 
             // Draw line
-            ctx.lineWidth = this._options.width;
+            ctx.lineWidth = this._options.width * scope.horizontalPixelRatio;
             ctx.strokeStyle = this._options.lineColor;
-            setLineStyle(ctx, this._options.lineStyle);
+            setLineStyle(
+                ctx,
+                this._options.lineStyle,
+                scope.verticalPixelRatio,
+            );
             ctx.beginPath();
             ctx.moveTo(xScaled, 0);
             ctx.lineTo(xScaled, height);
@@ -91,7 +96,7 @@ class VerticalLinePaneView implements IPrimitivePaneView {
 
     update(): void {
         const timeScale = this._source._chart.timeScale();
-        this._x = timeScale.logicalToCoordinate(this._source._logical);
+        this._x = coordinateForLogical(timeScale, this._source._logical);
     }
 
     renderer(): VerticalLinePaneRenderer {
@@ -179,7 +184,7 @@ export class VerticalLine implements ISeriesPrimitive<Time> {
      */
     public toolHitTest(x: number, y: number): HitTestResult | null {
         const timeScale = this._chart.timeScale();
-        const xCoord = timeScale.logicalToCoordinate(this._logical);
+        const xCoord = coordinateForLogical(timeScale, this._logical);
         if (xCoord === null) return null;
 
         // Check anchor point (at bottom)

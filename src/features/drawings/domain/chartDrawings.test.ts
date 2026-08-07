@@ -263,6 +263,7 @@ describe('leitura de um desenho salvo', () => {
       anchors: [valid.anchors[0]],
       configuration: {
         text: 'Entrada confirmada',
+        textBackgroundColor: '#102030',
         textAppearance: {
           fontFamily: 'mono',
           fontSize: 16,
@@ -295,6 +296,7 @@ describe('leitura de um desenho salvo', () => {
       fontStyle: 'italic',
       color: '#ABCDEF',
     })
+    expect(annotation?.configuration?.textBackgroundColor).toBe('#102030')
     expect(range?.configuration).toEqual({
       positiveColor: '#0000FF',
       negativeColor: '#FF0000',

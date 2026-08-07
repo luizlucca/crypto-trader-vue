@@ -5,7 +5,6 @@ import {
     ISeriesPrimitive,
     IPrimitivePaneRenderer,
     IPrimitivePaneView,
-    Logical,
     SeriesOptionsMap,
     SeriesType,
     Time,
@@ -14,6 +13,7 @@ import {
     LogicalPoint,
     ViewPoint,
     HitTestResult,
+    coordinateForLogical,
     pointToCoordinate,
     isPointInRectangle,
     scaleCoordinate,
@@ -61,12 +61,16 @@ class RectanglePaneRenderer implements IPrimitivePaneRenderer {
             const height = y2 - y1;
 
             // Draw rectangle
-            ctx.lineWidth = this._options.width;
+            ctx.lineWidth = this._options.width * scope.verticalPixelRatio;
             ctx.strokeStyle = this._options.lineColor;
-            ctx.lineWidth = this._options.width;
+            ctx.lineWidth = this._options.width * scope.verticalPixelRatio;
             ctx.strokeStyle = this._options.lineColor;
             ctx.fillStyle = this._options.backgroundColor;
-            setLineStyle(ctx, this._options.lineStyle);
+            setLineStyle(
+                ctx,
+                this._options.lineStyle,
+                scope.horizontalPixelRatio,
+            );
 
             ctx.beginPath();
             ctx.rect(x1, y1, width, height);
@@ -215,9 +219,9 @@ export class Rectangle implements ISeriesPrimitive<Time> {
         const timeScale = this._chart.timeScale();
         const series = this._series;
 
-        const x1 = timeScale.logicalToCoordinate(this._p1.logical as Logical);
+        const x1 = coordinateForLogical(timeScale, this._p1.logical);
         const y1 = series.priceToCoordinate(this._p1.price);
-        const x2 = timeScale.logicalToCoordinate(this._p2.logical as Logical);
+        const x2 = coordinateForLogical(timeScale, this._p2.logical);
         const y2 = series.priceToCoordinate(this._p2.price);
 
         if (x1 === null || y1 === null || x2 === null || y2 === null) return null;

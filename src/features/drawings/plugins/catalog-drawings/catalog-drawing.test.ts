@@ -6,7 +6,10 @@ import {
   DRAWING_ANCHORS,
 } from '@drawings/domain/chartDrawings'
 import { CatalogDrawing } from './catalog-drawing'
-import { DEFAULT_TEXT_APPEARANCE } from '@renderer-shared/domain/textAppearance'
+import {
+  DEFAULT_TEXT_APPEARANCE,
+  DEFAULT_TEXT_BACKGROUND_COLOR,
+} from '@renderer-shared/domain/textAppearance'
 
 function chartStub() {
   const chart = {
@@ -21,7 +24,9 @@ function chartStub() {
   return { chart, series }
 }
 
-function renderingTargetStub(): CanvasRenderingTarget2D {
+function renderingTargetStub(
+  onAssignment?: (property: PropertyKey, value: unknown) => void,
+): CanvasRenderingTarget2D {
   const values: Record<PropertyKey, unknown> = {}
   const context = new Proxy(values, {
     get(target, property) {
@@ -35,6 +40,7 @@ function renderingTargetStub(): CanvasRenderingTarget2D {
     },
     set(target, property, value) {
       target[property] = value
+      onAssignment?.(property, value)
       return true
     },
   }) as unknown as CanvasRenderingContext2D
@@ -105,6 +111,7 @@ describe('primitive do catálogo de desenhos', () => {
       levels: [],
       text: '',
       textAppearance: DEFAULT_TEXT_APPEARANCE,
+      textBackgroundColor: DEFAULT_TEXT_BACKGROUND_COLOR,
     })
     expect(attach).not.toHaveBeenCalled()
   })
@@ -123,6 +130,72 @@ describe('primitive do catálogo de desenhos', () => {
       hit: true,
       type: 'shape',
     })
+  })
+
+  it('não seleciona o retângulo vazio ao redor de uma linha diagonal', () => {
+    const { chart, series } = chartStub()
+    const drawing = new CatalogDrawing(chart, series, 'arrow', [
+      { logical: 1, price: 100 },
+      { logical: 10, price: 10 },
+    ])
+
+    expect(drawing.toolHitTest(90, 90)).toBeNull()
+    expect(drawing.toolHitTest(50, 60)?.type).toBe('shape')
+  })
+
+  it('mantém selecionável o interior realmente pintado de uma projeção', () => {
+    const { chart, series } = chartStub()
+    const drawing = new CatalogDrawing(chart, series, 'forecast', [
+      { logical: 1, price: 100 },
+      { logical: 10, price: 50 },
+    ])
+
+    expect(drawing.toolHitTest(90, 50)?.type).toBe('shape')
+  })
+
+  it('não seleciona o espaço vazio entre segmentos descontínuos', () => {
+    const { chart, series } = chartStub()
+    const drawing = new CatalogDrawing(chart, series, 'disjoint-channel', [
+      { logical: 1, price: 100 },
+      { logical: 3, price: 100 },
+      { logical: 7, price: 50 },
+      { logical: 9, price: 50 },
+    ])
+
+    expect(drawing.toolHitTest(50, 75)).toBeNull()
+    expect(drawing.toolHitTest(20, 100)?.type).toBe('shape')
+  })
+
+  it('pinta borda, texto e fundo da anotação de forma independente', () => {
+    const { chart, series } = chartStub()
+    const assignments: [PropertyKey, unknown][] = []
+    const drawing = new CatalogDrawing(
+      chart,
+      series,
+      'text-annotation',
+      [{ logical: 1, price: 100 }],
+      {
+        lineColor: '#112233',
+        width: 4,
+        lineStyle: 2,
+        text: 'Rompimento',
+        textAppearance: {
+          ...DEFAULT_TEXT_APPEARANCE,
+          color: '#AABBCC',
+        },
+        textBackgroundColor: '#445566',
+      },
+    )
+    drawing.updateAllViews()
+
+    drawing.paneViews()[0].renderer()?.draw(renderingTargetStub(
+      (property, value) => assignments.push([property, value]),
+    ))
+
+    expect(assignments).toContainEqual(['strokeStyle', '#112233'])
+    expect(assignments).toContainEqual(['lineWidth', 4])
+    expect(assignments).toContainEqual(['fillStyle', '#445566'])
+    expect(assignments).toContainEqual(['fillStyle', '#AABBCC'])
   })
 
   it('reutiliza view e renderer entre repaints do gráfico', () => {

@@ -46,6 +46,7 @@ function messageText(data: RawData): string {
 export function websocketJSON$<T>(
   url: string,
   onState: ConnectionStateHandler,
+  validateFrame?: (frame: T) => void,
 ): Observable<T> {
   let connectedOnce = false
 
@@ -82,7 +83,16 @@ export function websocketJSON$<T>(
     socket.on('message', (data) => {
       noteActivity()
       try {
-        subscriber.next(JSON.parse(messageText(data)) as T)
+        const frame = JSON.parse(messageText(data)) as T
+        /*
+         * Validation belongs before `next`: retry's `resetOnSuccess` observes
+         * an emitted frame as a successful connection. A provider rejection
+         * delivered downstream and rejected there would reset the failure
+         * counter before the error could be seen, leaving an invalid stream
+         * in an endless "connected/reconnecting" cycle.
+         */
+        validateFrame?.(frame)
+        subscriber.next(frame)
       } catch (error) {
         subscriber.error(error)
       }

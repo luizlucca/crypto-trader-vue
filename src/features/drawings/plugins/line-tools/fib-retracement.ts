@@ -5,7 +5,6 @@ import {
     ISeriesPrimitive,
     IPrimitivePaneRenderer,
     IPrimitivePaneView,
-    Logical,
     SeriesOptionsMap,
     SeriesType,
     Time,
@@ -14,6 +13,7 @@ import {
     LogicalPoint,
     ViewPoint,
     HitTestResult,
+    coordinateForLogical,
     pointToCoordinate,
     scaleCoordinate,
     drawAnchor,
@@ -65,7 +65,7 @@ class FibRetracementPaneRenderer implements IPrimitivePaneRenderer {
             const y2 = scaleCoordinate(this._p2.y, scope.verticalPixelRatio);
 
             // Draw trend line (dashed)
-            ctx.lineWidth = 1;
+            ctx.lineWidth = scope.verticalPixelRatio;
             ctx.strokeStyle = 'rgba(120, 120, 120, 0.5)';
             ctx.setLineDash([5, 5]);
             ctx.beginPath();
@@ -86,7 +86,8 @@ class FibRetracementPaneRenderer implements IPrimitivePaneRenderer {
                 if (levelCoord !== null) {
                     const y = scaleCoordinate(levelCoord, scope.verticalPixelRatio);
 
-                    ctx.lineWidth = this._options.width;
+                    ctx.lineWidth = this._options.width
+                        * scope.verticalPixelRatio;
                     ctx.strokeStyle = level.color;
                     ctx.beginPath();
                     ctx.moveTo(startX, y);
@@ -237,9 +238,9 @@ export class FibRetracement implements ISeriesPrimitive<Time> {
         const timeScale = this._chart.timeScale();
         const series = this._series;
 
-        const x1 = timeScale.logicalToCoordinate(this._p1.logical as Logical);
+        const x1 = coordinateForLogical(timeScale, this._p1.logical);
         const y1 = series.priceToCoordinate(this._p1.price);
-        const x2 = timeScale.logicalToCoordinate(this._p2.logical as Logical);
+        const x2 = coordinateForLogical(timeScale, this._p2.logical);
         const y2 = series.priceToCoordinate(this._p2.price);
 
         if (x1 === null || y1 === null || x2 === null || y2 === null) return null;

@@ -8,10 +8,10 @@ import {
     SeriesOptionsMap,
     SeriesType,
     Time,
-    Logical,
 } from 'lightweight-charts';
 import {
     HitTestResult,
+    coordinateForLogical,
     scaleCoordinate,
     drawAnchor,
     LogicalPoint,
@@ -42,9 +42,13 @@ class HorizontalRayPaneRenderer implements IPrimitivePaneRenderer {
             const width = scope.mediaSize.width * scope.horizontalPixelRatio;
 
             // Draw ray from x to right edge
-            ctx.lineWidth = this._options.width;
+            ctx.lineWidth = this._options.width * scope.verticalPixelRatio;
             ctx.strokeStyle = this._options.lineColor;
-            setLineStyle(ctx, this._options.lineStyle);
+            setLineStyle(
+                ctx,
+                this._options.lineStyle,
+                scope.horizontalPixelRatio,
+            );
             ctx.beginPath();
             ctx.moveTo(xScaled, yScaled);
             ctx.lineTo(width, yScaled);
@@ -70,7 +74,7 @@ class HorizontalRayPaneView implements IPrimitivePaneView {
 
     update(): void {
         const timeScale = this._source._chart.timeScale();
-        this._x = timeScale.logicalToCoordinate(this._source._point.logical as Logical);
+        this._x = coordinateForLogical(timeScale, this._source._point.logical);
         this._y = this._source._series.priceToCoordinate(this._source._point.price);
     }
 
@@ -150,7 +154,7 @@ export class HorizontalRay implements ISeriesPrimitive<Time> {
      */
     public toolHitTest(x: number, y: number): HitTestResult | null {
         const timeScale = this._chart.timeScale();
-        const xCoord = timeScale.logicalToCoordinate(this._point.logical as Logical);
+        const xCoord = coordinateForLogical(timeScale, this._point.logical);
         const yCoord = this._series.priceToCoordinate(this._point.price);
 
         if (xCoord === null || yCoord === null) return null;

@@ -6,7 +6,6 @@ import type {
   IPrimitivePaneView,
   ISeriesApi,
   ISeriesPrimitive,
-  Logical,
   SeriesOptionsMap,
   SeriesType,
   Time,
@@ -17,6 +16,7 @@ import type {
   ViewPoint,
 } from './base-types'
 import {
+  coordinateForLogical,
   drawAnchor,
   scaleCoordinate,
   setLineStyle,
@@ -47,7 +47,7 @@ class CrossLinePaneRenderer implements IPrimitivePaneRenderer {
       context.save()
       context.lineWidth = options.width * scope.verticalPixelRatio
       context.strokeStyle = options.lineColor
-      setLineStyle(context, options.lineStyle)
+      setLineStyle(context, options.lineStyle, scope.horizontalPixelRatio)
 
       context.beginPath()
       context.moveTo(0, scaledY)
@@ -74,8 +74,9 @@ class CrossLinePaneView implements IPrimitivePaneView {
 
   update(): void {
     const point = this.source.point()
-    this.point.x = this.source.chart().timeScale().logicalToCoordinate(
-      point.logical as Logical,
+    this.point.x = coordinateForLogical(
+      this.source.chart().timeScale(),
+      point.logical,
     )
     this.point.y = this.source.series().priceToCoordinate(point.price)
   }
@@ -155,8 +156,9 @@ export class CrossLine implements ISeriesPrimitive<Time> {
   }
 
   toolHitTest(x: number, y: number): HitTestResult | null {
-    const xCoordinate = this.chartApi.timeScale().logicalToCoordinate(
-      this.logicalPoint.logical as Logical,
+    const xCoordinate = coordinateForLogical(
+      this.chartApi.timeScale(),
+      this.logicalPoint.logical,
     )
     const yCoordinate = this.seriesApi.priceToCoordinate(
       this.logicalPoint.price,

@@ -5,7 +5,6 @@ import type {
   IPrimitivePaneView,
   ISeriesApi,
   ISeriesPrimitive,
-  Logical,
   SeriesType,
   Time,
 } from 'lightweight-charts'
@@ -17,11 +16,13 @@ import type {
 import type { TextAppearance } from '@renderer-shared/domain/textAppearance'
 import {
   DEFAULT_TEXT_APPEARANCE,
+  DEFAULT_TEXT_BACKGROUND_COLOR,
   copyTextAppearance,
 } from '@renderer-shared/domain/textAppearance'
-import type {
-  HitTestResult,
-  LogicalPoint,
+import {
+  coordinateForLogical,
+  type HitTestResult,
+  type LogicalPoint,
 } from '@drawings/plugins/line-tools/base-types'
 import {
   colorWithAlpha,
@@ -38,6 +39,7 @@ export interface CatalogDrawingOptions {
   levels: readonly DrawingLevel[]
   text: string
   textAppearance: TextAppearance
+  textBackgroundColor: string
 }
 
 const DEFAULT_OPTIONS: CatalogDrawingOptions = {
@@ -47,6 +49,7 @@ const DEFAULT_OPTIONS: CatalogDrawingOptions = {
   levels: [],
   text: '',
   textAppearance: copyTextAppearance(DEFAULT_TEXT_APPEARANCE),
+  textBackgroundColor: DEFAULT_TEXT_BACKGROUND_COLOR,
 }
 
 const LINE_DASH: Record<DrawingLineStyle, number[]> = {
@@ -164,7 +167,7 @@ export class CatalogDrawing implements ISeriesPrimitive<Time> {
     points.length = this._points.length
     for (let index = 0; index < this._points.length; index += 1) {
       const source = this._points[index]
-      const x = scale.logicalToCoordinate(source.logical as Logical)
+      const x = coordinateForLogical(scale, source.logical)
       const y = this._series.priceToCoordinate(source.price)
       if (x === null || y === null) {
         points.length = 0

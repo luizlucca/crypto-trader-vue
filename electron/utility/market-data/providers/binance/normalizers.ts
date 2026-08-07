@@ -209,15 +209,21 @@ export function normalizeCandleRow(
  * Whether a frame from the kline stream is a kline at all.
  *
  * The socket carries more than candles: Binance answers subscription commands
- * and reports problems as `{"error":{…}}` on the same connection. Treating
- * those as malformed candles used to error the observable, which tore the
- * socket down and reconnected with backoff — indefinitely, because the next
- * connection received the same frame. A frame that is not a kline is not a
- * failure of the candle stream; it just is not a candle.
+ * and can carry control frames that are not candles. Explicit error frames
+ * are rejected before the websocket observable emits them; every other
+ * non-kline frame can be ignored without taking a healthy stream down.
  */
 export function isKlineEvent(raw: unknown): boolean {
   const event = raw as BinanceKlineEvent | null
   return Boolean(event?.s) && Boolean(event?.k?.i)
+}
+
+/** Binance's explicit rejection envelope, distinct from a control frame. */
+export function isStreamRejection(
+  raw: unknown,
+): raw is { error: { msg?: string, code?: number } } {
+  const frame = raw as { error?: unknown } | null
+  return Boolean(frame?.error) && typeof frame?.error === 'object'
 }
 
 /** Describes a non-kline frame for the status line, without leaking its size. */

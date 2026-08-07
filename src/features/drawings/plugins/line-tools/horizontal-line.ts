@@ -38,9 +38,13 @@ class HorizontalLinePaneRenderer implements IPrimitivePaneRenderer {
             const width = scope.mediaSize.width * scope.horizontalPixelRatio;
 
             // Draw line
-            ctx.lineWidth = this._options.width;
+            ctx.lineWidth = this._options.width * scope.verticalPixelRatio;
             ctx.strokeStyle = this._options.lineColor;
-            setLineStyle(ctx, this._options.lineStyle);
+            setLineStyle(
+                ctx,
+                this._options.lineStyle,
+                scope.horizontalPixelRatio,
+            );
             ctx.beginPath();
             ctx.moveTo(0, yScaled);
             ctx.lineTo(width, yScaled);

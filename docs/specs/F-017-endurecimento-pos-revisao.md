@@ -1,7 +1,7 @@
 # F-017 — Endurecimento pós-revisão
 
 **Status:** em desenvolvimento  
-**Última revisão:** 2026-08-04  
+**Última revisão:** 2026-08-06
 **Origem:** [Revisão de código de agosto de 2026](../roadmap/revisao-de-codigo-2026-08.md)  
 **Relaciona-se a:** [F-003](./F-003-streams-realtime.md),
 [F-005](./F-005-historico-do-grafico.md),
@@ -51,8 +51,9 @@ Por consequência para quem opera, não por facilidade de correção.
       dessincronizado e os candles chegando, a barra de status diz "Candles
       conectados · livro reconectando" em vez de reportar a sessão inteira
       como "Reconectando".
-- [x] **RV-002** · Um quadro que não é kline é ignorado com o motivo exposto,
-      em vez de errar o observable e disparar reconexão indefinida.
+- [x] **RV-002** · Um quadro de controle que não é kline é ignorado com o motivo
+      exposto. Uma rejeição explícita da Binance falha antes da emissão e não
+      pode zerar o contador de retentativa como se fosse dado válido.
 - [x] **RV-003** · Um stream permanentemente inválido chega a `error` depois de
       seis falhas consecutivas, em vez de exibir "Reconectando" para sempre —
       e continua tentando, porque desistir de um mercado não é opção.
@@ -131,6 +132,22 @@ Por consequência para quem opera, não por facilidade de correção.
 - [x] **RV-025** · O livro alinha os vazios acima das vendas quando chegam
       menos níveis que linhas.
 
+### Revisão do PR #3
+
+- [x] **RV-026** · Rejeições de assinatura Binance são validadas antes de
+      `next`, portanto `retry.resetOnSuccess` não transforma falhas repetidas em
+      falsas conexões bem-sucedidas.
+- [x] **RV-027** · O botão de nova tentativa da carga inicial executa a
+      inicialização completa e restaura indicadores após os candles.
+- [x] **RV-028** · O hit test do catálogo deixa de selecionar o retângulo vazio
+      ao redor da forma e considera segmento, curva ou área realmente pintada.
+- [x] **RV-029** · Primitives importadas que pintam em bitmap escalam largura,
+      tracejado e alças pelo pixel ratio do canvas.
+- [x] **RV-030** · A intenção de iniciar/parar uma sessão é registrada antes de
+      aguardar o utility process. Uma aba fechada durante o restart não é
+      restaurada; starts pendentes não duplicam e updates aguardam a restauração
+      da sessão.
+
 ### Pendências de verificação
 
 - [x] `Esc` fecha o painel de configurações, confirmado no app com a checagem
@@ -154,18 +171,18 @@ lado do ponto para de mentir.
 Duas tabelas de palavras porque só a concordância difere: "candles
 conectados", "livro conectado".
 
-### RV-002 — um quadro estranho não é uma falha do stream
+### RV-002 e RV-026 — controle estranho não é rejeição da corretora
 
-O socket de kline carrega mais que candles: a Binance responde a comandos de
-assinatura e reporta problemas como `{"error":{…}}` na mesma conexão. Tratar
-isso como candle malformado errava o observable, que derrubava o socket e
-reconectava com backoff — indefinidamente, porque a conexão seguinte recebia o
-mesmo quadro. Um quadro que não é kline não é falha do stream de candles; ele
-só não é um candle.
+O socket de kline carrega mais que candles. Um quadro de controle que não é
+kline não é falha do stream e pode ser ignorado. Já `{"error":{…}}` é uma
+recusa explícita da corretora e não pode ser contado como sucesso.
 
-`isKlineEvent` decide, `describeStreamFrame` explica, e o quadro é ignorado com
-o motivo indo para a linha de status. O erro da corretora agora aparece com
-código e mensagem, em vez de virar "reconectando" sem explicação.
+`isKlineEvent` decide o dado, `isStreamRejection` decide a recusa e
+`describeStreamFrame` explica os dois. A validação ocorre dentro de
+`websocketJSON$`, antes de `subscriber.next`: se fosse downstream,
+`retry.resetOnSuccess` zeraria o contador ao ver o envelope e a falha seguinte
+voltaria a parecer a primeira para sempre. O stream continua tentando, mas
+alcança `error` após as falhas consecutivas e expõe código e mensagem.
 
 ### RV-003 — retentar para sempre, mas parar de chamar de oscilação
 
@@ -338,6 +355,39 @@ que preserva. Se isso alcança outra view de painel depende de como a biblioteca
 bracketa as próprias passagens, o que não é garantia em que se apoiar. Um
 `save` e um `restore` por pintura — não por banda — são duas operações de pilha
 num caminho que já percorre todas as bandas.
+
+### RV-027 — a nova tentativa repete a inicialização inteira
+
+`loadHistory()` restaura candles, mas os indicadores são retomados por
+`restoreIndicatorLayout()` na etapa seguinte de `initializeChartData()`. O
+botão de erro chamava apenas a primeira metade. Ele passou a reutilizar a mesma
+orquestração da montagem inicial, mantendo uma única ordem: histórico válido,
+depois layout e computação dos indicadores.
+
+### RV-028 — hit test acompanha o que foi pintado
+
+O fallback por bounding box fazia uma seta diagonal selecionar toda a área
+retangular entre suas âncoras. O catálogo agora testa linhas e canais por seus
+segmentos, curvas por amostragem, elipses pela borda e formas preenchidas pelo
+polígono. Ferramentas sem geometria específica continuam selecionáveis pelas
+âncoras, mas não ganham uma área vazia inventada.
+
+### RV-029 — bitmap usa pixels do bitmap
+
+As primitives importadas convertem coordenadas para o bitmap, mas deixavam
+largura, tracejado e alças em pixels CSS. Em telas HiDPI isso afinava a forma e
+encurtava o padrão. Os renderers agora escalam essas medidas pelo pixel ratio
+do escopo; há teste com DPR 2 verificando linha de 2px → 4px e tracejado
+`[6, 6]` → `[12, 12]`.
+
+### RV-030 — intenção existe antes do processo estar pronto
+
+O coordenador só registrava `stop-stream` depois de `waitUntilReady()`. Se a
+aba fechasse durante um restart, a mensagem `ready` restaurava a assinatura
+antiga antes de o stop ter chance de removê-la. A intenção agora é atualizada
+antes da espera. Starts que já aguardam o processo são excluídos da restauração
+para não duplicar, e a restauração é enfileirada antes de liberar updates e
+mudanças de visibilidade que dependem da sessão recém-criada.
 
 ### RV-017 — a semântica que faltava não era a que estava escrita
 

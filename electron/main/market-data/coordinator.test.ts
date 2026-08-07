@@ -137,6 +137,63 @@ describe('MarketDataCoordinator', () => {
     coordinator.shutdown()
   })
 
+  it('não restaura uma aba fechada enquanto o processo reinicia', async () => {
+    const coordinator = new MarketDataCoordinator(() => {})
+    coordinator.start()
+    const first = FakeChild.instances[0]
+    first.becomeReady()
+    const started = coordinator.request(startStream('tab-one'))
+    await vi.advanceTimersByTimeAsync(0)
+    first.answerAll()
+    await started
+
+    first.emit('exit', 1)
+    await vi.advanceTimersByTimeAsync(1_000)
+    const second = FakeChild.instances[1]
+    const stopped = coordinator.request({
+      kind: 'stop-stream',
+      sessionId: 'tab-one',
+    })
+
+    second.becomeReady()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(kinds(second)).toEqual(['stop-stream'])
+    second.answerAll()
+    await stopped
+    coordinator.shutdown()
+  })
+
+  it('restaura a sessão antes da atualização pendente', async () => {
+    const coordinator = new MarketDataCoordinator(() => {})
+    coordinator.start()
+    const first = FakeChild.instances[0]
+    first.becomeReady()
+    const started = coordinator.request(startStream('tab-one'))
+    await vi.advanceTimersByTimeAsync(0)
+    first.answerAll()
+    await started
+
+    first.emit('exit', 1)
+    await vi.advanceTimersByTimeAsync(1_000)
+    const second = FakeChild.instances[1]
+    const updated = coordinator.request({
+      kind: 'update-candle-stream',
+      sessionId: 'tab-one',
+      selection: { ...selection, interval: '5m' },
+      visible: true,
+    })
+
+    second.becomeReady()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(kinds(second)).toEqual([
+      'start-stream',
+      'update-candle-stream',
+    ])
+    second.answerAll()
+    await updated
+    coordinator.shutdown()
+  })
+
   it('keeps a slow process that still produces traffic', async () => {
     const coordinator = new MarketDataCoordinator(() => {})
     coordinator.start()

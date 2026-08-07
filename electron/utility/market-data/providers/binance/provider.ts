@@ -29,6 +29,7 @@ import {
   normalizeExchangeSymbols,
   describeStreamFrame,
   isKlineEvent,
+  isStreamRejection,
   normalizeKlineEvent,
   type BinanceExchangeSymbol,
   type BinanceTicker24h,
@@ -329,13 +330,16 @@ export class BinanceProvider implements MarketDataProvider {
     const streamURL = `${endpoint.marketWebSocket}/${
       symbol.toLowerCase()
     }@kline_${selection.interval}`
-    /*
-     * A frame that is not a kline is skipped, never thrown. Throwing errors
-     * the observable, which tears the socket down and reconnects with backoff
-     * — and the next connection receives the same frame, so the chart stops
-     * updating for good over one unexpected message.
-     */
-    return websocketJSON$<unknown>(streamURL, onState).pipe(
+    const rejectRefusedSubscription = (event: unknown): void => {
+      if (isStreamRejection(event)) {
+        throw new Error(describeStreamFrame(event))
+      }
+    }
+    return websocketJSON$<unknown>(
+      streamURL,
+      onState,
+      rejectRefusedSubscription,
+    ).pipe(
       filter((event) => {
         if (isKlineEvent(event)) {
           return true

@@ -339,10 +339,10 @@
   left: 50%;
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   max-width: calc(100% - 96px);
-  min-height: 42px;
-  padding: 5px;
+  min-height: 40px;
+  padding: 4px 6px;
   transform: translateX(-50%);
   border: 1px solid color-mix(in srgb, var(--selected-bg) 72%, var(--border));
   border-radius: 9px;
@@ -459,53 +459,16 @@
   height: 14px;
 }
 
-.drawing-inspector__identity {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
-  min-width: 158px;
-  max-width: 210px;
-  padding: 0 8px 0 6px;
-}
-
-.drawing-inspector__identity > svg {
-  flex: 0 0 auto;
-  width: 17px;
-  height: 17px;
-  color: var(--accent-hover);
-  stroke-width: 1.8;
-}
-
-.drawing-inspector__identity > span {
-  display: grid;
-  min-width: 0;
-  line-height: 1.15;
-}
-
-.drawing-inspector__identity small {
-  color: var(--muted);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-
-.drawing-inspector__identity strong {
-  overflow: hidden;
-  color: var(--text-strong);
-  font-size: 12px;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .drawing-inspector__separator {
   flex: 0 0 auto;
   width: 1px;
   height: 22px;
-  margin: 0 3px;
+  margin: 0 2px;
   background: var(--border-soft);
+}
+
+.drawing-inspector__separator--tone {
+  margin-inline: 5px 3px;
 }
 
 .drawing-style-field {
@@ -513,12 +476,16 @@
   flex: 0 0 auto;
 }
 
+.drawing-style-field--tone + .drawing-style-field--tone {
+  margin-left: 3px;
+}
+
 .drawing-style-control,
 .drawing-inspector__action {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 31px;
+  height: 30px;
   border: 1px solid transparent;
   border-radius: 5px;
   color: color-mix(in srgb, var(--selected-bg) 38%, var(--text));
@@ -526,12 +493,68 @@
 }
 
 .drawing-style-control {
-  gap: 7px;
-  min-width: 66px;
-  padding: 0 7px;
+  gap: 6px;
+  min-width: 38px;
+  padding: 0 6px;
   font-size: 11px;
   font-weight: 550;
   white-space: nowrap;
+}
+
+.drawing-style-control--tone {
+  width: 42px;
+  min-width: 42px;
+  padding: 0;
+}
+
+.drawing-color-glyph {
+  position: relative;
+  display: grid;
+  width: 24px;
+  height: 26px;
+  place-items: center;
+}
+
+.drawing-color-glyph > svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.8;
+  transform: translateY(-2px);
+}
+
+.drawing-color-glyph > i {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  left: 2px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--drawing-color);
+}
+
+.drawing-text-color-glyph {
+  position: relative;
+  display: grid;
+  width: 24px;
+  height: 26px;
+  place-items: center;
+}
+
+.drawing-text-color-glyph > b {
+  color: currentcolor;
+  font: 560 20px/.9 Inter, sans-serif;
+  letter-spacing: -.08em;
+  transform: translateY(-3px);
+}
+
+.drawing-text-color-glyph > i {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  left: 2px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--drawing-color);
 }
 
 .drawing-style-control > svg {
@@ -540,28 +563,12 @@
   stroke-width: 1.8;
 }
 
-.drawing-style-control > svg:last-child {
-  width: 12px;
-  height: 12px;
-  margin-left: -2px;
-  color: var(--muted);
-}
-
 button.drawing-style-control:hover,
 button.drawing-style-control[aria-expanded="true"],
 .drawing-inspector__action:hover {
   border-color: var(--border-soft);
   color: var(--accent-hover);
   background: color-mix(in srgb, var(--selected-bg) 62%, transparent);
-}
-
-.drawing-current-color {
-  width: 16px;
-  height: 16px;
-  border: 1px solid color-mix(in srgb, var(--text-strong) 24%, transparent);
-  border-radius: 50%;
-  background: var(--drawing-color);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12);
 }
 
 .drawing-level-colors {
@@ -796,17 +803,29 @@ button.drawing-style-control[aria-expanded="true"],
 }
 
 .drawing-properties-popover {
-  right: 0;
+  position: fixed;
+  z-index: 1000;
+  right: auto;
   left: auto;
   width: 370px;
   padding: 0;
   overflow: hidden;
+  contain: layout style;
 }
 
 .drawing-properties {
   display: grid;
-  max-height: min(560px, calc(100vh - 150px));
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  max-height: inherit;
   color: var(--text);
+}
+
+.drawing-properties__body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .drawing-properties > header {
@@ -859,6 +878,10 @@ button.drawing-style-control[aria-expanded="true"],
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.drawing-properties__color-grid.text-colors {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .drawing-properties__color-grid > label {
@@ -1086,22 +1109,13 @@ button.drawing-style-control[aria-expanded="true"],
 }
 
 @media (max-width: 1450px) {
-  .drawing-inspector__identity {
-    min-width: 132px;
-    max-width: 150px;
-  }
-
-  .drawing-style-control > span {
+  .drawing-style-control > span:not(.drawing-color-glyph) {
     display: none;
   }
 
   .drawing-style-control {
     min-width: 38px;
     padding-inline: 6px;
-  }
-
-  .drawing-style-control > svg:last-child {
-    display: none;
   }
 }
 

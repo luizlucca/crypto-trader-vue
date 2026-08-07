@@ -72,6 +72,9 @@ export const DEFAULT_TEXT_APPEARANCE: Readonly<TextAppearance> = {
   color: '#DCE8EF',
 }
 
+/** Reusable surface colour behind text rendered over dense chart content. */
+export const DEFAULT_TEXT_BACKGROUND_COLOR = '#07141C'
+
 const FONT_IDS = new Set<TextFontFamilyId>(
   TEXT_FONT_OPTIONS.map(({ id }) => id),
 )
@@ -82,6 +85,12 @@ const FONT_STACKS = Object.fromEntries(
   TEXT_FONT_OPTIONS.map(({ id, stack }) => [id, stack]),
 ) as Record<TextFontFamilyId, string>
 const HEX_COLOR = /^#[\da-f]{6}$/i
+
+export function normalizeTextBackgroundColor(value: unknown): string {
+  return typeof value === 'string' && HEX_COLOR.test(value)
+    ? value
+    : DEFAULT_TEXT_BACKGROUND_COLOR
+}
 
 export function normalizeTextAppearance(value: unknown): TextAppearance {
   const stored = value as Partial<TextAppearance> | null

@@ -5,7 +5,6 @@ import {
     ISeriesPrimitive,
     IPrimitivePaneRenderer,
     IPrimitivePaneView,
-    Logical,
     SeriesOptionsMap,
     SeriesType,
     Time,
@@ -14,6 +13,7 @@ import {
     LogicalPoint,
     ViewPoint,
     HitTestResult,
+    coordinateForLogical,
     pointToCoordinate,
     scaleCoordinate,
     drawAnchor,
@@ -232,9 +232,9 @@ export class DateRange implements ISeriesPrimitive<Time> {
         const timeScale = this._chart.timeScale();
         const series = this._series;
 
-        const x1 = timeScale.logicalToCoordinate(this._p1.logical as Logical);
+        const x1 = coordinateForLogical(timeScale, this._p1.logical);
         const y1 = series.priceToCoordinate(this._p1.price);
-        const x2 = timeScale.logicalToCoordinate(this._p2.logical as Logical);
+        const x2 = coordinateForLogical(timeScale, this._p2.logical);
         const y2 = series.priceToCoordinate(this._p2.price);
 
         if (x1 === null || y1 === null || x2 === null || y2 === null) return null;

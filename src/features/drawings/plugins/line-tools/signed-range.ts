@@ -6,7 +6,6 @@ import type {
   IPrimitivePaneView,
   ISeriesApi,
   ISeriesPrimitive,
-  Logical,
   SeriesOptionsMap,
   SeriesType,
   Time,
@@ -16,7 +15,7 @@ import type {
   LogicalPoint,
   ViewPoint,
 } from './base-types'
-import { isPointInRectangle } from './base-types'
+import { coordinateForLogical, isPointInRectangle } from './base-types'
 
 export type SignedRangeMode = 'measure' | 'price' | 'date-price'
 
@@ -251,8 +250,9 @@ class SignedRangePaneView implements IPrimitivePaneView {
   }
 
   private writeCoordinate(point: LogicalPoint, target: ViewPoint): void {
-    target.x = this.source.chart().timeScale().logicalToCoordinate(
-      point.logical as Logical,
+    target.x = coordinateForLogical(
+      this.source.chart().timeScale(),
+      point.logical,
     )
     target.y = this.source.series().priceToCoordinate(point.price)
   }
@@ -385,7 +385,7 @@ export class SignedRangeDrawing implements ISeriesPrimitive<Time> {
 
   private coordinate(point: LogicalPoint): ViewPoint {
     return {
-      x: this.chartApi.timeScale().logicalToCoordinate(point.logical as Logical),
+      x: coordinateForLogical(this.chartApi.timeScale(), point.logical),
       y: this.seriesApi.priceToCoordinate(point.price),
     }
   }

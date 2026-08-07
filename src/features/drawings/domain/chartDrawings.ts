@@ -1,5 +1,8 @@
 import type { TextAppearance } from '@renderer-shared/domain/textAppearance'
-import { normalizeTextAppearance } from '@renderer-shared/domain/textAppearance'
+import {
+  normalizeTextAppearance,
+  normalizeTextBackgroundColor,
+} from '@renderer-shared/domain/textAppearance'
 
 /**
  * Drawings the operator places on the chart.
@@ -113,6 +116,7 @@ export interface DrawingConfiguration {
   levels?: DrawingLevel[]
   text?: string
   textAppearance?: TextAppearance
+  textBackgroundColor?: string
 }
 
 export type DrawingLineStyle = 0 | 1 | 2
@@ -754,6 +758,11 @@ function parseDrawingConfiguration(
   ) {
     configuration.textAppearance = normalizeTextAppearance(
       stored.textAppearance,
+    )
+  }
+  if (capabilities.text && stored.textBackgroundColor !== undefined) {
+    configuration.textBackgroundColor = normalizeTextBackgroundColor(
+      stored.textBackgroundColor,
     )
   }
   if (Array.isArray(stored.levels) && capabilities.levels) {

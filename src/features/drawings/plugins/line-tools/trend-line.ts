@@ -6,7 +6,6 @@ import {
 	ISeriesPrimitive,
 	IPrimitivePaneRenderer,
 	IPrimitivePaneView,
-	Logical,
 	SeriesOptionsMap,
 	SeriesType,
 	Time,
@@ -15,6 +14,7 @@ import {
 	LogicalPoint,
 	ViewPoint,
 	HitTestResult,
+	coordinateForLogical,
 	pointToCoordinate,
 	distanceToSegment,
 	scaleCoordinate,
@@ -74,10 +74,14 @@ class TrendLinePaneRenderer implements IPrimitivePaneRenderer {
 			);
 
 			if (segment) {
-				ctx.lineWidth = this._options.width;
+				ctx.lineWidth = this._options.width * scope.verticalPixelRatio;
 				ctx.strokeStyle = this._options.lineColor;
 				ctx.lineCap = 'butt';
-				setLineStyle(ctx, this._options.lineStyle || 0);
+				setLineStyle(
+					ctx,
+					this._options.lineStyle || 0,
+					scope.horizontalPixelRatio
+				);
 				ctx.beginPath();
 				ctx.moveTo(segment[0].x, segment[0].y);
 				ctx.lineTo(segment[1].x, segment[1].y);
@@ -87,10 +91,20 @@ class TrendLinePaneRenderer implements IPrimitivePaneRenderer {
 
 			// Draw arrows
 			if (this._options.leftEnd === 1) { // Arrow
-				this._drawArrow(ctx, p2, p1, this._options.width);
+				this._drawArrow(
+					ctx,
+					p2,
+					p1,
+					this._options.width * scope.verticalPixelRatio
+				);
 			}
 			if (this._options.rightEnd === 1) { // Arrow
-				this._drawArrow(ctx, p1, p2, this._options.width);
+				this._drawArrow(
+					ctx,
+					p1,
+					p2,
+					this._options.width * scope.verticalPixelRatio
+				);
 			}
 
 			// Draw anchors when selected
@@ -264,9 +278,9 @@ export class TrendLine implements ISeriesPrimitive<Time> {
 		const timeScale = this._chart.timeScale();
 		const series = this._series;
 
-		const x1 = timeScale.logicalToCoordinate(this._p1.logical as Logical);
+		const x1 = coordinateForLogical(timeScale, this._p1.logical);
 		const y1 = series.priceToCoordinate(this._p1.price);
-		const x2 = timeScale.logicalToCoordinate(this._p2.logical as Logical);
+		const x2 = coordinateForLogical(timeScale, this._p2.logical);
 		const y2 = series.priceToCoordinate(this._p2.price);
 
 		if (x1 === null || y1 === null || x2 === null || y2 === null) return null;

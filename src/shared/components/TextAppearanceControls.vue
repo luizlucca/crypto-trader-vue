@@ -16,7 +16,13 @@ import {
   textFontFamilyStack,
 } from '@renderer-shared/domain/textAppearance'
 
-defineProps<{ compact?: boolean }>()
+withDefaults(defineProps<{
+  compact?: boolean
+  showColor?: boolean
+}>(), {
+  compact: false,
+  showColor: true,
+})
 
 const appearance = defineModel<TextAppearance>({ required: true })
 
@@ -132,7 +138,7 @@ function toggleItalic(): void {
           </select>
         </label>
 
-        <label class="text-color-field">
+        <label v-if="showColor" class="text-color-field">
           <span>Cor</span>
           <span>
             <i :style="{ '--text-color': appearance.color }" />

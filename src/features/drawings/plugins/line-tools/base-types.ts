@@ -25,6 +25,40 @@ export interface ViewPoint {
     y: Coordinate | null;
 }
 
+interface LogicalCoordinateScale {
+    logicalToCoordinate(logical: Logical): number | null;
+}
+
+/**
+ * Resolves a logical point to an x coordinate, including instants between
+ * candles.
+ *
+ * Lightweight Charts v5 accepts a `Logical` number at the type level, but
+ * `logicalToCoordinate` resolves non-integer values to the left edge. A
+ * drawing made at 10:00 on a 1h chart becomes a fractional position between
+ * two daily bars after switching to 1D, so using the API result directly
+ * pins it at x=0. Interpolating the two neighbouring real coordinates keeps
+ * the timestamp anchored without injecting synthetic bars into the chart.
+ */
+export function coordinateForLogical(
+    timeScale: LogicalCoordinateScale,
+    logical: number,
+): Coordinate | null {
+    if (!Number.isFinite(logical)) {
+        return null;
+    }
+    if (Number.isInteger(logical)) {
+        return timeScale.logicalToCoordinate(logical as Logical) as Coordinate | null;
+    }
+    const beforeLogical = Math.floor(logical);
+    const before = timeScale.logicalToCoordinate(beforeLogical as Logical);
+    const after = timeScale.logicalToCoordinate((beforeLogical + 1) as Logical);
+    if (before === null || after === null) {
+        return null;
+    }
+    return (before + (after - before) * (logical - beforeLogical)) as Coordinate;
+}
+
 /**
  * Result of a hit test operation.
  * Indicates what part of a drawing tool was clicked.
@@ -60,7 +94,7 @@ export function pointsToCoordinates(
 ): ViewPoint[] {
     const timeScale = chart.timeScale();
     return points.map(point => ({
-        x: timeScale.logicalToCoordinate(point.logical as Logical),
+        x: coordinateForLogical(timeScale, point.logical),
         y: series.priceToCoordinate(point.price),
     }));
 }
@@ -79,7 +113,7 @@ export function pointToCoordinate(
 ): ViewPoint {
     const timeScale = chart.timeScale();
     return {
-        x: timeScale.logicalToCoordinate(point.logical as Logical),
+        x: coordinateForLogical(timeScale, point.logical),
         y: series.priceToCoordinate(point.price),
     };
 }
@@ -168,6 +202,8 @@ const LINE_DASH_PATTERNS: number[][] = [
     [2, 10],
 ];
 
+const SCALED_LINE_DASH_PATTERNS = new Map<number, number[][]>();
+
 /**
  * Sets the line dash pattern based on the style index.
  * 0: Solid
@@ -178,9 +214,23 @@ const LINE_DASH_PATTERNS: number[][] = [
  * @param ctx - Canvas rendering context
  * @param style - Style index (0-4)
  */
-export function setLineStyle(ctx: CanvasRenderingContext2D, style: number): void {
-    const pattern = LINE_DASH_PATTERNS[style] || LINE_DASH_PATTERNS[0];
-    ctx.setLineDash(pattern);
+export function setLineStyle(
+    ctx: CanvasRenderingContext2D,
+    style: number,
+    pixelRatio = 1,
+): void {
+    if (pixelRatio === 1) {
+        ctx.setLineDash(LINE_DASH_PATTERNS[style] || LINE_DASH_PATTERNS[0]);
+        return;
+    }
+    let patterns = SCALED_LINE_DASH_PATTERNS.get(pixelRatio);
+    if (!patterns) {
+        patterns = LINE_DASH_PATTERNS.map(pattern => (
+            pattern.map(length => length * pixelRatio)
+        ));
+        SCALED_LINE_DASH_PATTERNS.set(pixelRatio, patterns);
+    }
+    ctx.setLineDash(patterns[style] || patterns[0]);
 }
 
 /**
@@ -202,7 +252,7 @@ export function drawAnchor(
     const ctx = scope.context;
     ctx.fillStyle = fillColor;
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * scope.verticalPixelRatio;
     ctx.beginPath();
     ctx.arc(x, y, 6 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
     ctx.fill();

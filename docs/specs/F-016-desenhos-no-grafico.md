@@ -1,7 +1,7 @@
 # F-016 — Desenhos no gráfico
 
 **Status:** em evolução  
-**Última revisão:** 2026-08-05
+**Última revisão:** 2026-08-06
 **Relaciona-se a:** [F-004](./F-004-grafico-lightweight.md),
 [F-005](./F-005-historico-do-grafico.md) e ao
 [ADR-0003](../adr/0003-renderizacao-imperativa-do-grafico.md)
@@ -23,7 +23,7 @@ qualquer período e depois de fechar o app.
   dela a representante da família até outra ser escolhida.
 - Cada uma das 68 ferramentas usa um glifo próprio que comunica sua geometria
   conforme a convenção visual de plataformas de mercado. O mesmo glifo aparece
-  na barra, no seletor da família e na identidade do desenho selecionado.
+  na barra e no seletor da família.
 - O menu fecha ao escolher, clicar fora ou pressionar `Esc`; setas, `Home` e
   `End` percorrem suas opções sem mouse.
 - Escolher a ferramenta arma um desenho; ela desarma sozinha ao concluir, e
@@ -33,7 +33,8 @@ qualquer período e depois de fechar o app.
   `Enter` ou duplo clique conclui a sequência sem duplicar o último ponto.
 - Enquanto uma ferramenta está armada, o cursor do gráfico muda para mira.
 - Arrastar o gráfico é navegar, não desenhar.
-- Clicar sobre um desenho o seleciona; clicar no vazio larga a seleção.
+- Pressionar sobre um desenho o seleciona e já permite arrastá-lo no mesmo
+  gesto; clicar no vazio larga a seleção.
 - O desenho selecionado pode ser arrastado inteiro, ter uma alça arrastada
   sozinha, ser restilizado (paleta, cor personalizada, quatro espessuras e
   três estilos de linha) e apagado — por botão ou pela tecla `Delete`.
@@ -42,8 +43,9 @@ qualquer período e depois de fechar o app.
   estivesse sob edição.
 - Os desenhos podem ser bloqueados em conjunto. O bloqueio larga a seleção e
   impede hit test e arrasto sem retirar as primitives do gráfico.
-- **Um desenho pertence ao ativo, não ao período.** Traçado no 1h, aparece no
-  4h no mesmo lugar.
+- **Um desenho pertence ao ativo, não ao período.** Traçado no 1h, aparece em
+  períodos maiores ou menores no mesmo tempo e preço, inclusive quando sua
+  âncora está fora da página de candles inicialmente carregada.
 - Sobrevive ao fechamento do app.
 - Posições comprada e vendida mostram ganho/perda em valor e percentual nos
   blocos de TP e SL.
@@ -56,7 +58,7 @@ qualquer período e depois de fechar o app.
 - Duplo clique sobre a caixa textual abre edição direta junto ao desenho;
   `Enter` salva, `Esc` cancela e o botão de ajustes leva ao editor completo.
 - Anotações oferecem atalhos S/M/L/XL e configuração de família tipográfica,
-  tamanho livre, peso, itálico e cor do texto.
+  tamanho livre, peso, itálico, cor do texto, cor da borda e cor do fundo.
 
 ## Implementação e decisões de arquitetura
 
@@ -263,6 +265,14 @@ lista — então clicar no que parecia vazio selecionava uma forma invisível,
 abria a barra de estilo sobre ela e permitia arrastá-la às cegas. Pelo mesmo
 motivo ocultar larga a seleção.
 
+O `mousedown` de desenho é capturado antes do pan nativo. Se ele começa sobre
+uma forma ainda não selecionada, a seleção e o arrasto nascem no mesmo gesto.
+Para anotações, o hit test cobre a caixa textual pintada, não apenas o pequeno
+raio da âncora. A posição inicial vem diretamente de
+`coordinateToLogical(x)` e `coordinateToPrice(y)` no evento; não depende da
+última posição de crosshair, que podia estar atrasada e produzir um arrasto
+aparentemente preso a um eixo.
+
 Arrastar desloca as âncoras em **posição lógica e preço**, as unidades do
 gráfico, e só então converte de volta para instantes. Assim um desenho
 arrastado sobre um buraco no histórico acompanha o que o operador vê, e não uma
@@ -328,6 +338,53 @@ custo cai para menos de meio milissegundo, com o dobro e o quádruplo das
 barras. `logicalForTime` é uma busca binária por âncora, então mais histórico
 quase não aparece.
 
+### Trocar período mantém âncoras fora do histórico carregado
+
+Interpolar o instante entre candles resolve uma âncora presente no domínio do
+novo período, mas não cria espaço navegável antes do primeiro ou depois do
+último ponto da escala. Uma linha traçada num período amplo pode cair fora das
+500 barras carregadas ao trocar para um período curto; extrapolar um índice
+negativo a deixava presa no primeiro pixel.
+
+O gráfico mantém uma série `LineSeries` visualmente invisível e exclusiva para
+pontos `WhitespaceData`. Somente o trecho necessário antes ou depois do
+intervalo de candles entra nela, em passos regulares do período ativo. Assim o
+Lightweight Charts incorpora esses instantes à escala horizontal sem comprimir
+um dia e um ano no mesmo único slot, sem inventar candles, sem alimentar
+indicadores e sem disparar uma carga REST de milhares de barras. Âncoras dentro
+do histórico continuam interpoladas e não criam espaçamento artificial entre
+candles.
+
+A extensão é limitada a 32 mil pontos por lado. Isso cobre, por exemplo, mais
+de 22 dias no gráfico de 1 minuto e períodos proporcionalmente maiores nos
+demais. Uma âncora ainda mais distante permanece fora da área desenhável — em
+vez de ficar falsamente presa ao canto — até a paginação histórica aproximar o
+limite real. O teto impede que uma única análise antiga aloque centenas de
+milhares de objetos em cada aba.
+
+A linha temporal consumida pelo manager é a união ordenada das barras reais e
+desses pontos externos. Ela é atualizada em carga inicial, prepend, novo candle
+e alteração de desenho. `setData` da série auxiliar só ocorre quando o suporte
+externo muda; um restyle não toca na escala. Se um candle novo
+alcança uma projeção futura, o ponto auxiliar sai e as primitives são
+reposicionadas uma vez. Candles e indicadores continuam recebendo apenas dados
+reais.
+
+#### Índice fracionário é convertido antes de chegar ao Lightweight Charts
+
+Uma âncora às 10:00 no gráfico de 1h pode cair entre duas barras no gráfico de
+1D. `logicalForTime` corretamente a resolve, por exemplo, como `42,416…`.
+Porém, no Lightweight Charts 5.2, passar esse valor fracionário diretamente a
+`timeScale.logicalToCoordinate()` produz a coordenada `0`, prendendo a
+primitive ao canto esquerdo a cada pan.
+
+`coordinateForLogical()` resolve apenas os dois índices inteiros vizinhos na
+API pública e interpola suas coordenadas. A âncora preserva o instante dentro
+da barra maior, acompanha o pan e não exige inserir pontos artificiais no meio
+dos candles. A função é usada por todas as primitives importadas, pelo catálogo
+local e pelo hit test; sua execução é aritmética constante, sem Vue, DOM ou
+rebuild do gráfico.
+
 ### O painel de estilo não segue a forma
 
 Ele fica preso ao topo do gráfico, centralizado. Acompanhar o desenho exigiria
@@ -335,9 +392,12 @@ medir a forma a cada quadro e escrever isso no DOM pelo Vue — uma renderizaç�
 por pixel de ponteiro, exatamente o que o caminho de desenho existe para
 evitar.
 
-O painel foi substituído por um inspetor contextual compacto. Ele mantém a
-identidade da ferramenta visível e revela um seletor por vez para cor,
-espessura, estilo da linha ou propriedades avançadas. A escolha ativa recebe marca visual e foco; as
+O painel foi substituído por um inspetor contextual compacto. Como a forma já
+está selecionada no gráfico, ele não repete nome nem ícone da ferramenta. Um
+lápis com sublinhado colorido controla linha/borda; nas ferramentas textuais,
+um `T` com seu próprio sublinhado controla a cor do texto. O inspetor revela um
+seletor por vez para cor, espessura, estilo da linha ou propriedades avançadas.
+A escolha ativa recebe marca visual e foco; as
 setas, `Home` e `End` navegam nas alternativas; `Esc` fecha primeiro o seletor
 e só um segundo `Esc` larga o desenho. Clicar fora também fecha apenas o
 seletor.
@@ -358,7 +418,14 @@ O editor avançado cobre três contratos explícitos do domínio:
 
 - cores positiva e negativa de régua e faixas;
 - lista editável de níveis e cores das ferramentas Fibonacci;
-- texto de anotações e marcações, limitado a 240 caracteres.
+- texto de anotações e marcações, limitado a 240 caracteres, com cores
+  independentes para conteúdo, fundo e borda.
+
+O editor avançado é teletransportado para o `body`, usa coordenadas fixas
+limitadas ao viewport e z-index acima das superfícies do desktop. Cabeçalho e
+rodapé permanecem visíveis; somente o corpo rola. Assim **Aplicar** e
+**Cancelar** não ficam cortados pelo painel de posições nem pelo `overflow` do
+gráfico, mesmo numa janela baixa.
 
 O formulário mantém rascunhos em `shallowRef` e só chama
 `configureSelected()` no botão **Aplicar**. Alterar um `input`, digitar texto ou
@@ -401,6 +468,13 @@ campo DOM. O canvas continua intocado até salvar. Depois da confirmação,
 com a mesma função compartilhada e dimensiona a caixa pelo tamanho escolhido.
 O hit test também lê a aparência persistida, portanto uma caixa XL tem área de
 interação coerente com o que foi pintado.
+
+`textAppearance.color`, `textBackgroundColor` e a cor principal do desenho são
+persistidos separadamente. No renderer, a cor principal pinta a borda e as
+linhas de chamada, respeitando também espessura e tracejado; o fundo preenche a
+caixa e `textAppearance.color` pinta apenas os glifos. Todas as ferramentas
+marcadas com capacidade textual passam pelo mesmo `textLabel`, evitando uma
+configuração que funcione em Texto e seja ignorada em Nota ou Chamada.
 
 O operador também pode restaurar o estilo padrão em uma ação. Os seletores
 usam tokens do tema e conservam contraste nas variantes clara e escura, sem
@@ -458,6 +532,7 @@ granularidade. Diferente de um indicador, um desenho é trabalho manual: perdê-
 ao reiniciar seria perder a análise.
 
 **Fontes de verdade:** `src/features/drawings/domain/chartDrawings.ts`,
+`src/features/drawings/domain/drawingTimeline.ts`,
 `src/shared/domain/textAppearance.ts`,
 `src/features/drawings/composables/useChartDrawings.ts`, `src/features/drawings/services/drawingStore.ts`,
 `src/features/drawings/components/DrawingToolbar.vue`, `src/features/drawings/plugins/line-tools/` e
@@ -471,19 +546,25 @@ ao reiniciar seria perder a análise.
   entre barras, a inversa `timeForLogical` (incluindo adiante da última barra e
   a ida e volta entre as duas), polilinhas com múltiplos vértices, capacidades
   de configuração e leitura defensiva de desenhos/configurações salvos.
+- `domain/drawingTimeline.test.ts`: união ordenada de candles com âncoras
+  anteriores/futuras, suporte regular sem compressão, teto por lado, exclusão
+  das âncoras internas e índice da última vela real mesmo quando existem
+  projeções futuras.
 - `domain/textAppearance.test.ts`: presets únicos, limites e fallback de dados
   persistidos, fonte de canvas, métricas do hit test e igualdade estrutural.
 - `composables/useChartDrawings.test.ts`: construção das duas novas primitives
   e das 51 primitives adicionais, tradução uniforme de estilo, hit test sobre
-  o corpo visível de uma caixa textual e retorno ao estado desbloqueado depois
-  de apagar todos os desenhos.
-- `plugins/catalogDrawings/catalog-drawing.test.ts`: atualização de quatro
-  pontos no mesmo objeto, hit test, estilo sem reattach, reutilização de view e
-  renderer entre repaints, hit test de segmentos adicionais da polilinha e
-  execução do caminho de pintura das 51 ferramentas.
-- `plugins/lineTools/imported-tools.test.ts`: hit test, invalidação preguiçosa
-  dos rótulos, estabilidade dos renderers, percentuais de posições long/short
-  e smoke test de pintura.
+  o corpo visível de uma caixa textual, seleção e arrasto nos dois eixos no
+  primeiro gesto, reprojeção 1h → 1D e retorno ao estado desbloqueado depois de
+  apagar todos os desenhos.
+- `plugins/catalog-drawings/catalog-drawing.test.ts`: atualização de quatro
+  pontos no mesmo objeto, hit test apenas sobre geometria pintada, independência
+  das três cores de texto, estilo sem reattach, reutilização de view e renderer
+  entre repaints, hit test da polilinha e pintura das 51 ferramentas.
+- `plugins/line-tools/imported-tools.test.ts`: hit test, invalidação preguiçosa
+  dos rótulos, estabilidade dos renderers, percentuais de posições long/short,
+  escala HiDPI de espessura/tracejado, conversão de índice fracionário entre
+  candles sem chamar a API com a fração e smoke test de pintura.
 - Validação no app com dados ao vivo de BTCUSDT 1h: as quinze ferramentas
   originais, uma a uma, com os cliques que cada uma exige; e o ciclo de edição
   — selecionar, restilizar, arrastar, apagar, recarregar.
@@ -508,6 +589,9 @@ ao reiniciar seria perder a análise.
       caminho de pintura exercitado por teste automatizado.
 - [x] Ferramentas de quatro pontos recebem prévia e arrasto por mutação da
       primitive existente, sem reattach no movimento.
+- [x] Âncoras traçadas entre candles acompanham pan e zoom após trocar entre
+      períodos maiores ou menores; nenhuma primitive recebe índice fracionário
+      diretamente em `logicalToCoordinate()`.
 - [x] Nenhuma dependência npm foi adicionada para o catálogo de desenhos.
 - [ ] Validar visualmente no app o ciclo completo das 51 ferramentas: criar,
       selecionar, mover, restilizar, trocar período e recarregar.
@@ -517,6 +601,10 @@ ao reiniciar seria perder a análise.
       cancelar, confirmação ao perder foco e acesso às propriedades completas.
 - [x] Texto oferece S/M/L/XL no editor rápido e configura fonte, cor, tamanho,
       peso e itálico no editor completo, com prévia DOM antes de repintar.
+- [x] Texto, fundo e borda da caixa têm cores independentes; espessura e estilo
+      da linha são aplicados à borda e às linhas de chamada.
+- [x] Editor avançado fica acima de todos os painéis, limitado ao viewport, com
+      corpo rolável e ações sempre acessíveis.
 - [x] Tipografia vive em domínio e componente compartilhados, sem dependência
       de gráfico, para reúso por outras features.
 - [ ] Validar ao vivo o ciclo completo das duas novas ferramentas: desenhar,
@@ -524,7 +612,7 @@ ao reiniciar seria perder a análise.
 - [x] A barra mostra oito famílias, separa ação direta do botão de flyout e
       lembra a última ferramenta escolhida de cada família.
 - [x] As 68 ferramentas possuem glifos SVG locais e específicos, reutilizados
-      na barra, no flyout e no inspetor do desenho selecionado.
+      na barra e no flyout.
 - [x] Controles do inspetor não quebram seus rótulos em várias linhas; em
       espaço reduzido passam ao modo compacto sem alterar sua altura.
 - [x] O flyout fecha por seleção, clique externo ou `Esc`, e aceita setas,
@@ -534,10 +622,13 @@ ao reiniciar seria perder a análise.
 - [x] Clicar na margem vazia à direita da última vela cria âncora.
 - [x] Arrastar o gráfico navega sem criar desenho.
 - [x] `Esc` desarma a ferramenta.
-- [x] Os desenhos sobrevivem à troca de período: medido, 2 na tela no 1h, 2 no
-      4h, 2 de volta no 1h.
+- [x] Os desenhos são reprojetados pela âncora temporal na troca de período;
+      âncoras externas ganham pontos whitespace sem entrar em candles ou
+      indicadores. Coberto por teste 1h → 1D e pela escala auxiliar.
 - [x] Os desenhos sobrevivem ao fechamento do app.
 - [x] Selecionar um desenho clicando sobre ele, e largar clicando no vazio.
+- [x] Pressionar uma caixa textual ainda não selecionada permite arrastá-la nos
+      dois eixos já no primeiro gesto, sem o gráfico rolar junto.
 - [x] Com os desenhos ocultos, clicar onde havia um não seleciona nada, e
       ocultar com um selecionado fecha a barra de estilo.
 - [x] Bloquear os desenhos fecha a barra de estilo e impede seleção e arrasto;
@@ -555,6 +646,8 @@ ao reiniciar seria perder a análise.
       restauração de padrão e navegação por teclado.
 - [x] Estilo contínuo, tracejado e pontilhado nas primitives que o suportam;
       desenhos antigos recebem o padrão contínuo na leitura.
+- [x] Primitives em coordenadas bitmap escalam espessura, tracejado e alças pelo
+      pixel ratio; coberto por teste HiDPI da linha de tendência.
 - [x] Ferramentas Fibonacci com cores por nível não oferecem um controle de
       cor única sem efeito.
 - [x] Níveis Fibonacci podem ser adicionados, removidos, recoloridos e têm o

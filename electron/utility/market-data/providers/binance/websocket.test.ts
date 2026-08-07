@@ -124,4 +124,35 @@ describe('websocketJSON$', () => {
 
     subscription.unsubscribe()
   })
+
+  it('não conta uma rejeição validada como frame bem-sucedido', () => {
+    const states: ConnectionState[] = []
+    const subscription = websocketJSON$<unknown>(
+      'wss://example.test/ws',
+      (state) => states.push(state),
+      (frame) => {
+        if ((frame as { error?: unknown }).error) {
+          throw new Error('Assinatura recusada')
+        }
+      },
+    ).subscribe({ next: () => {}, error: () => {} })
+
+    for (let attempt = 0; attempt < 7; attempt += 1) {
+      const socket = FakeSocket.instances.at(-1)
+      socket?.open()
+      socket?.emit('message', Buffer.from('{"error":{"code":-1}}'))
+      vi.advanceTimersByTime(20_000)
+    }
+
+    const failures = states.filter(({ state }) => (
+      state === 'reconnecting' || state === 'error'
+    ))
+    expect(failures.filter(({ state }) => state === 'error').length)
+      .toBeGreaterThanOrEqual(2)
+    expect(failures).toContainEqual(expect.objectContaining({
+      state: 'error',
+      message: 'Assinatura recusada',
+    }))
+    subscription.unsubscribe()
+  })
 })

@@ -9,12 +9,18 @@ import {
   drawingStyleCapabilities,
 } from '@drawings/domain/chartDrawings'
 import { styleFor, useChartDrawings } from './useChartDrawings'
+import { TrendLine } from '@drawings/plugins/line-tools/trend-line'
+import { buildDrawingTimeline } from '@drawings/domain/drawingTimeline'
 
 /**
  * Enough chart for the manager to build primitives against. The vendored tools
  * only read the two scales while constructing, so nothing here needs to draw.
  */
 function chartStub() {
+  const pane = {
+    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+    contains: () => true,
+  } as unknown as HTMLElement
   const chart = {
     timeScale: () => ({
       logicalToCoordinate: (logical: number) => logical * 10,
@@ -28,19 +34,23 @@ function chartStub() {
     detachPrimitive: vi.fn(),
     priceToCoordinate: (price: number) => price,
     coordinateToPrice: (y: number) => y,
-    getPane: () => ({ getHTMLElement: () => null }),
+    getPane: () => ({ getHTMLElement: () => pane }),
   } as unknown as ISeriesApi<SeriesType>
   return { chart, series }
 }
 
 /** A manager over a stub chart, plus the two things every case looks at. */
-function drawingsOver(bars: () => readonly { time: number }[]) {
+function drawingsOver(
+  bars: () => readonly { time: number }[],
+  supportsTime?: (time: number) => boolean,
+) {
   const { chart, series } = chartStub()
   const gravado = vi.fn()
   const drawings = useChartDrawings({
     chart: () => chart,
     series: () => series,
     bars,
+    supportsTime,
     onChange: gravado,
   })
   return { drawings, series, gravado }
@@ -105,6 +115,40 @@ describe('desenhos que ainda não podem ser colocados', () => {
     expect(series.attachPrimitive).toHaveBeenCalled()
     expect(drawings.count()).toBe(1)
     expect(drawings.drawings()).toEqual([trendLine])
+  })
+
+  it('preserva uma âncora distante até o histórico alcançá-la', () => {
+    let activeBars = [{ time: 100 }, { time: 200 }, { time: 300 }]
+    const supportsTime = (time: number) => (
+      time >= activeBars[0].time
+      && time <= activeBars[activeBars.length - 1].time
+    )
+    const drawing: ChartDrawing = {
+      ...trendLine,
+      anchors: [
+        { time: -1_000, price: 100 },
+        { time: -900, price: 110 },
+      ],
+    }
+    const { drawings, series } = drawingsOver(() => activeBars, supportsTime)
+
+    drawings.restore([drawing])
+    expect(series.attachPrimitive).not.toHaveBeenCalled()
+    expect(drawings.drawings()).toEqual([drawing])
+
+    activeBars = [
+      { time: -1_100 },
+      { time: -1_000 },
+      { time: -900 },
+      { time: 100 },
+      { time: 200 },
+      { time: 300 },
+    ]
+    drawings.rebuild()
+
+    // O primeiro desenho monta uma bomba de repaint e a própria primitive.
+    expect(series.attachPrimitive).toHaveBeenCalledTimes(2)
+    expect(drawings.drawings()).toEqual([drawing])
   })
 })
 
@@ -222,6 +266,7 @@ describe('controles globais dos desenhos', () => {
       },
     })).toMatchObject({
       text: 'Rompimento',
+      textBackgroundColor: '#07141C',
       textAppearance: {
         fontFamily: 'mono',
         fontSize: 22,
@@ -254,5 +299,79 @@ describe('controles globais dos desenhos', () => {
         configuration: { text: 'Texto editado diretamente' },
       }),
     ])
+  })
+
+  it('arrasta uma caixa textual nos dois eixos pelo corpo visível', () => {
+    const { drawings } = drawingsOver(() => bars)
+    const annotation: ChartDrawing = {
+      ...trendLine,
+      id: 'draggable-annotation',
+      tool: 'text-annotation',
+      anchors: [trendLine.anchors[0]],
+      configuration: { text: 'Texto suficientemente longo' },
+    }
+    drawings.restore([annotation])
+
+    expect(drawings.selected.value).toBeNull()
+    drawings.handlePointerDown({ clientX: 80, clientY: 100 } as MouseEvent)
+    drawings.handleMove({
+      logical: 9,
+      point: { x: 90, y: 110 },
+    } as never)
+
+    expect(drawings.drawings()[0].anchors[0]).toEqual({
+      time: trendLine.anchors[0].time + 3_600,
+      price: 110,
+    })
+    expect(drawings.selected.value?.id).toBe(annotation.id)
+  })
+
+  it('reprojeta as mesmas âncoras ao trocar de 1h para 1d', () => {
+    const base = 1_700_000_000
+    let activeBars = Array.from({ length: 72 }, (_, index) => ({
+      time: base + index * 3_600,
+    }))
+    const drawing: ChartDrawing = {
+      ...trendLine,
+      anchors: [
+        { time: base + 43_200, price: 100 },
+        { time: base + 129_600, price: 110 },
+      ],
+    }
+    const { drawings, series } = drawingsOver(() => activeBars)
+    drawings.restore([drawing])
+
+    activeBars = Array.from({ length: 4 }, (_, index) => ({
+      time: base + index * 86_400,
+    }))
+    drawings.rebuild()
+
+    const primitive = vi.mocked(series.attachPrimitive).mock.calls.at(-1)?.[0]
+    expect(primitive).toBeInstanceOf(TrendLine)
+    expect((primitive as TrendLine)._p1.logical).toBeCloseTo(0.5, 10)
+    expect((primitive as TrendLine)._p2.logical).toBeCloseTo(1.5, 10)
+    expect(drawings.drawings()[0].anchors).toEqual(drawing.anchors)
+  })
+
+  it('posiciona âncoras externas pelo espaçamento real do período', () => {
+    const drawing: ChartDrawing = {
+      ...trendLine,
+      anchors: [
+        { time: 50, price: 100 },
+        { time: 350, price: 110 },
+      ],
+    }
+    const timeline = buildDrawingTimeline(
+      [{ time: 100 }, { time: 200 }, { time: 300 }],
+      [drawing],
+      100,
+    ).points
+    const { drawings, series } = drawingsOver(() => timeline)
+
+    drawings.restore([drawing])
+
+    const primitive = vi.mocked(series.attachPrimitive).mock.calls.at(-1)?.[0]
+    expect((primitive as TrendLine)._p1.logical).toBeCloseTo(0.5, 10)
+    expect((primitive as TrendLine)._p2.logical).toBeCloseTo(3.5, 10)
   })
 })

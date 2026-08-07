@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import {
   Check,
-  ChevronDown,
   Palette,
+  Pencil,
   RotateCcw,
   Settings2,
   Trash2,
@@ -34,7 +34,11 @@ import {
   drawingStyleCapabilities,
 } from '@drawings/domain/chartDrawings'
 import DrawingPropertiesEditor from './DrawingPropertiesEditor.vue'
-import DrawingToolIcon from './DrawingToolIcon.vue'
+import {
+  DEFAULT_TEXT_APPEARANCE,
+  copyTextAppearance,
+  normalizeTextAppearance,
+} from '@renderer-shared/domain/textAppearance'
 
 const props = defineProps<{ drawing: ChartDrawing }>()
 
@@ -49,7 +53,8 @@ const emit = defineEmits<{
   close: []
 }>()
 
-type StyleSection = 'color' | 'width' | 'line-style' | 'properties'
+type StyleSection = 'color' | 'text-color' | 'width' | 'line-style'
+  | 'properties'
 
 const POPOVER_NAVIGATION_KEYS = new Set([
   'ArrowDown',
@@ -61,6 +66,9 @@ const POPOVER_NAVIGATION_KEYS = new Set([
 ])
 
 const inspector = shallowRef<HTMLElement | null>(null)
+const propertiesTrigger = shallowRef<HTMLElement | null>(null)
+const propertiesPopover = shallowRef<HTMLElement | null>(null)
+const propertiesPopoverStyle = shallowRef<Record<string, string>>({})
 const openSection = shallowRef<StyleSection | null>(null)
 const componentId = useId().replaceAll(':', '')
 const colors = DRAWING_COLORS
@@ -74,15 +82,23 @@ const capabilities = computed(() => (
 const selectedLineStyle = computed(() => (
   props.drawing.lineStyle ?? DRAWING_DEFAULT_LINE_STYLE
 ))
-const selectedLineStyleOption = computed(() => {
-  const selected = lineStyles.find(({ id }) => id === selectedLineStyle.value)
-  return selected ?? lineStyles[0]
-})
 const selectedColor = computed(() => props.drawing.color.toLowerCase())
+const textAppearance = computed(() => normalizeTextAppearance(
+  props.drawing.configuration?.textAppearance ?? DEFAULT_TEXT_APPEARANCE,
+))
+const selectedTextColor = computed(() => (
+  textAppearance.value.color.toLowerCase()
+))
 const hasProperties = computed(() => (
   capabilities.value.levels
   || capabilities.value.signedColors
   || capabilities.value.text
+))
+const hasToneControls = computed(() => (
+  capabilities.value.color
+  || capabilities.value.text
+  || capabilities.value.levels
+  || capabilities.value.signedColors
 ))
 const positiveColor = computed(() => {
   const configured = props.drawing.configuration?.positiveColor
@@ -104,11 +120,13 @@ function panelId(section: StyleSection): string {
 function addDismissListeners(): void {
   document.addEventListener('pointerdown', handleOutsidePointerDown)
   document.addEventListener('keydown', handleMenuKeydown, true)
+  window.addEventListener('resize', positionPropertiesPopover)
 }
 
 function removeDismissListeners(): void {
   document.removeEventListener('pointerdown', handleOutsidePointerDown)
   document.removeEventListener('keydown', handleMenuKeydown, true)
+  window.removeEventListener('resize', positionPropertiesPopover)
 }
 
 function closeSection(restoreFocus = false): void {
@@ -133,6 +151,7 @@ function toggleSection(section: StyleSection): void {
   }
   openSection.value = section
   void nextTick(() => {
+    positionPropertiesPopover()
     const panel = document.getElementById(panelId(section))
     const selected = panel?.querySelector<HTMLElement>('[aria-checked="true"]')
     const first = panel?.querySelector<HTMLElement>(
@@ -151,8 +170,10 @@ function openProperties(): void {
 }
 
 function handleOutsidePointerDown(event: PointerEvent): void {
-  const isInside = event.target instanceof Node
-    && inspector.value?.contains(event.target)
+  const isInside = event.target instanceof Node && (
+    inspector.value?.contains(event.target)
+    || propertiesPopover.value?.contains(event.target)
+  )
   if (isInside) {
     return
   }
@@ -208,6 +229,17 @@ function chooseCustomColor(event: Event): void {
   closeSection(true)
 }
 
+function chooseTextColor(color: string): void {
+  emit('configure', {
+    textAppearance: { ...copyTextAppearance(textAppearance.value), color },
+  })
+  closeSection(true)
+}
+
+function chooseCustomTextColor(event: Event): void {
+  chooseTextColor((event.currentTarget as HTMLInputElement).value)
+}
+
 function chooseWidth(lineWidth: number): void {
   emit('restyle', { lineWidth })
   closeSection(true)
@@ -218,9 +250,46 @@ function chooseLineStyle(lineStyle: DrawingLineStyle): void {
   closeSection(true)
 }
 
-function applyConfiguration(configuration: DrawingConfiguration): void {
+function applyConfiguration(
+  configuration: DrawingConfiguration,
+  borderColor: string,
+): void {
+  if (borderColor !== props.drawing.color) {
+    emit('restyle', { color: borderColor })
+  }
   emit('configure', configuration)
   closeSection(true)
+}
+
+function positionPropertiesPopover(): void {
+  if (openSection.value !== 'properties') {
+    return
+  }
+  const trigger = propertiesTrigger.value
+  if (!trigger) {
+    return
+  }
+  const margin = 10
+  const gap = 8
+  const bounds = trigger.getBoundingClientRect()
+  const width = Math.min(390, window.innerWidth - margin * 2)
+  const left = Math.min(
+    window.innerWidth - width - margin,
+    Math.max(margin, bounds.right - width),
+  )
+  const viewportHeight = Math.max(0, window.innerHeight - margin * 2)
+  const preferredTop = bounds.bottom + gap
+  const minimumUsefulHeight = Math.min(260, viewportHeight)
+  const top = Math.max(
+    margin,
+    Math.min(preferredTop, window.innerHeight - minimumUsefulHeight - margin),
+  )
+  propertiesPopoverStyle.value = {
+    left: `${left}px`,
+    top: `${top}px`,
+    width: `${width}px`,
+    maxHeight: `${Math.max(0, window.innerHeight - top - margin)}px`,
+  }
 }
 
 function resetStyle(): void {
@@ -252,33 +321,28 @@ defineExpose({ openProperties })
     role="toolbar"
     :aria-label="`Configurar ${label}`"
   >
-    <div class="drawing-inspector__identity" :title="label">
-      <DrawingToolIcon :tool="drawing.tool" />
-      <span>
-        <small>Desenho selecionado</small>
-        <strong>{{ label }}</strong>
-      </span>
-    </div>
-
-    <span class="drawing-inspector__separator" aria-hidden="true" />
-
-    <div v-if="capabilities.color" class="drawing-style-field">
+    <div
+      v-if="capabilities.color"
+      class="drawing-style-field drawing-style-field--tone"
+    >
       <button
         :id="triggerId('color')"
-        class="drawing-style-control"
+        class="drawing-style-control drawing-style-control--tone"
         type="button"
         :aria-controls="panelId('color')"
         :aria-expanded="openSection === 'color'"
         aria-haspopup="menu"
-        title="Alterar cor"
+        :title="capabilities.text ? 'Cor da borda e da linha' : 'Alterar cor'"
         @click="toggleSection('color')"
       >
-        <i
-          class="drawing-current-color"
+        <span
+          class="drawing-color-glyph"
           :style="{ '--drawing-color': drawing.color }"
-        />
-        <span>Cor</span>
-        <ChevronDown aria-hidden="true" />
+          aria-hidden="true"
+        >
+          <Pencil />
+          <i />
+        </span>
       </button>
 
       <div
@@ -290,7 +354,9 @@ defineExpose({ openProperties })
         @keydown="handlePopoverKeydown"
       >
         <header>
-          <strong>Cor da linha</strong>
+          <strong>
+            {{ capabilities.text ? 'Cor da borda' : 'Cor da linha' }}
+          </strong>
           <small>{{ drawing.color.toUpperCase() }}</small>
         </header>
         <div class="drawing-color-grid" role="group" aria-label="Paleta">
@@ -328,12 +394,81 @@ defineExpose({ openProperties })
     </div>
 
     <div
+      v-if="capabilities.text"
+      class="drawing-style-field drawing-style-field--tone"
+    >
+      <button
+        :id="triggerId('text-color')"
+        class="drawing-style-control drawing-style-control--tone"
+        type="button"
+        :aria-controls="panelId('text-color')"
+        :aria-expanded="openSection === 'text-color'"
+        aria-haspopup="menu"
+        title="Cor do texto"
+        @click="toggleSection('text-color')"
+      >
+        <span
+          class="drawing-text-color-glyph"
+          :style="{ '--drawing-color': textAppearance.color }"
+          aria-hidden="true"
+        >
+          <b>T</b>
+          <i />
+        </span>
+      </button>
+
+      <div
+        v-if="openSection === 'text-color'"
+        :id="panelId('text-color')"
+        class="drawing-style-popover drawing-color-popover"
+        role="menu"
+        aria-label="Cor do texto"
+        @keydown="handlePopoverKeydown"
+      >
+        <header>
+          <strong>Cor do texto</strong>
+          <small>{{ textAppearance.color.toUpperCase() }}</small>
+        </header>
+        <div class="drawing-color-grid" role="group" aria-label="Paleta">
+          <button
+            v-for="color in colors"
+            :key="color"
+            class="drawing-color-option"
+            :class="{ active: selectedTextColor === color.toLowerCase() }"
+            :style="{ '--drawing-color': color }"
+            type="button"
+            role="menuitemradio"
+            :aria-label="`Usar a cor ${color} no texto`"
+            :aria-checked="selectedTextColor === color.toLowerCase()"
+            @click="chooseTextColor(color)"
+          >
+            <Check
+              v-if="selectedTextColor === color.toLowerCase()"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+        <label class="drawing-custom-color">
+          <Palette aria-hidden="true" />
+          <span>Cor personalizada</span>
+          <i :style="{ '--drawing-color': textAppearance.color }" />
+          <input
+            class="drawing-native-color"
+            type="color"
+            :value="textAppearance.color"
+            aria-label="Escolher uma cor de texto personalizada"
+            @change="chooseCustomTextColor"
+          >
+        </label>
+      </div>
+    </div>
+
+    <div
       v-else-if="capabilities.levels"
       class="drawing-style-control drawing-level-colors"
       title="Este desenho usa cores independentes por nível"
     >
       <Palette aria-hidden="true" />
-      <span>Cores por níveis</span>
     </div>
 
     <div
@@ -345,8 +480,13 @@ defineExpose({ openProperties })
         <i :style="{ '--drawing-color': positiveColor }" />
         <i :style="{ '--drawing-color': negativeColor }" />
       </span>
-      <span>Cores por resultado</span>
     </div>
+
+    <span
+      v-if="hasToneControls"
+      class="drawing-inspector__separator drawing-inspector__separator--tone"
+      aria-hidden="true"
+    />
 
     <div class="drawing-style-field">
       <button
@@ -365,7 +505,6 @@ defineExpose({ openProperties })
           :style="{ '--drawing-line-width': `${drawing.lineWidth}px` }"
         />
         <span>{{ drawing.lineWidth }} px</span>
-        <ChevronDown aria-hidden="true" />
       </button>
 
       <div
@@ -417,8 +556,6 @@ defineExpose({ openProperties })
           :data-line-style="selectedLineStyle"
           :style="{ '--drawing-line-width': '2px' }"
         />
-        <span>{{ selectedLineStyleOption.label }}</span>
-        <ChevronDown aria-hidden="true" />
       </button>
 
       <div
@@ -456,6 +593,7 @@ defineExpose({ openProperties })
     <div v-if="hasProperties" class="drawing-style-field">
       <button
         :id="triggerId('properties')"
+        ref="propertiesTrigger"
         class="drawing-style-control"
         type="button"
         :aria-controls="panelId('properties')"
@@ -465,23 +603,25 @@ defineExpose({ openProperties })
         @click="toggleSection('properties')"
       >
         <Settings2 aria-hidden="true" />
-        <span>Opções</span>
-        <ChevronDown aria-hidden="true" />
       </button>
 
-      <div
-        v-if="openSection === 'properties'"
-        :id="panelId('properties')"
-        class="drawing-style-popover drawing-properties-popover"
-        role="dialog"
-        :aria-label="`Configurações de ${label}`"
-      >
-        <DrawingPropertiesEditor
-          :drawing="drawing"
-          @apply="applyConfiguration"
-          @close="closeSection(true)"
-        />
-      </div>
+      <Teleport to="body">
+        <div
+          v-if="openSection === 'properties'"
+          :id="panelId('properties')"
+          ref="propertiesPopover"
+          class="drawing-style-popover drawing-properties-popover"
+          :style="propertiesPopoverStyle"
+          role="dialog"
+          :aria-label="`Configurações de ${label}`"
+        >
+          <DrawingPropertiesEditor
+            :drawing="drawing"
+            @apply="applyConfiguration"
+            @close="closeSection(true)"
+          />
+        </div>
+      </Teleport>
     </div>
 
     <span class="drawing-inspector__separator" aria-hidden="true" />
