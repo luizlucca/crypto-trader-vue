@@ -202,6 +202,9 @@ function openSecurityAccess(): void {
 }
 
 function openPasswordChange(): void {
+  if (security.snapshot.value.state !== 'unlocked') {
+    return
+  }
   securityAccessMode.value = 'change-password'
   securityAccessOpen.value = true
 }

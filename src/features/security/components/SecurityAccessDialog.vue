@@ -60,7 +60,26 @@ const submitLabel = computed(() => {
   return isPasswordChange.value ? 'Alterar senha' : 'Entrar'
 })
 
-watch(() => props.open, async (open) => {
+watch([() => props.open, () => props.state], async (
+  [open, state],
+  previous,
+) => {
+  const wasOpen = previous?.[0]
+  if (
+    open
+    && props.mode === 'change-password'
+    && state !== 'unlocked'
+  ) {
+    dialogCycle += 1
+    releaseEscape?.()
+    releaseEscape = undefined
+    controller.clear()
+    emit('close')
+    return
+  }
+  if (open === wasOpen) {
+    return
+  }
   dialogCycle += 1
   releaseEscape?.()
   if (open) {
@@ -167,7 +186,7 @@ async function submit(): Promise<void> {
         </button>
       </header>
 
-      <form class="security-access-form" @submit.prevent="submit">
+      <form class="security-access-form" novalidate @submit.prevent="submit">
         <p
           id="security-access-description"
           class="security-access-description"

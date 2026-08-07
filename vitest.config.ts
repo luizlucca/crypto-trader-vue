@@ -1,5 +1,6 @@
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vitest/config'
 
 const root = dirname(fileURLToPath(import.meta.url))
@@ -7,6 +8,7 @@ const root = dirname(fileURLToPath(import.meta.url))
 // Vitest does not read electron.vite.config.ts, so the module boundary aliases
 // are declared again here. Keep both files in sync.
 export default defineConfig({
+  plugins: [vue()],
   resolve: {
     alias: {
       '@shared': resolve(root, 'shared'),
