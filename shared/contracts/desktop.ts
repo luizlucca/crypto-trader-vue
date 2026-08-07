@@ -200,7 +200,7 @@ export interface DesktopWindowsAPI {
 export interface CryptoProDesktopAPI {
   platform: string
   marketData: DesktopMarketDataAPI
-  security?: DesktopSecurityAPI
+  security: DesktopSecurityAPI
   windows: DesktopWindowsAPI
 }
 
@@ -345,7 +345,9 @@ function isSessionId(value: unknown): value is string {
     && /^[a-zA-Z0-9_-]+$/.test(value)
 }
 
-export function isMarketDataRequest(value: unknown): value is MarketDataRequest {
+export function isMarketDataRequest(
+  value: unknown,
+): value is MarketDataRequest {
   if (!value || typeof value !== 'object') {
     return false
   }

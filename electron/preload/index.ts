@@ -17,6 +17,10 @@ import type {
   OrderBookSnapshot,
   StreamStatus,
 } from '@shared/types/market'
+import type {
+  SecurityRequest,
+  SecuritySnapshot,
+} from '@shared/contracts/security'
 
 interface MarketPayloadMap {
   candle: Candle
@@ -28,17 +32,26 @@ function marketRequest<T>(request: MarketDataRequest): Promise<T> {
   return ipcRenderer.invoke(DESKTOP_CHANNELS.marketRequest, request)
 }
 
+function securityRequest(request: SecurityRequest): Promise<SecuritySnapshot> {
+  return ipcRenderer.invoke(DESKTOP_CHANNELS.securityRequest, request)
+}
+
 function onMarketEvent<T extends keyof MarketPayloadMap>(
   kind: T,
   callback: (sessionId: string, payload: MarketPayloadMap[T]) => void,
 ): () => void {
-  const listener = (_event: Electron.IpcRendererEvent, event: MarketDataEvent) => {
+  const listener = (
+    _event: Electron.IpcRendererEvent,
+    event: MarketDataEvent,
+  ) => {
     if (event.kind === kind) {
       callback(event.sessionId, event.payload as MarketPayloadMap[T])
     }
   }
   ipcRenderer.on(DESKTOP_CHANNELS.marketEvent, listener)
-  return () => ipcRenderer.removeListener(DESKTOP_CHANNELS.marketEvent, listener)
+  return () => (
+    ipcRenderer.removeListener(DESKTOP_CHANNELS.marketEvent, listener)
+  )
 }
 
 function onWindowEvent<T>(
@@ -150,6 +163,17 @@ const api: CryptoProDesktopAPI = {
       callback: (sessionId: string, status: StreamStatus) => void,
     ): () => void {
       return onMarketEvent('status', callback)
+    },
+  },
+  security: {
+    getSnapshot(): Promise<SecuritySnapshot> {
+      return securityRequest({ kind: 'get-snapshot' })
+    },
+    request(request: SecurityRequest): Promise<SecuritySnapshot> {
+      return securityRequest(request)
+    },
+    onState(callback: (snapshot: SecuritySnapshot) => void): () => void {
+      return onWindowEvent(DESKTOP_CHANNELS.securityEvent, callback)
     },
   },
   windows: {
