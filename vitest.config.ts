@@ -20,6 +20,7 @@ export default defineConfig({
       '@orderbook': resolve(root, 'src/features/orderbook'),
       '@positions': resolve(root, 'src/features/positions'),
       '@renderer-shared': resolve(root, 'src/shared'),
+      '@security': resolve(root, 'src/features/security'),
       '@settings': resolve(root, 'src/features/settings'),
       '@trading': resolve(root, 'src/features/trading'),
       '@workspace': resolve(root, 'src/features/workspace'),
