@@ -589,6 +589,53 @@ describe('SecuritySession', () => {
 })
 
 describe('SecuritySession credential vault mutation queue', () => {
+  it(
+    'restores the envelope before queued unlocks after interrupted rotation',
+    async () => {
+      const { session, repository } = await createDeferredSession()
+      await session.setup(password)
+      const rotationWrite = repository.pauseNextWrite()
+
+      const rotation = session.changePassword(password, 'NewPassword1!')
+      await rotationWrite.started.promise
+      session.lock('manual')
+      const unlockWithNewPassword = session.unlock('NewPassword1!')
+      const unlockWithOriginalPassword = session.unlock(password)
+
+      rotationWrite.completion.resolve()
+
+      await expect(rotation).resolves.toMatchObject({ state: 'locked' })
+      await expect(unlockWithNewPassword).rejects.toThrow(
+        'Não foi possível abrir o cofre de credenciais',
+      )
+      await expect(unlockWithOriginalPassword).resolves.toMatchObject({
+        state: 'unlocked',
+      })
+    },
+  )
+
+  it(
+    'keeps rotation rollback failures from exposing the next password',
+    async () => {
+      const { session, repository } = await createDeferredSession()
+      await session.setup(password)
+      const rotationWrite = repository.pauseNextWrite()
+
+      const rotation = session.changePassword(password, 'NewPassword1!')
+      await rotationWrite.started.promise
+      session.lock('manual')
+      const rollbackWrite = repository.pauseNextWrite()
+      rotationWrite.completion.resolve()
+      await rollbackWrite.started.promise
+      rollbackWrite.completion.reject(new Error('NewPassword1!'))
+
+      await expect(rotation).rejects.toThrow(
+        'Não foi possível restaurar o cofre de credenciais',
+      )
+      await expect(rotation).rejects.not.toThrow('NewPassword1!')
+    },
+  )
+
   it('preserves both accounts when two saves overlap', async () => {
     const { session, repository } = await createDeferredSession()
     await session.setup(password)

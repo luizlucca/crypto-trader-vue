@@ -414,6 +414,11 @@ export class SecuritySession {
       }
       await this.repository.write(rotated.envelope)
       if (!this.isCurrent(revision)) {
+        try {
+          await this.repository.write(envelope)
+        } catch {
+          throw new Error('Não foi possível restaurar o cofre de credenciais')
+        }
         return this.getSnapshot()
       }
       zeroBuffer(this.masterKey)
