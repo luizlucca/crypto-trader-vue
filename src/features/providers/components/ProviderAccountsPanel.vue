@@ -8,6 +8,12 @@ import type {
 } from '@shared/contracts/security'
 import type { ProviderDefinition } from '@providers/domain/providerCatalog'
 import { formatApiKeyHint } from '@providers/services/providerAccounts'
+import {
+  notifyProviderConnectionFeedback,
+  notifyProviderConnectionFailure,
+  providerConnectionFailureMessage,
+} from '@providers/services/providerConnectionFeedback'
+import { useNotifications } from '@app/services/notifications'
 import { useSecuritySession } from '@security/services/securitySession'
 import BinanceAccountForm from './BinanceAccountForm.vue'
 import ProviderCatalog from './ProviderCatalog.vue'
@@ -22,6 +28,7 @@ const emit = defineEmits<{
 }>()
 
 const session = useSecuritySession()
+const notifications = useNotifications()
 const editingAccount = ref<ProviderAccountSummary>()
 const view = ref<'accounts' | 'catalog' | 'form'>('accounts')
 const saving = ref(false)
@@ -57,9 +64,24 @@ function cancelForm(): void {
 async function saveAccount(draft: BinanceAccountDraft): Promise<void> {
   saving.value = true
   try {
-    await session.request({ kind: 'save-binance-account', draft })
+    const snapshot = await session.request({
+      kind: 'save-binance-account',
+      draft,
+    })
     view.value = 'accounts'
     editingAccount.value = undefined
+    if (draft.validateAndConnect && snapshot.connection.accountId) {
+      notifyConnectionFeedback(snapshot, snapshot.connection.accountId)
+    }
+  } catch {
+    if (draft.validateAndConnect && draft.accountId) {
+      notifyConnectionFailure(draft.accountId)
+    } else if (draft.validateAndConnect) {
+      notifications.notify({
+        tone: 'error',
+        message: providerConnectionFailureMessage('unknown'),
+      })
+    }
   } finally {
     saving.value = false
   }
@@ -68,10 +90,52 @@ async function saveAccount(draft: BinanceAccountDraft): Promise<void> {
 async function connectAccount(accountId: string): Promise<void> {
   connectingId.value = accountId
   try {
-    await session.request({ kind: 'connect-account', accountId })
+    const snapshot = await session.request({
+      kind: 'connect-account',
+      accountId,
+    })
+    notifyConnectionFeedback(snapshot, accountId)
+  } catch {
+    notifyConnectionFailure(accountId)
   } finally {
     connectingId.value = undefined
   }
+}
+
+function editAccountFrom(
+  snapshot: SecuritySnapshot,
+  accountId: string,
+): void {
+  const account = snapshot.accounts.find(
+    (candidate) => candidate.accountId === accountId,
+  )
+  if (!account) {
+    return
+  }
+  editAccount(account)
+}
+
+function notifyConnectionFeedback(
+  snapshot: SecuritySnapshot,
+  accountId: string,
+): void {
+  notifyProviderConnectionFeedback(snapshot, accountId, notifications, {
+    retry: (retryAccountId) => { void connectAccount(retryAccountId) },
+    openSettings: (settingsAccountId) => editAccountFrom(
+      snapshot,
+      settingsAccountId,
+    ),
+  })
+}
+
+function notifyConnectionFailure(accountId: string): void {
+  notifyProviderConnectionFailure(accountId, 'unknown', notifications, {
+    retry: (retryAccountId) => { void connectAccount(retryAccountId) },
+    openSettings: (settingsAccountId) => editAccountFrom(
+      props.snapshot,
+      settingsAccountId,
+    ),
+  })
 }
 
 function isActiveAccount(accountId: string): boolean {

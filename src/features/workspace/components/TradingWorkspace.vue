@@ -8,7 +8,6 @@ import {
   watch,
 } from 'vue'
 import type {
-  AccountFailureCode,
   SecuritySnapshot,
 } from '@shared/contracts/security'
 import AppHeader from '@app/components/AppHeader.vue'
@@ -44,6 +43,10 @@ import { canShowTradingTicket } from '@trading/domain/privateTradingAccess'
 import {
   createProviderConnectionAttempt,
 } from '@providers/services/providerConnectionAttempt'
+import {
+  notifyProviderConnectionFeedback,
+  notifyProviderConnectionFailure,
+} from '@providers/services/providerConnectionFeedback'
 import {
   marketPanelVisible,
   orderBookPanelVisible,
@@ -237,34 +240,35 @@ function cancelProviderConnection(): void {
   providerConnectionOpen.value = false
 }
 
-function connectionFailureMessage(failureCode: AccountFailureCode): string {
-  switch (failureCode) {
-    case 'credentials':
-      return 'Não foi possível validar as credenciais da conta.'
-    case 'permission':
-      return 'A conta não tem a permissão necessária para conectar.'
-    case 'clock':
-      return 'A data e a hora do computador precisam ser ajustadas.'
-    case 'network':
-      return 'Não foi possível alcançar a Binance. Tente novamente.'
-    case 'unknown':
-      return 'Não foi possível conectar a conta agora. Tente novamente.'
-  }
-}
-
-function notifyConnectionFailure(
-  accountId: string,
-  failureCode: AccountFailureCode,
-): void {
-  notifications.notify({
-    tone: 'error',
-    message: connectionFailureMessage(failureCode),
-    retry: () => {
+function connectionFeedbackActions() {
+  return {
+    retry: (accountId: string) => {
       providerConnectionOpen.value = true
       void connectProviderAccount(accountId)
     },
     openSettings: openProviderSettings,
-  })
+  }
+}
+
+function notifyConnectionFeedback(
+  snapshot: SecuritySnapshot,
+  accountId: string,
+): void {
+  notifyProviderConnectionFeedback(
+    snapshot,
+    accountId,
+    notifications,
+    connectionFeedbackActions(),
+  )
+}
+
+function notifyConnectionFailure(accountId: string): void {
+  notifyProviderConnectionFailure(
+    accountId,
+    'unknown',
+    notifications,
+    connectionFeedbackActions(),
+  )
 }
 
 async function connectProviderAccount(accountId: string): Promise<void> {
@@ -281,13 +285,11 @@ async function connectProviderAccount(accountId: string): Promise<void> {
     )) {
       return
     }
-    const account = security.snapshot.value.accounts.find(
-      (candidate) => candidate.accountId === accountId,
-    )
-    if (!account) {
+    if (!security.snapshot.value.accounts.some(
+      (account) => account.accountId === accountId,
+    )) {
       return
     }
-
     const snapshot = await security.request({
       kind: 'connect-account',
       accountId,
@@ -298,22 +300,14 @@ async function connectProviderAccount(accountId: string): Promise<void> {
     ) || snapshot.state !== 'unlocked') {
       return
     }
+    if (snapshot.connection.accountId !== accountId) {
+      providerConnectionOpen.value = false
+      return
+    }
     const connection = snapshot.connection
-    if (connection.accountId !== accountId) {
+    if (connection.state === 'connected' || connection.state === 'failed') {
       providerConnectionOpen.value = false
-      return
-    }
-    if (connection.state === 'connected') {
-      providerConnectionOpen.value = false
-      notifications.notify({
-        tone: 'success',
-        message: `Conectado à Binance — ${account.label}`,
-      })
-      return
-    }
-    if (connection.state === 'failed') {
-      providerConnectionOpen.value = false
-      notifyConnectionFailure(accountId, connection.failureCode ?? 'unknown')
+      notifyConnectionFeedback(snapshot, accountId)
     }
   } catch {
     if (!connectionAttempt.isCurrent(
@@ -323,7 +317,7 @@ async function connectProviderAccount(accountId: string): Promise<void> {
       return
     }
     providerConnectionOpen.value = false
-    notifyConnectionFailure(accountId, 'unknown')
+    notifyConnectionFailure(accountId)
   } finally {
     connectionAttempt.finish(attempt)
   }
