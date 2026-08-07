@@ -19,7 +19,7 @@ function createSession() {
 }
 
 describe('createSecurityAccessController', () => {
-  it('only sends setup after confirmation matches and clears pending values', async () => {
+  it('sends setup only after confirmation and clears values', async () => {
     const session = createSession()
     const controller = createSecurityAccessController(session)
     controller.password.value = 'Abcdef1!'
@@ -35,7 +35,7 @@ describe('createSecurityAccessController', () => {
     expect(controller.confirmation.value).toBe('')
   })
 
-  it('keeps local values when confirmation differs and never sends a command', async () => {
+  it('keeps values after different confirmation', async () => {
     const session = createSession()
     const controller = createSecurityAccessController(session)
     controller.password.value = 'Abcdef1!'

@@ -19,33 +19,32 @@ const emit = defineEmits<{
 }>()
 
 const session = useSecuritySession()
-const editing = ref<ProviderAccountSummary>()
+const editingAccount = ref<ProviderAccountSummary>()
+const formOpen = ref(false)
 const saving = ref(false)
 const removingId = ref<string>()
-const formOpen = computed(() => editing.value !== undefined)
 const unlocked = computed(() => props.snapshot.state === 'unlocked')
 
 function addAccount(): void {
-  editing.value = {
-    accountId: '',
-    provider: 'binance',
-    label: '',
-    markets: ['spot'],
-    apiKeySuffix: '••••',
-    enabled: true,
-    connection: 'disconnected',
-  }
+  editingAccount.value = undefined
+  formOpen.value = true
 }
 
 function editAccount(account: ProviderAccountSummary): void {
-  editing.value = account
+  editingAccount.value = account
+  formOpen.value = true
+}
+
+function closeForm(): void {
+  formOpen.value = false
+  editingAccount.value = undefined
 }
 
 async function saveAccount(draft: BinanceAccountDraft): Promise<void> {
   saving.value = true
   try {
     await session.request({ kind: 'save-binance-account', draft })
-    editing.value = undefined
+    closeForm()
   } finally {
     saving.value = false
   }
@@ -93,15 +92,17 @@ async function removeAccount(accountId: string): Promise<void> {
 
     <BinanceAccountForm
       v-else-if="formOpen"
-      :account="editing?.accountId ? editing : undefined"
+      :account="editingAccount"
       :pending="saving"
-      @cancel="editing = undefined"
+      @cancel="closeForm"
       @save="saveAccount"
     />
 
     <div v-else class="provider-account-list">
       <article v-for="account in snapshot.accounts" :key="account.accountId">
-        <span class="provider-account-icon"><PlugZap aria-hidden="true" /></span>
+        <span class="provider-account-icon">
+          <PlugZap aria-hidden="true" />
+        </span>
         <div class="provider-account-copy">
           <strong>{{ account.label }}</strong>
           <small>
@@ -112,7 +113,11 @@ async function removeAccount(accountId: string): Promise<void> {
         <span :class="['provider-connection', account.connection]">
           {{ account.connection }}
         </span>
-        <button aria-label="Editar conta" type="button" @click="editAccount(account)">
+        <button
+          aria-label="Editar conta"
+          type="button"
+          @click="editAccount(account)"
+        >
           <Pencil aria-hidden="true" />
         </button>
         <button
@@ -127,7 +132,7 @@ async function removeAccount(accountId: string): Promise<void> {
       <div v-if="snapshot.accounts.length === 0" class="provider-empty-state">
         <PlugZap aria-hidden="true" />
         <strong>Nenhuma conta conectada</strong>
-        <p>Adicione uma conta Binance para validar suas credenciais privadas.</p>
+        <p>Adicione uma conta Binance para validar credenciais privadas.</p>
       </div>
     </div>
   </section>

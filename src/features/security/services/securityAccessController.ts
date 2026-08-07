@@ -8,7 +8,11 @@ import type {
   SecurityState,
 } from '@shared/contracts/security'
 
-export type SecurityAccessMode = 'setup' | 'unlock' | 'change-password' | 'reset'
+export type SecurityAccessMode
+  = | 'setup'
+    | 'unlock'
+    | 'change-password'
+    | 'reset'
 
 interface SecurityRequestSession {
   request(request: SecurityRequest): Promise<SecuritySnapshot>

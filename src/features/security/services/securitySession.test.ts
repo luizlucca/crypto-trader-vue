@@ -55,7 +55,7 @@ describe('createSecuritySession', () => {
     secondStop()
   })
 
-  it('clones commands, stores snapshots and reacts to lock events', async () => {
+  it('clones commands, stores snapshots and reacts to locks', async () => {
     const api = createAPI()
     const session = createSecuritySession(api)
     const request = {

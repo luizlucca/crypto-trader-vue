@@ -2,7 +2,9 @@
 import { KeyRound, LockKeyhole, ShieldCheck, X } from '@lucide/vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import type { SecurityState } from '@shared/contracts/security'
-import { createSecurityAccessController } from '@security/services/securityAccessController'
+import {
+  createSecurityAccessController,
+} from '@security/services/securityAccessController'
 import { useSecuritySession } from '@security/services/securitySession'
 
 const props = defineProps<{
@@ -77,9 +79,13 @@ async function submit(): Promise<void> {
       </header>
 
       <form class="security-access-form" @submit.prevent="submit">
-        <p id="security-access-description" class="security-access-description">
+        <p
+          id="security-access-description"
+          class="security-access-description"
+        >
           <template v-if="isSetup">
-            Sua senha cifra as credenciais neste computador. Ela não pode ser recuperada.
+            Sua senha cifra as credenciais neste computador. Ela não pode ser
+            recuperada.
           </template>
           <template v-else>
             Dados públicos continuam ativos. Entre para acessar contas privadas.
@@ -114,15 +120,28 @@ async function submit(): Promise<void> {
         <p v-if="isSetup" class="security-access-hint">
           Use 8+ caracteres, com maiúscula, minúscula, número e símbolo.
         </p>
-        <p v-if="controller.error.value" class="security-access-error" role="alert">
+        <p
+          v-if="controller.error.value"
+          class="security-access-error"
+          role="alert"
+        >
           {{ controller.error.value }}
         </p>
 
         <footer>
-          <button class="secondary" :disabled="controller.pending.value" type="button" @click="close">
+          <button
+            class="secondary"
+            :disabled="controller.pending.value"
+            type="button"
+            @click="close"
+          >
             Cancelar
           </button>
-          <button class="primary" :disabled="controller.pending.value" type="submit">
+          <button
+            class="primary"
+            :disabled="controller.pending.value"
+            type="submit"
+          >
             <KeyRound aria-hidden="true" />
             {{ controller.pending.value ? 'Verificando…' : submitLabel }}
           </button>

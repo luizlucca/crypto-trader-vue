@@ -36,7 +36,8 @@ import {
 } from '@settings/services/themeCatalog'
 import CustomThemeEditor from './CustomThemeEditor.vue'
 import ThemePresetPreview from './ThemePresetPreview.vue'
-import ProviderAccountsPanel from '@providers/components/ProviderAccountsPanel.vue'
+import ProviderAccountsPanel
+  from '@providers/components/ProviderAccountsPanel.vue'
 import { useSecuritySession } from '@security/services/securitySession'
 import SecurityPreferencesPanel from './SecurityPreferencesPanel.vue'
 
@@ -547,7 +548,10 @@ onBeforeUnmount(() => {
         </header>
 
         <div class="settings-panel-body">
-          <nav class="settings-navigation" aria-label="Seções das configurações">
+          <nav
+            aria-label="Seções das configurações"
+            class="settings-navigation"
+          >
             <button
               :class="{ active: activeSection === 'appearance' }"
               type="button"

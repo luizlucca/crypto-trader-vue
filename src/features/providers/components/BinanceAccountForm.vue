@@ -100,7 +100,12 @@ function submit(): void {
     </label>
 
     <footer>
-      <button :disabled="pending" class="secondary" type="button" @click="emit('cancel')">
+      <button
+        :disabled="pending"
+        class="secondary"
+        type="button"
+        @click="emit('cancel')"
+      >
         Cancelar
       </button>
       <button :disabled="pending || !canSave" class="primary" type="submit">

@@ -16,6 +16,7 @@ import { AccountProviderRegistry } from '../providers/accountProvider'
 import {
   type EncryptedCredentialVaultV1,
   type ProviderAccountRecord,
+  type UnlockedVault,
   type VaultContents,
   VaultCrypto,
   zeroBuffer,
@@ -177,7 +178,7 @@ export class SecuritySession {
     const revision = ++this.revision
     this.state = 'unlocking'
     this.publish()
-    let unlocked: Awaited<ReturnType<VaultCrypto['create']>> | undefined
+    let unlocked: UnlockedVault | undefined
     try {
       unlocked = await this.crypto.create(password, {
         version: 1,
@@ -192,11 +193,7 @@ export class SecuritySession {
         this.state = 'locked'
         return this.publish()
       }
-      this.masterKey = unlocked.key
-      this.vault = unlocked.contents
-      this.envelope = unlocked.envelope
-      this.state = 'unlocked'
-      this.startIdleTimer()
+      this.activateUnlockedVault(unlocked)
       return this.publish()
     } catch (error) {
       this.restorePublicStateIfCurrent(revision)
@@ -220,7 +217,7 @@ export class SecuritySession {
     const revision = ++this.revision
     this.state = 'unlocking'
     this.publish()
-    let unlocked: Awaited<ReturnType<VaultCrypto['unlock']>> | undefined
+    let unlocked: UnlockedVault | undefined
     try {
       const envelope = await this.repository.read()
       unlocked = await this.crypto.unlock(password, envelope)
@@ -229,12 +226,7 @@ export class SecuritySession {
         return this.getSnapshot()
       }
 
-      this.masterKey = unlocked.key
-      this.vault = unlocked.contents
-      this.envelope = unlocked.envelope
-      this.state = 'unlocked'
-      this.connections.clear()
-      this.startIdleTimer()
+      this.activateUnlockedVault(unlocked)
       this.publish()
       await this.validateEnabledAccounts(revision)
       return this.getSnapshot()
@@ -250,12 +242,7 @@ export class SecuritySession {
 
   lock(_reason: LockReason): SecuritySnapshot {
     this.revision += 1
-    this.stopIdleTimer()
-    zeroBuffer(this.masterKey)
-    this.masterKey = undefined
-    this.vault = undefined
-    this.envelope = undefined
-    this.connections.clear()
+    this.clearUnlockedVault()
     this.state = this.hasVault ? 'locked' : 'setup-required'
     return this.publish()
   }
@@ -367,12 +354,7 @@ export class SecuritySession {
     }
 
     this.revision += 1
-    this.stopIdleTimer()
-    zeroBuffer(this.masterKey)
-    this.masterKey = undefined
-    this.vault = undefined
-    this.envelope = undefined
-    this.connections.clear()
+    this.clearUnlockedVault()
     await this.repository.destroy()
     this.hasVault = false
     this.state = 'setup-required'
@@ -474,6 +456,24 @@ export class SecuritySession {
     return this.vault.accounts.map((account) => (
       toSummary(account, this.connections.get(account.accountId))
     ))
+  }
+
+  private activateUnlockedVault(unlocked: UnlockedVault): void {
+    this.masterKey = unlocked.key
+    this.vault = unlocked.contents
+    this.envelope = unlocked.envelope
+    this.state = 'unlocked'
+    this.connections.clear()
+    this.startIdleTimer()
+  }
+
+  private clearUnlockedVault(): void {
+    this.stopIdleTimer()
+    zeroBuffer(this.masterKey)
+    this.masterKey = undefined
+    this.vault = undefined
+    this.envelope = undefined
+    this.connections.clear()
   }
 
   private startIdleTimer(): void {

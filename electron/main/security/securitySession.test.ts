@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { SecuritySnapshot } from '@shared/contracts/security'
 import type { ProviderAccountRecord } from './vaultCrypto'
 import { VaultCrypto } from './vaultCrypto'
 import { VaultRepository } from './vaultRepository'
@@ -232,6 +233,27 @@ describe('SecuritySession', () => {
       ])
     },
   )
+
+  it('never serializes credentials through a security event', async () => {
+    const session = await createSession()
+    const snapshots: SecuritySnapshot[] = []
+    const apiKey = 'binance-api-key-ABCD'
+    const apiSecret = 'binance-api-secret'
+    session.subscribe((nextSnapshot) => snapshots.push(nextSnapshot))
+    await session.setup(password)
+
+    await session.saveBinanceAccount({
+      label: 'Spot',
+      markets: ['spot'],
+      apiKey,
+      apiSecret,
+      enabled: false,
+    })
+
+    const serialized = JSON.stringify(snapshots.at(-1))
+    expect(serialized).not.toContain(apiKey)
+    expect(serialized).not.toContain(apiSecret)
+  })
 
   it('locks after idle time and stops its timer', async () => {
     let scheduled: (() => void) | undefined
