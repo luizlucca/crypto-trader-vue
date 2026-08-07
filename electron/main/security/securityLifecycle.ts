@@ -27,6 +27,7 @@ interface SecurityLifecycleOptions {
   powerMonitor: LifecyclePowerMonitor
   session: LifecycleSession
   isQuitting: () => boolean
+  requestQuit: () => void
   platform?: NodeJS.Platform
 }
 
@@ -44,16 +45,19 @@ export function bindSecurityLifecycle(
   }
   const onClose = (event: unknown): void => {
     options.session.lock('window-close')
-    if (
-      options.isQuitting()
-      || options.session.closeAction() !== 'lock-and-minimize'
-    ) {
+    if (options.isQuitting()) {
       return
     }
 
     const closeEvent = event as CloseEvent
+    if (options.session.closeAction() === 'lock-and-minimize') {
+      closeEvent.preventDefault()
+      options.window.minimize()
+      return
+    }
+
     closeEvent.preventDefault()
-    options.window.minimize()
+    options.requestQuit()
   }
 
   options.window.on('minimize', onMinimize)

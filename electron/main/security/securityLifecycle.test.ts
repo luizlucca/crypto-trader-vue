@@ -30,6 +30,7 @@ describe('bindSecurityLifecycle', () => {
       powerMonitor,
       session,
       isQuitting: () => false,
+      requestQuit: vi.fn(),
       platform: 'darwin',
     })
 
@@ -52,10 +53,40 @@ describe('bindSecurityLifecycle', () => {
       powerMonitor,
       session,
       isQuitting: () => false,
+      requestQuit: vi.fn(),
       platform: 'linux',
     })
 
     expect(powerMonitor.listenerCount('lock-screen')).toBe(0)
+  })
+
+  it('requests quit once after locking a Darwin close', () => {
+    const window = new FakeWindow()
+    const session = createSession('quit-and-lock')
+    const closeEvent = { preventDefault: vi.fn() }
+    const reentryEvent = { preventDefault: vi.fn() }
+    let quitting = false
+    const requestQuit = vi.fn(() => {
+      quitting = true
+      window.emit('close', reentryEvent)
+    })
+
+    bindSecurityLifecycle({
+      window,
+      powerMonitor: new FakePowerMonitor(),
+      session,
+      isQuitting: () => quitting,
+      requestQuit,
+      platform: 'darwin',
+    })
+
+    window.emit('close', closeEvent)
+
+    expect(session.lock).toHaveBeenCalledWith('window-close')
+    expect(closeEvent.preventDefault).toHaveBeenCalledOnce()
+    expect(requestQuit).toHaveBeenCalledOnce()
+    expect(reentryEvent.preventDefault).not.toHaveBeenCalled()
+    expect(window.minimize).not.toHaveBeenCalled()
   })
 
   it('locks before minimizing instead of closing when configured', () => {
@@ -67,6 +98,7 @@ describe('bindSecurityLifecycle', () => {
       powerMonitor: new FakePowerMonitor(),
       session,
       isQuitting: () => false,
+      requestQuit: vi.fn(),
     })
 
     window.emit('close', event)
@@ -86,6 +118,7 @@ describe('bindSecurityLifecycle', () => {
       powerMonitor: new FakePowerMonitor(),
       session,
       isQuitting: () => true,
+      requestQuit: vi.fn(),
     })
 
     window.emit('close', event)

@@ -124,6 +124,7 @@ function bindMainSecurityLifecycle(window: BrowserWindow): void {
     powerMonitor,
     session: securitySession,
     isQuitting: () => isQuitting,
+    requestQuit: () => app.quit(),
     platform: process.platform,
   })
 }
