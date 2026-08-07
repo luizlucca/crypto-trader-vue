@@ -118,6 +118,79 @@ describe('ProviderConnectionCoordinator', () => {
     })
   })
 
+  it('keeps B connecting when A is replaced before A deadline and finishes late', async () => {
+    vi.useFakeTimers()
+    try {
+      const signals: AbortSignal[] = []
+      const snapshots: object[] = []
+      let firstStarted: (() => void) | undefined
+      let secondStarted: (() => void) | undefined
+      let finishFirst: (() => void) | undefined
+      let finishSecond: (() => void) | undefined
+      const coordinator = createCoordinator({
+        id: 'binance',
+        validateConnection: async (credentials, _markets, context) => {
+          const signal = context?.signal
+          if (signal) {
+            signals.push(signal)
+          }
+          if (credentials.apiKey === 'api-key-one') {
+            firstStarted?.()
+            return new Promise<readonly AccountMarketValidation[]>((resolve) => {
+              finishFirst = () => resolve([{ market: 'spot', state: 'connected' }])
+            })
+          }
+          secondStarted?.()
+          return new Promise<readonly AccountMarketValidation[]>((resolve) => {
+            finishSecond = () => resolve([{ market: 'spot', state: 'connected' }])
+          })
+        },
+      })
+      const firstValidationStarted = new Promise<void>((resolve) => {
+        firstStarted = resolve
+      })
+      const secondValidationStarted = new Promise<void>((resolve) => {
+        secondStarted = resolve
+      })
+      coordinator.subscribe((snapshot) => snapshots.push(snapshot))
+
+      const first = coordinator.connect(account('one'))
+      await firstValidationStarted
+      await vi.advanceTimersByTimeAsync(5_000)
+
+      const second = coordinator.connect(account('two'))
+      await secondValidationStarted
+      await vi.advanceTimersByTimeAsync(5_000)
+
+      expect(signals[0]?.aborted).toBe(true)
+      expect(signals[1]?.aborted).toBe(false)
+      expect(coordinator.snapshot()).toEqual({
+        accountId: 'two',
+        state: 'connecting',
+      })
+
+      finishFirst?.()
+      await first
+
+      expect(coordinator.snapshot()).toEqual({
+        accountId: 'two',
+        state: 'connecting',
+      })
+
+      finishSecond?.()
+      await second
+
+      expect(snapshots).toEqual([
+        { accountId: 'one', state: 'connecting' },
+        { accountId: 'two', state: 'connecting' },
+        { accountId: 'two', state: 'connected' },
+      ])
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('fails the current validation as network when its deadline expires', async () => {
     vi.useFakeTimers()
     try {
