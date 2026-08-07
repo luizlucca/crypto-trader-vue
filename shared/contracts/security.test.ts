@@ -13,7 +13,7 @@ describe('security contract', () => {
         markets: ['spot', 'futures'],
         apiKey: 'key-1234567890',
         apiSecret: 'secret-1234567890',
-        enabled: true,
+        validateAndConnect: true,
       },
     })).toBe(true)
   })
@@ -26,13 +26,31 @@ describe('security contract', () => {
         markets: ['spot', 'spot'],
         apiKey: 'key-1234567890',
         apiSecret: '',
-        enabled: true,
+        validateAndConnect: true,
       },
     })).toBe(false)
     expect(isSecurityRequest({
       kind: 'unlock',
       password: 'short',
     })).toBe(false)
+  })
+
+  it('accepts explicit account connection commands and validation intent', () => {
+    expect(isSecurityRequest({
+      kind: 'connect-account',
+      accountId: 'account-one',
+    })).toBe(true)
+    expect(isSecurityRequest({ kind: 'disconnect-account' })).toBe(true)
+    expect(isSecurityRequest({
+      kind: 'save-binance-account',
+      draft: {
+        label: 'Principal',
+        markets: ['spot'],
+        apiKey: 'key-1234567890',
+        apiSecret: 'secret-1234567890',
+        validateAndConnect: true,
+      },
+    })).toBe(true)
   })
 
   it('accepts only approved locking preferences', () => {

@@ -19,6 +19,10 @@ function copySecurityRequest(request: SecurityRequest): SecurityRequest {
         kind: request.kind,
         preferences: { ...request.preferences },
       }
+    case 'connect-account':
+      return { kind: request.kind, accountId: request.accountId }
+    case 'disconnect-account':
+      return { kind: request.kind }
     default:
       return { ...request }
   }

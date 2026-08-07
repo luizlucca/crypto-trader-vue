@@ -24,7 +24,7 @@ const spot = ref(true)
 const futures = ref(false)
 const apiKey = ref('')
 const apiSecret = ref('')
-const enabled = ref(true)
+const validateAndConnect = ref(true)
 
 const draft = computed<BinanceAccountDraft>(() => ({
   ...(props.account ? { accountId: props.account.accountId } : {}),
@@ -35,7 +35,7 @@ const draft = computed<BinanceAccountDraft>(() => ({
   ],
   apiKey: apiKey.value,
   apiSecret: apiSecret.value,
-  enabled: enabled.value,
+  validateAndConnect: validateAndConnect.value,
 }))
 
 const canSave = computed(() => canSaveBinanceDraft(draft.value))
@@ -47,7 +47,7 @@ watch(() => props.account, (account) => {
   futures.value = account?.markets.includes('futures') ?? false
   apiKey.value = ''
   apiSecret.value = ''
-  enabled.value = account?.enabled ?? initial.enabled
+  validateAndConnect.value = initial.validateAndConnect
 }, { immediate: true })
 
 function submit(): void {
@@ -95,7 +95,7 @@ function submit(): void {
       >
     </label>
     <label class="provider-enabled">
-      <input v-model="enabled" type="checkbox">
+      <input v-model="validateAndConnect" type="checkbox">
       Validar e conectar ao salvar
     </label>
 

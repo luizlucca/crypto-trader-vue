@@ -11,6 +11,7 @@ const INITIAL_SECURITY_SNAPSHOT: SecuritySnapshot = {
   state: 'setup-required',
   hasVault: false,
   accounts: [],
+  connection: { state: 'disconnected' },
   preferences: DEFAULT_SECURITY_PREFERENCES,
 }
 

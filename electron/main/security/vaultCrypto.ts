@@ -41,7 +41,6 @@ export interface ProviderAccountRecord {
   markets: readonly Market[]
   apiKey: string
   apiSecret: string
-  enabled: boolean
 }
 
 export interface VaultContents {
@@ -100,18 +99,33 @@ function isVaultContents(value: unknown): value is VaultContents {
   const contents = value as Partial<VaultContents>
   return contents.version === 1
     && Array.isArray(contents.accounts)
-    && contents.accounts.every((account) => (
-      account
-      && typeof account === 'object'
-      && typeof account.accountId === 'string'
-      && account.provider === 'binance'
-      && typeof account.label === 'string'
-      && Array.isArray(account.markets)
-      && account.markets.every(isMarket)
-      && typeof account.apiKey === 'string'
-      && typeof account.apiSecret === 'string'
-      && typeof account.enabled === 'boolean'
-    ))
+    && contents.accounts.every((account) => {
+      const stored = account as ProviderAccountRecord & { enabled?: unknown }
+      return account
+        && typeof account === 'object'
+        && typeof stored.accountId === 'string'
+        && stored.provider === 'binance'
+        && typeof stored.label === 'string'
+        && Array.isArray(stored.markets)
+        && stored.markets.every(isMarket)
+        && typeof stored.apiKey === 'string'
+        && typeof stored.apiSecret === 'string'
+        && (stored.enabled === undefined || typeof stored.enabled === 'boolean')
+    })
+}
+
+function normalizeContents(contents: VaultContents): VaultContents {
+  return {
+    version: contents.version,
+    accounts: contents.accounts.map((stored) => ({
+      accountId: stored.accountId,
+      provider: stored.provider,
+      label: stored.label,
+      markets: [...stored.markets],
+      apiKey: stored.apiKey,
+      apiSecret: stored.apiSecret,
+    })),
+  }
 }
 
 function deriveKey(
@@ -186,7 +200,7 @@ export class VaultCrypto {
         if (!isVaultContents(contents)) {
           throw new VaultIntegrityError()
         }
-        return { contents, key, envelope }
+        return { contents: normalizeContents(contents), key, envelope }
       } finally {
         zeroBuffer(plaintext)
       }

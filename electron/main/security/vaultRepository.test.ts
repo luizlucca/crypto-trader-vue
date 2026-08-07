@@ -22,7 +22,6 @@ const contents: VaultContents = {
     markets: ['futures'],
     apiKey: 'binance-api-key',
     apiSecret: 'binance-secret',
-    enabled: true,
   }],
 }
 

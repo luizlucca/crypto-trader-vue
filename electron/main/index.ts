@@ -24,6 +24,7 @@ import {
 import { registerSecurityIPC } from './security/registerSecurityIPC'
 import { bindSecurityLifecycle } from './security/securityLifecycle'
 import { SecurityPreferencesStore } from './security/securityPreferences'
+import { ProviderConnectionCoordinator } from './security/providerConnectionCoordinator'
 import { SecuritySession } from './security/securitySession'
 import { VaultCrypto } from './security/vaultCrypto'
 import { VaultRepository } from './security/vaultRepository'
@@ -327,13 +328,14 @@ if (!singleInstance) {
       'CryptoPro Symbol Catalog',
     )
     const userDataPath = app.getPath('userData')
+    const providers = new AccountProviderRegistry([new BinanceAccountProvider()])
     securitySession = new SecuritySession({
       repository: new VaultRepository(join(userDataPath, 'credentials.v1.enc')),
       crypto: new VaultCrypto(),
       preferences: new SecurityPreferencesStore(
         join(userDataPath, 'security-preferences.v1.json'),
       ),
-      providers: new AccountProviderRegistry([new BinanceAccountProvider()]),
+      connections: new ProviderConnectionCoordinator(providers),
       getSystemIdleTime: () => powerMonitor.getSystemIdleTime(),
     })
     await securitySession.initialize()

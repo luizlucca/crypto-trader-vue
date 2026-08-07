@@ -8,6 +8,7 @@ import { VaultCrypto } from './vaultCrypto'
 import { VaultRepository } from './vaultRepository'
 import { SecurityPreferencesStore } from './securityPreferences'
 import { SecuritySession } from './securitySession'
+import { ProviderConnectionCoordinator } from './providerConnectionCoordinator'
 import {
   AccountProviderRegistry,
   type AccountProvider,
@@ -16,7 +17,7 @@ import {
 const password = 'Abcdef1!'
 const temporaryDirectories: string[] = []
 
-function account(id: string, enabled = true): ProviderAccountRecord {
+function account(id: string): ProviderAccountRecord {
   return {
     accountId: id,
     provider: 'binance',
@@ -24,7 +25,6 @@ function account(id: string, enabled = true): ProviderAccountRecord {
     markets: ['spot'],
     apiKey: `api-key-${id}`,
     apiSecret: `api-secret-${id}`,
-    enabled,
   }
 }
 
@@ -60,15 +60,16 @@ async function createSession(options: {
     }
   }
 
+  const providers = new AccountProviderRegistry([
+    options.provider ?? connectedProvider(),
+  ])
   const session = new SecuritySession({
     repository,
     crypto,
     preferences: new SecurityPreferencesStore(
       join(directory, 'security-preferences.v1.json'),
     ),
-    providers: new AccountProviderRegistry([
-      options.provider ?? connectedProvider(),
-    ]),
+    connections: new ProviderConnectionCoordinator(providers),
     getSystemIdleTime: options.getSystemIdleTime,
     setInterval: options.setInterval,
     clearInterval: options.clearInterval,
@@ -101,22 +102,14 @@ describe('SecuritySession', () => {
     })
   })
 
-  it('unlocks multi-account data with at most two parallel validations',
+  it('unlocks accounts disconnected and validates only the account connected explicitly',
     async () => {
-      let activeValidations = 0
-      let maximumValidations = 0
+      const validateConnection = vi.fn().mockResolvedValue([
+        { market: 'spot', state: 'connected' },
+      ])
       const provider: AccountProvider = {
         id: 'binance',
-        validateConnection: async (_credentials, markets) => {
-          activeValidations += 1
-          maximumValidations = Math.max(maximumValidations, activeValidations)
-          await new Promise<void>((resolve) => setTimeout(resolve, 5))
-          activeValidations -= 1
-          return markets.map((market) => ({
-            market,
-            state: 'connected' as const,
-          }))
-        },
+        validateConnection,
       }
       const session = await createSession({
         accounts: [account('one'), account('two'), account('three')],
@@ -125,13 +118,20 @@ describe('SecuritySession', () => {
 
       await session.unlock(password)
 
-      expect(maximumValidations).toBeLessThanOrEqual(2)
+      expect(validateConnection).not.toHaveBeenCalled()
+      expect(session.getSnapshot().connection).toEqual({
+        state: 'disconnected',
+      })
+      await session.connectAccount('two')
+
+      expect(validateConnection).toHaveBeenCalledOnce()
       expect(session.getSnapshot()).toMatchObject({
         state: 'unlocked',
+        connection: { accountId: 'two', state: 'connected' },
         accounts: [
           {
             accountId: 'one',
-            connection: 'connected',
+            connection: 'disconnected',
             apiKeySuffix: '••••-one',
           },
           {
@@ -141,7 +141,7 @@ describe('SecuritySession', () => {
           },
           {
             accountId: 'three',
-            connection: 'connected',
+            connection: 'disconnected',
             apiKeySuffix: '••••hree',
           },
         ],
@@ -161,7 +161,7 @@ describe('SecuritySession', () => {
     })
   })
 
-  it('discards late validation after locking and zeroes unlocked state',
+  it('disconnects and discards a late connection result after locking',
     async () => {
       let releaseValidation: (() => void) | undefined
       let validationStarted: (() => void) | undefined
@@ -187,20 +187,22 @@ describe('SecuritySession', () => {
         validationStarted = resolve
       })
 
-      const unlocking = session.unlock(password)
+      await session.unlock(password)
+      const connecting = session.connectAccount('one')
       await started
       session.lock('manual')
       releaseValidation?.()
-      await unlocking
+      await connecting
 
       expect(session.getSnapshot()).toMatchObject({
         state: 'locked',
         accounts: [],
+        connection: { state: 'disconnected' },
       })
     },
   )
 
-  it('encrypts accounts, masks API keys and validates immediately',
+  it('encrypts accounts, masks API keys and connects with explicit save intent',
     async () => {
       const validateConnection = vi.fn().mockResolvedValue([
         { market: 'futures', state: 'connected' },
@@ -214,7 +216,7 @@ describe('SecuritySession', () => {
         markets: ['futures'],
         apiKey: 'binance-api-key-ABCD',
         apiSecret: 'binance-api-secret',
-        enabled: true,
+        validateAndConnect: true,
       })
 
       expect(validateConnection).toHaveBeenCalledWith(
@@ -247,7 +249,7 @@ describe('SecuritySession', () => {
       markets: ['spot'],
       apiKey,
       apiSecret,
-      enabled: false,
+      validateAndConnect: false,
     })
 
     const serialized = JSON.stringify(snapshots.at(-1))
@@ -289,7 +291,7 @@ describe('SecuritySession', () => {
         markets: ['spot'],
         apiKey: 'binance-api-key-ABCD',
         apiSecret: 'binance-api-secret',
-        enabled: false,
+        validateAndConnect: false,
       })
 
       await expect(session.resetVault('INVALIDAR' as never))
@@ -305,4 +307,47 @@ describe('SecuritySession', () => {
       })
     },
   )
+
+  it('rejects an explicit connection for an unknown account', async () => {
+    const session = await createSession({ accounts: [account('one')] })
+    await session.unlock(password)
+
+    await expect(session.connectAccount('missing'))
+      .rejects.toThrow('Conta de provider não encontrada')
+    expect(session.getSnapshot().connection).toEqual({ state: 'disconnected' })
+  })
+
+  it('disconnects the active account when it is removed', async () => {
+    const session = await createSession()
+    await session.setup(password)
+    await session.saveBinanceAccount({
+      label: 'Spot',
+      markets: ['spot'],
+      apiKey: 'binance-api-key-ABCD',
+      apiSecret: 'binance-api-secret',
+      validateAndConnect: false,
+    })
+    await session.connectAccount('new-account-id')
+
+    await session.removeAccount('new-account-id')
+
+    expect(session.getSnapshot().connection).toEqual({ state: 'disconnected' })
+  })
+
+  it('disconnects before resetting an active connection', async () => {
+    const session = await createSession()
+    await session.setup(password)
+    await session.saveBinanceAccount({
+      label: 'Spot',
+      markets: ['spot'],
+      apiKey: 'binance-api-key-ABCD',
+      apiSecret: 'binance-api-secret',
+      validateAndConnect: false,
+    })
+    await session.connectAccount('new-account-id')
+
+    await session.resetVault('APAGAR')
+
+    expect(session.getSnapshot().connection).toEqual({ state: 'disconnected' })
+  })
 })

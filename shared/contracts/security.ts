@@ -42,8 +42,13 @@ export interface ProviderAccountSummary {
   label: string
   markets: readonly Market[]
   apiKeySuffix: string
-  enabled: boolean
   connection: AccountConnectionState
+  failureCode?: AccountFailureCode
+}
+
+export interface ProviderConnectionSnapshot {
+  accountId?: string
+  state: AccountConnectionState
   failureCode?: AccountFailureCode
 }
 
@@ -53,13 +58,14 @@ export interface BinanceAccountDraft {
   markets: readonly Market[]
   apiKey: string
   apiSecret: string
-  enabled: boolean
+  validateAndConnect: boolean
 }
 
 export interface SecuritySnapshot {
   state: SecurityState
   hasVault: boolean
   accounts: readonly ProviderAccountSummary[]
+  connection: ProviderConnectionSnapshot
   preferences: SecurityPreferences
 }
 
@@ -72,6 +78,8 @@ export type SecurityRequest
     | { kind: 'reset-vault', confirmation: 'APAGAR' }
     | { kind: 'save-binance-account', draft: BinanceAccountDraft }
     | { kind: 'remove-account', accountId: string }
+    | { kind: 'connect-account', accountId: string }
+    | { kind: 'disconnect-account' }
     | { kind: 'update-preferences', preferences: SecurityPreferences }
 
 export interface SecurityEvent {
@@ -144,7 +152,7 @@ function isBinanceAccountDraft(value: unknown): value is BinanceAccountDraft {
   && isMarkets(draft.markets)
   && isCredential(draft.apiKey)
   && isCredential(draft.apiSecret)
-  && typeof draft.enabled === 'boolean'
+  && typeof draft.validateAndConnect === 'boolean'
 }
 
 export function isSecurityRequest(value: unknown): value is SecurityRequest {
@@ -170,7 +178,10 @@ export function isSecurityRequest(value: unknown): value is SecurityRequest {
     case 'save-binance-account':
       return isBinanceAccountDraft(request.draft)
     case 'remove-account':
+    case 'connect-account':
       return isAccountId(request.accountId)
+    case 'disconnect-account':
+      return true
     case 'update-preferences':
       return isPreferences(request.preferences)
     default:

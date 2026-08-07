@@ -13,7 +13,7 @@ describe('provider account helpers', () => {
       markets: ['spot'],
       apiKey: 'binance-api-key',
       apiSecret: 'binance-api-secret',
-      enabled: true,
+      validateAndConnect: true,
     })).toBe(true)
   })
 

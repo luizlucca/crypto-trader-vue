@@ -10,6 +10,7 @@ const snapshot: SecuritySnapshot = {
   state: 'locked',
   hasVault: true,
   accounts: [],
+  connection: { state: 'disconnected' },
   preferences: {
     lockOnMinimize: true,
     lockOnSuspend: true,
@@ -88,6 +89,32 @@ describe('registerSecurityIPC', () => {
     listener(snapshot)
     expect(send).toHaveBeenCalledWith(snapshot)
   })
+
+  it('forwards valid explicit connections and rejects invalid account ids',
+    async () => {
+      const ipc = createIPC()
+      const session = createSession()
+      registerSecurityIPC({
+        ipc,
+        getMainWebContentsId: () => 10,
+        session,
+        send: vi.fn(),
+      })
+
+      const connect: SecurityRequest = {
+        kind: 'connect-account',
+        accountId: 'account-one',
+      }
+      await expect(ipc.request({ sender: { id: 10 } }, connect))
+        .resolves.toEqual(snapshot)
+      await expect(ipc.request({ sender: { id: 10 } }, {
+        kind: 'connect-account',
+        accountId: 'invalid account id',
+      })).rejects.toThrow('Comando de segurança inválido')
+
+      expect(session.request).toHaveBeenCalledWith(connect)
+    },
+  )
 
   it('removes the IPC handler and subscription during shutdown', () => {
     const ipc = createIPC()

@@ -1,9 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import {
   DEFAULT_SECURITY_PREFERENCES,
-  type AccountConnectionState,
-  type AccountFailureCode,
   type BinanceAccountDraft,
+  type ProviderConnectionSnapshot,
   type ProviderAccountSummary,
   type SecurityPreferences,
   type SecurityRequest,
@@ -11,8 +10,6 @@ import {
   type SecurityState,
 } from '@shared/contracts/security'
 import { validatePersonalPassword } from '@shared/domain/personalPassword'
-import type { AccountMarketValidation } from '../providers/accountProvider'
-import { AccountProviderRegistry } from '../providers/accountProvider'
 import {
   type EncryptedCredentialVaultV1,
   type ProviderAccountRecord,
@@ -21,11 +18,11 @@ import {
   VaultCrypto,
   zeroBuffer,
 } from './vaultCrypto'
+import { ProviderConnectionCoordinator } from './providerConnectionCoordinator'
 import { SecurityPreferencesStore } from './securityPreferences'
 import { VaultRepository } from './vaultRepository'
 
 const IDLE_CHECK_INTERVAL_MS = 30_000
-const MAX_CONCURRENT_VALIDATIONS = 2
 
 export type LockReason
   = | 'manual'
@@ -46,24 +43,23 @@ interface SecuritySessionOptions {
   repository: VaultRepository
   crypto: VaultCrypto
   preferences: SecurityPreferencesStore
-  providers: AccountProviderRegistry
+  connections: ProviderConnectionCoordinator
   getSystemIdleTime?: () => number
   setInterval?: ScheduleInterval
   clearInterval?: ClearScheduledInterval
   createAccountId?: () => string
 }
 
-interface AccountConnection {
-  state: AccountConnectionState
-  failureCode?: AccountFailureCode
-}
-
 function copyContents(contents: VaultContents): VaultContents {
   return {
     version: contents.version,
     accounts: contents.accounts.map((account) => ({
-      ...account,
+      accountId: account.accountId,
+      provider: account.provider,
+      label: account.label,
       markets: [...account.markets],
+      apiKey: account.apiKey,
+      apiSecret: account.apiSecret,
     })),
   }
 }
@@ -74,17 +70,19 @@ function apiKeySuffix(apiKey: string): string {
 
 function toSummary(
   account: ProviderAccountRecord,
-  connection: AccountConnection | undefined,
+  activeConnection: ProviderConnectionSnapshot,
 ): ProviderAccountSummary {
+  const connection = activeConnection.accountId === account.accountId
+    ? activeConnection
+    : { state: 'disconnected' as const }
   return {
     accountId: account.accountId,
     provider: account.provider,
     label: account.label,
     markets: [...account.markets],
     apiKeySuffix: apiKeySuffix(account.apiKey),
-    enabled: account.enabled,
-    connection: connection?.state ?? 'disconnected',
-    ...(connection?.failureCode && { failureCode: connection.failureCode }),
+    connection: connection.state,
+    ...(connection.failureCode && { failureCode: connection.failureCode }),
   }
 }
 
@@ -98,12 +96,11 @@ export class SecuritySession {
   private revision = 0
   private idleTimer: IntervalHandle | undefined
   private readonly listeners = new Set<(snapshot: SecuritySnapshot) => void>()
-  private readonly connections = new Map<string, AccountConnection>()
 
   private readonly repository: VaultRepository
   private readonly crypto: VaultCrypto
   private readonly preferencesStore: SecurityPreferencesStore
-  private readonly providers: AccountProviderRegistry
+  private readonly connections: ProviderConnectionCoordinator
   private readonly getSystemIdleTime: () => number
   private readonly scheduleInterval: ScheduleInterval
   private readonly clearScheduledInterval: ClearScheduledInterval
@@ -113,11 +110,12 @@ export class SecuritySession {
     this.repository = options.repository
     this.crypto = options.crypto
     this.preferencesStore = options.preferences
-    this.providers = options.providers
+    this.connections = options.connections
     this.getSystemIdleTime = options.getSystemIdleTime ?? (() => 0)
     this.scheduleInterval = options.setInterval ?? setInterval
     this.clearScheduledInterval = options.clearInterval ?? clearInterval
     this.createAccountId = options.createAccountId ?? randomUUID
+    this.connections.subscribe(() => this.publish())
   }
 
   async initialize(): Promise<SecuritySnapshot> {
@@ -134,6 +132,7 @@ export class SecuritySession {
       state: this.state,
       hasVault: this.hasVault,
       accounts,
+      connection: this.connections.snapshot(),
       preferences: { ...this.preferences },
     }
   }
@@ -164,6 +163,10 @@ export class SecuritySession {
         return this.saveBinanceAccount(request.draft)
       case 'remove-account':
         return this.removeAccount(request.accountId)
+      case 'connect-account':
+        return this.connectAccount(request.accountId)
+      case 'disconnect-account':
+        return this.disconnectAccount()
       case 'update-preferences':
         return this.updatePreferences(request.preferences)
     }
@@ -227,9 +230,7 @@ export class SecuritySession {
       }
 
       this.activateUnlockedVault(unlocked)
-      this.publish()
-      await this.validateEnabledAccounts(revision)
-      return this.getSnapshot()
+      return this.publish()
     } catch (error) {
       this.restorePublicStateIfCurrent(revision)
       throw error
@@ -242,6 +243,7 @@ export class SecuritySession {
 
   lock(_reason: LockReason): SecuritySnapshot {
     this.revision += 1
+    this.connections.disconnect()
     this.clearUnlockedVault()
     this.state = this.hasVault ? 'locked' : 'setup-required'
     return this.publish()
@@ -274,7 +276,6 @@ export class SecuritySession {
       markets: [...draft.markets],
       apiKey: draft.apiKey,
       apiSecret: draft.apiSecret,
-      enabled: draft.enabled,
     }
     const accounts = vault.accounts.filter(
       (account) => account.accountId !== accountId,
@@ -288,10 +289,9 @@ export class SecuritySession {
 
     this.vault = next
     this.envelope = envelope
-    this.connections.delete(accountId)
     this.publish()
-    if (record.enabled) {
-      await this.validateAccounts([record], revision)
+    if (draft.validateAndConnect) {
+      return this.connectAccount(accountId)
     }
     return this.getSnapshot()
   }
@@ -299,6 +299,9 @@ export class SecuritySession {
   async removeAccount(accountId: string): Promise<SecuritySnapshot> {
     this.assertUnlocked()
     const vault = this.requireVault()
+    if (this.connections.snapshot().accountId === accountId) {
+      this.connections.disconnect()
+    }
     const next = {
       version: 1 as const,
       accounts: vault.accounts.filter(
@@ -313,8 +316,24 @@ export class SecuritySession {
 
     this.vault = next
     this.envelope = envelope
-    this.connections.delete(accountId)
     return this.publish()
+  }
+
+  async connectAccount(accountId: string): Promise<SecuritySnapshot> {
+    this.assertUnlocked()
+    const account = this.requireVault().accounts.find(
+      (candidate) => candidate.accountId === accountId,
+    )
+    if (!account) {
+      throw new Error('Conta de provider não encontrada')
+    }
+    await this.connections.connect(account)
+    return this.getSnapshot()
+  }
+
+  disconnectAccount(): SecuritySnapshot {
+    this.connections.disconnect()
+    return this.getSnapshot()
   }
 
   async changePassword(
@@ -354,6 +373,7 @@ export class SecuritySession {
     }
 
     this.revision += 1
+    this.connections.disconnect()
     this.clearUnlockedVault()
     await this.repository.destroy()
     this.hasVault = false
@@ -387,74 +407,13 @@ export class SecuritySession {
     return envelope
   }
 
-  private async validateEnabledAccounts(revision: number): Promise<void> {
-    const accounts = this.requireVault().accounts.filter(
-      (account) => account.enabled,
-    )
-    await this.validateAccounts(accounts, revision)
-  }
-
-  private async validateAccounts(
-    accounts: readonly ProviderAccountRecord[],
-    revision: number,
-  ): Promise<void> {
-    for (const account of accounts) {
-      this.connections.set(account.accountId, { state: 'connecting' })
-    }
-    this.publishIfCurrent(revision)
-
-    let nextIndex = 0
-    const worker = async (): Promise<void> => {
-      while (nextIndex < accounts.length) {
-        const account = accounts[nextIndex]
-        nextIndex += 1
-        const connection = await this.validateAccount(account)
-        if (!this.isCurrent(revision)) {
-          return
-        }
-        this.connections.set(account.accountId, connection)
-        this.publish()
-      }
-    }
-    const workerCount = Math.min(MAX_CONCURRENT_VALIDATIONS, accounts.length)
-    await Promise.all(Array.from({ length: workerCount }, worker))
-  }
-
-  private async validateAccount(
-    account: ProviderAccountRecord,
-  ): Promise<AccountConnection> {
-    try {
-      const provider = this.providers.get(account.provider)
-      const results = await provider.validateConnection(
-        {
-          apiKey: account.apiKey,
-          apiSecret: account.apiSecret,
-        },
-        account.markets,
-      )
-      return this.toAccountConnection(results)
-    } catch {
-      return { state: 'failed', failureCode: 'unknown' }
-    }
-  }
-
-  private toAccountConnection(
-    results: readonly AccountMarketValidation[],
-  ): AccountConnection {
-    const failed = results.find((result) => result.state === 'failed')
-    if (failed) {
-      return { state: 'failed', failureCode: failed.failureCode ?? 'unknown' }
-    }
-    return { state: 'connected' }
-  }
-
   private unlockedAccountSummaries(): readonly ProviderAccountSummary[] {
     if (this.state !== 'unlocked' || !this.vault) {
       return []
     }
 
     return this.vault.accounts.map((account) => (
-      toSummary(account, this.connections.get(account.accountId))
+      toSummary(account, this.connections.snapshot())
     ))
   }
 
@@ -463,7 +422,6 @@ export class SecuritySession {
     this.vault = unlocked.contents
     this.envelope = unlocked.envelope
     this.state = 'unlocked'
-    this.connections.clear()
     this.startIdleTimer()
   }
 
@@ -473,7 +431,6 @@ export class SecuritySession {
     this.masterKey = undefined
     this.vault = undefined
     this.envelope = undefined
-    this.connections.clear()
   }
 
   private startIdleTimer(): void {
@@ -557,12 +514,6 @@ export class SecuritySession {
 
   private isCurrent(revision: number): boolean {
     return this.revision === revision
-  }
-
-  private publishIfCurrent(revision: number): void {
-    if (this.isCurrent(revision)) {
-      this.publish()
-    }
   }
 
   private restorePublicStateIfCurrent(revision: number): void {

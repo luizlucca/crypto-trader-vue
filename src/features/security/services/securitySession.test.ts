@@ -10,6 +10,7 @@ const lockedSnapshot: SecuritySnapshot = {
   state: 'locked',
   hasVault: true,
   accounts: [],
+  connection: { state: 'disconnected' },
   preferences: {
     lockOnMinimize: true,
     lockOnSuspend: true,

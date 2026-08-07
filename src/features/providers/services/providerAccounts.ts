@@ -6,7 +6,7 @@ export function emptyBinanceAccountDraft(): BinanceAccountDraft {
     markets: ['spot'],
     apiKey: '',
     apiSecret: '',
-    enabled: true,
+    validateAndConnect: true,
   }
 }
 
