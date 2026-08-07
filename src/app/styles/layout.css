@@ -282,6 +282,18 @@
   color: var(--muted);
 }
 
+.security-reset-warning {
+  margin: 0;
+  padding: 10px 11px;
+  border: 1px solid color-mix(in srgb, var(--red) 45%, var(--border));
+  border-left: 3px solid var(--red);
+  border-radius: 5px;
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--red) 8%, var(--control-bg));
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
 .security-access-error {
   color: var(--red);
 }
@@ -334,10 +346,30 @@
   background: var(--control-bg);
 }
 
+.security-access-recovery {
+  justify-self: start;
+  padding: 0;
+  color: var(--blue);
+  background: transparent;
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.security-access-recovery:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
 .security-access-form .primary {
   color: var(--accent-contrast);
   border-color: var(--blue);
   background: var(--blue);
+}
+
+.security-access-form .danger {
+  color: var(--accent-contrast);
+  border-color: var(--red);
+  background: var(--red);
 }
 
 .security-access-form button:disabled,

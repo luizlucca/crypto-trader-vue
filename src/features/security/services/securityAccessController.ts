@@ -49,34 +49,34 @@ export function createSecurityAccessController(
     mode.value = nextMode
   }
 
-  async function submitSetup(): Promise<boolean> {
+  async function submitSetup(): Promise<SecuritySnapshot | undefined> {
     if (password.value !== confirmation.value) {
       error.value = 'As senhas não coincidem.'
-      return false
+      return undefined
     }
     if (!validatePersonalPassword(password.value).valid) {
       error.value = 'Use uma senha forte com ao menos 8 caracteres.'
-      return false
+      return undefined
     }
     return submit({ kind: 'setup', password: password.value })
   }
 
-  async function submitUnlock(): Promise<boolean> {
+  async function submitUnlock(): Promise<SecuritySnapshot | undefined> {
     if (!password.value) {
       error.value = 'Informe sua senha pessoal.'
-      return false
+      return undefined
     }
     return submit({ kind: 'unlock', password: password.value })
   }
 
-  async function submitPasswordChange(): Promise<boolean> {
+  async function submitPasswordChange(): Promise<SecuritySnapshot | undefined> {
     if (password.value !== confirmation.value) {
       error.value = 'As senhas não coincidem.'
-      return false
+      return undefined
     }
     if (!validatePersonalPassword(password.value).valid) {
       error.value = 'Use uma senha forte com ao menos 8 caracteres.'
-      return false
+      return undefined
     }
     return submit({
       kind: 'change-password',
@@ -85,10 +85,10 @@ export function createSecurityAccessController(
     })
   }
 
-  async function submitReset(): Promise<boolean> {
+  async function submitReset(): Promise<SecuritySnapshot | undefined> {
     if (confirmation.value !== 'APAGAR') {
       error.value = 'Digite APAGAR para confirmar a remoção.'
-      return false
+      return undefined
     }
     return submit({ kind: 'reset-vault', confirmation: 'APAGAR' })
   }
@@ -101,17 +101,19 @@ export function createSecurityAccessController(
     }
   }
 
-  async function submit(request: SecurityRequest): Promise<boolean> {
+  async function submit(
+    request: SecurityRequest,
+  ): Promise<SecuritySnapshot | undefined> {
     pending.value = true
     error.value = undefined
     try {
-      await session.request(request)
+      const snapshot = await session.request(request)
       clear()
-      return true
+      return snapshot
     } catch {
       clear()
       error.value = 'Não foi possível concluir a operação de segurança.'
-      return false
+      return undefined
     } finally {
       pending.value = false
     }

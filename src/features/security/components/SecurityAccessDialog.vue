@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { KeyRound, LockKeyhole, ShieldCheck, X } from '@lucide/vue'
 import { computed, nextTick, ref, watch } from 'vue'
-import type { SecurityState } from '@shared/contracts/security'
+import type {
+  SecuritySnapshot,
+  SecurityState,
+} from '@shared/contracts/security'
 import {
   createSecurityAccessController,
 } from '@security/services/securityAccessController'
@@ -14,18 +17,30 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  authenticated: [snapshot: SecuritySnapshot]
 }>()
 
 const session = useSecuritySession()
 const controller = createSecurityAccessController(session)
 const passwordInput = ref<HTMLInputElement>()
+const confirmationInput = ref<HTMLInputElement>()
 
 const isSetup = computed(() => controller.mode.value === 'setup')
+const isReset = computed(() => controller.mode.value === 'reset')
+const isUnlock = computed(() => controller.mode.value === 'unlock')
 const dialogTitle = computed(() => (
-  isSetup.value ? 'Proteger credenciais' : 'Desbloquear plataforma'
+  isSetup.value
+    ? 'Proteger credenciais'
+    : isReset.value
+      ? 'Apagar credenciais'
+      : 'Desbloquear plataforma'
 ))
 const submitLabel = computed(() => (
-  isSetup.value ? 'Criar cofre seguro' : 'Entrar'
+  isSetup.value
+    ? 'Criar cofre seguro'
+    : isReset.value
+      ? 'Apagar credenciais'
+      : 'Entrar'
 ))
 
 watch(() => props.open, async (open) => {
@@ -38,18 +53,35 @@ watch(() => props.open, async (open) => {
   passwordInput.value?.focus()
 })
 
+function showReset(): void {
+  controller.setMode('reset')
+  void nextTick(() => confirmationInput.value?.focus())
+}
+
+function returnToUnlock(): void {
+  controller.setMode('unlock')
+  void nextTick(() => passwordInput.value?.focus())
+}
+
 function close(): void {
   controller.clear()
   emit('close')
 }
 
 async function submit(): Promise<void> {
-  const completed = isSetup.value
-    ? await controller.submitSetup()
-    : await controller.submitUnlock()
-  if (completed) {
-    emit('close')
+  const reset = isReset.value
+  const snapshot = reset
+    ? await controller.submitReset()
+    : isSetup.value
+      ? await controller.submitSetup()
+      : await controller.submitUnlock()
+  if (!snapshot) {
+    return
   }
+  if (!reset) {
+    emit('authenticated', snapshot)
+  }
+  emit('close')
 }
 </script>
 
@@ -87,12 +119,16 @@ async function submit(): Promise<void> {
             Sua senha cifra as credenciais neste computador. Ela não pode ser
             recuperada.
           </template>
-          <template v-else>
+          <template v-else-if="isUnlock">
             Dados públicos continuam ativos. Entre para acessar contas privadas.
+          </template>
+          <template v-else>
+            Sua senha não pode ser recuperada. Confirme a remoção das
+            credenciais locais.
           </template>
         </p>
 
-        <label>
+        <label v-if="!isReset">
           <span>Senha pessoal</span>
           <input
             ref="passwordInput"
@@ -117,9 +153,35 @@ async function submit(): Promise<void> {
           >
         </label>
 
+        <template v-if="isReset">
+          <p class="security-reset-warning">
+            Sua senha não pode ser recuperada. Todas as API keys, secrets,
+            contas e conexões salvas serão apagadas e precisarão ser
+            cadastradas novamente.
+          </p>
+          <label>
+            <span>Digite APAGAR para confirmar</span>
+            <input
+              ref="confirmationInput"
+              v-model="controller.confirmation.value"
+              :disabled="controller.pending.value"
+              autocomplete="off"
+            >
+          </label>
+        </template>
+
         <p v-if="isSetup" class="security-access-hint">
           Use 8+ caracteres, com maiúscula, minúscula, número e símbolo.
         </p>
+        <button
+          v-if="isUnlock"
+          class="security-access-recovery"
+          :disabled="controller.pending.value"
+          type="button"
+          @click="showReset"
+        >
+          Esqueci minha senha
+        </button>
         <p
           v-if="controller.error.value"
           class="security-access-error"
@@ -130,6 +192,16 @@ async function submit(): Promise<void> {
 
         <footer>
           <button
+            v-if="isReset"
+            class="secondary"
+            :disabled="controller.pending.value"
+            type="button"
+            @click="returnToUnlock"
+          >
+            Voltar
+          </button>
+          <button
+            v-else
             class="secondary"
             :disabled="controller.pending.value"
             type="button"
@@ -138,12 +210,15 @@ async function submit(): Promise<void> {
             Cancelar
           </button>
           <button
-            class="primary"
+            :class="isReset ? 'danger' : 'primary'"
             :disabled="controller.pending.value"
             type="submit"
           >
             <KeyRound aria-hidden="true" />
-            {{ controller.pending.value ? 'Verificando…' : submitLabel }}
+            {{ controller.pending.value
+              ? 'Verificando…'
+              : submitLabel
+            }}
           </button>
         </footer>
       </form>
