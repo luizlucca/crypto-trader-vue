@@ -31,13 +31,17 @@ describe('provider connection attempt ownership', () => {
     expect(attempts.isCurrent(attempt, 'unlocked')).toBe(false)
   })
 
-  it('rejects a late completion after its renderer lifecycle disposes', () => {
-    const attempts = createProviderConnectionAttempt()
+  it('rejects a late completion after disposal without disconnecting', () => {
+    let disconnects = 0
+    const attempts = createProviderConnectionAttempt({
+      disconnect: async () => { disconnects += 1 },
+    })
     const attempt = attempts.begin('one')!
 
     attempts.dispose()
 
     expect(attempts.isCurrent(attempt, 'unlocked')).toBe(false)
+    expect(disconnects).toBe(0)
   })
 
   it('disconnects once for an explicit cancellation', async () => {
