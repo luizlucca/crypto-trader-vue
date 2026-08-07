@@ -48,6 +48,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   requestAccess: []
+  changePassword: []
 }>()
 
 type SettingsSection = 'appearance' | 'general' | 'providers'
@@ -711,6 +712,7 @@ defineExpose({ selectSection })
           <SecurityPreferencesPanel
             v-else-if="activeSection === 'general'"
             :snapshot="security.snapshot.value"
+            @change-password="emit('changePassword')"
           />
 
           <section v-else class="settings-content settings-placeholder">

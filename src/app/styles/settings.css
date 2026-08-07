@@ -1536,6 +1536,17 @@
 .security-preferences-form footer {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+}
+
+.security-preferences-form .secondary {
+  min-width: 118px;
+  height: 32px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--control-bg);
+  font-weight: 650;
 }
 
 .security-preferences-form .primary {

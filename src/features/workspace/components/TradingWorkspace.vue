@@ -33,6 +33,9 @@ import { useCatalogCache } from '@market/composables/useCatalogCache'
 import { useGlobalShortcuts } from '@workspace/composables/useGlobalShortcuts'
 import { useResizableSidebar } from '@workspace/composables/useResizableSidebar'
 import { useSecuritySession } from '@security/services/securitySession'
+import type {
+  SecurityAccessMode,
+} from '@security/services/securityAccessController'
 import ProviderConnectionDialog
   from '@providers/components/ProviderConnectionDialog.vue'
 import { useNotifications } from '@app/services/notifications'
@@ -60,6 +63,7 @@ const SIDEBAR_MIN_WIDTH = 190
 
 const settingsOpen = ref(false)
 const securityAccessOpen = ref(false)
+const securityAccessMode = ref<SecurityAccessMode>()
 const providerConnectionOpen = ref(false)
 const settingsPanel = ref<{
   selectSection(section: 'providers'): void
@@ -193,7 +197,25 @@ onBeforeUnmount(() => {
 })
 
 function openSecurityAccess(): void {
+  securityAccessMode.value = undefined
   securityAccessOpen.value = true
+}
+
+function openPasswordChange(): void {
+  securityAccessMode.value = 'change-password'
+  securityAccessOpen.value = true
+}
+
+function closeSecurityAccess(): void {
+  securityAccessOpen.value = false
+  securityAccessMode.value = undefined
+}
+
+function notifyPasswordChanged(): void {
+  notifications.notify({
+    tone: 'success',
+    message: 'Senha pessoal alterada com segurança.',
+  })
 }
 
 function openProviderSettings(): void {
@@ -451,13 +473,16 @@ function lockSecuritySession(): void {
       ref="settingsPanel"
       :open="settingsOpen"
       @close="settingsOpen = false"
+      @change-password="openPasswordChange"
       @request-access="openSecurityAccess"
     />
     <SecurityAccessDialog
+      :mode="securityAccessMode"
       :open="securityAccessOpen"
       :state="security.snapshot.value.state"
-      @close="securityAccessOpen = false"
+      @close="closeSecurityAccess"
       @authenticated="handleAuthenticated"
+      @password-changed="notifyPasswordChanged"
     />
     <ProviderConnectionDialog
       :accounts="security.snapshot.value.accounts"

@@ -11,6 +11,10 @@ const props = defineProps<{
   snapshot: SecuritySnapshot
 }>()
 
+const emit = defineEmits<{
+  changePassword: []
+}>()
+
 const session = useSecuritySession()
 const draft = ref<SecurityPreferences>({ ...props.snapshot.preferences })
 const pending = ref(false)
@@ -120,6 +124,15 @@ async function save(): Promise<void> {
         {{ error }}
       </p>
       <footer>
+        <button
+          v-if="snapshot.state === 'unlocked'"
+          :disabled="pending"
+          class="secondary"
+          type="button"
+          @click="emit('changePassword')"
+        >
+          Alterar senha
+        </button>
         <button :disabled="pending" class="primary" type="submit">
           {{ pending ? 'Salvando…' : 'Salvar preferências' }}
         </button>

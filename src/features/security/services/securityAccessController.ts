@@ -32,11 +32,21 @@ export function createSecurityAccessController(
   const pending = ref(false)
   const error = ref<string>()
 
-  function clear(): void {
+  function clearSensitiveFields(): void {
     password.value = ''
     confirmation.value = ''
     currentPassword.value = ''
+  }
+
+  function clear(): void {
+    clearSensitiveFields()
     error.value = undefined
+  }
+
+  function fail(message: string): undefined {
+    clearSensitiveFields()
+    error.value = message
+    return undefined
   }
 
   function openForState(state: SecurityState): void {
@@ -51,32 +61,30 @@ export function createSecurityAccessController(
 
   async function submitSetup(): Promise<SecuritySnapshot | undefined> {
     if (password.value !== confirmation.value) {
-      error.value = 'As senhas não coincidem.'
-      return undefined
+      return fail('As senhas não coincidem.')
     }
     if (!validatePersonalPassword(password.value).valid) {
-      error.value = 'Use uma senha forte com ao menos 8 caracteres.'
-      return undefined
+      return fail('Use uma senha forte com ao menos 8 caracteres.')
     }
     return submit({ kind: 'setup', password: password.value })
   }
 
   async function submitUnlock(): Promise<SecuritySnapshot | undefined> {
     if (!password.value) {
-      error.value = 'Informe sua senha pessoal.'
-      return undefined
+      return fail('Informe sua senha pessoal.')
     }
     return submit({ kind: 'unlock', password: password.value })
   }
 
   async function submitPasswordChange(): Promise<SecuritySnapshot | undefined> {
     if (password.value !== confirmation.value) {
-      error.value = 'As senhas não coincidem.'
-      return undefined
+      return fail('As senhas não coincidem.')
+    }
+    if (!validatePersonalPassword(currentPassword.value).valid) {
+      return fail('Use uma senha forte com ao menos 8 caracteres.')
     }
     if (!validatePersonalPassword(password.value).valid) {
-      error.value = 'Use uma senha forte com ao menos 8 caracteres.'
-      return undefined
+      return fail('Use uma senha forte com ao menos 8 caracteres.')
     }
     return submit({
       kind: 'change-password',
@@ -87,8 +95,7 @@ export function createSecurityAccessController(
 
   async function submitReset(): Promise<SecuritySnapshot | undefined> {
     if (confirmation.value !== 'APAGAR') {
-      error.value = 'Digite APAGAR para confirmar a remoção.'
-      return undefined
+      return fail('Digite APAGAR para confirmar a remoção.')
     }
     return submit({ kind: 'reset-vault', confirmation: 'APAGAR' })
   }

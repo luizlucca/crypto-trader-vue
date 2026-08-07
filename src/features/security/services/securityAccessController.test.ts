@@ -50,7 +50,7 @@ describe('createSecurityAccessController', () => {
     expect(controller.password.value).toBe('')
   })
 
-  it('keeps values after different confirmation', async () => {
+  it('clears setup fields after different confirmation', async () => {
     const session = createSession()
     const controller = createSecurityAccessController(session)
     controller.password.value = 'Abcdef1!'
@@ -60,6 +60,109 @@ describe('createSecurityAccessController', () => {
 
     expect(session.request).not.toHaveBeenCalled()
     expect(controller.error.value).toBe('As senhas não coincidem.')
+    expect(controller.password.value).toBe('')
+    expect(controller.confirmation.value).toBe('')
+  })
+
+  it(
+    'sends a password-change request and clears every sensitive field',
+    async () => {
+      const session = createSession()
+      const controller = createSecurityAccessController(session)
+      controller.setMode('change-password')
+      controller.currentPassword.value = 'Current1!'
+      controller.password.value = 'Nextpass1!'
+      controller.confirmation.value = 'Nextpass1!'
+
+      await expect(controller.submitPasswordChange())
+        .resolves.toEqual(snapshot)
+
+      expect(session.request).toHaveBeenCalledWith({
+        kind: 'change-password',
+        currentPassword: 'Current1!',
+        nextPassword: 'Nextpass1!',
+      })
+      expect(controller.currentPassword.value).toBe('')
+      expect(controller.password.value).toBe('')
+      expect(controller.confirmation.value).toBe('')
+    },
+  )
+
+  it('clears password-change fields when confirmation differs', async () => {
+    const session = createSession()
+    const controller = createSecurityAccessController(session)
+    controller.setMode('change-password')
+    controller.currentPassword.value = 'Current1!'
+    controller.password.value = 'Nextpass1!'
+    controller.confirmation.value = 'Different1!'
+
+    await expect(controller.submitPasswordChange()).resolves.toBeUndefined()
+
+    expect(session.request).not.toHaveBeenCalled()
+    expect(controller.error.value).toBe('As senhas não coincidem.')
+    expect(controller.currentPassword.value).toBe('')
+    expect(controller.password.value).toBe('')
+    expect(controller.confirmation.value).toBe('')
+  })
+
+  it('clears fields after a local password-validation failure', async () => {
+    const session = createSession()
+    const controller = createSecurityAccessController(session)
+    controller.setMode('change-password')
+    controller.currentPassword.value = 'Current1!'
+    controller.password.value = 'short'
+    controller.confirmation.value = 'short'
+
+    await expect(controller.submitPasswordChange()).resolves.toBeUndefined()
+
+    expect(session.request).not.toHaveBeenCalled()
+    expect(controller.error.value).toBe(
+      'Use uma senha forte com ao menos 8 caracteres.',
+    )
+    expect(controller.currentPassword.value).toBe('')
+    expect(controller.password.value).toBe('')
+    expect(controller.confirmation.value).toBe('')
+  })
+
+  it('rejects an invalid current password before it reaches the session',
+    async () => {
+      const session = createSession()
+      const controller = createSecurityAccessController(session)
+      controller.setMode('change-password')
+      controller.currentPassword.value = 'short'
+      controller.password.value = 'Nextpass1!'
+      controller.confirmation.value = 'Nextpass1!'
+
+      await expect(controller.submitPasswordChange()).resolves.toBeUndefined()
+
+      expect(session.request).not.toHaveBeenCalled()
+      expect(controller.error.value).toBe(
+        'Use uma senha forte com ao menos 8 caracteres.',
+      )
+      expect(controller.currentPassword.value).toBe('')
+      expect(controller.password.value).toBe('')
+      expect(controller.confirmation.value).toBe('')
+    },
+  )
+
+  it('clears password-change fields after a rejected request', async () => {
+    const session = {
+      request: vi.fn().mockRejectedValue(new Error('wrong password')),
+    }
+    const controller = createSecurityAccessController(session)
+    controller.setMode('change-password')
+    controller.currentPassword.value = 'Current1!'
+    controller.password.value = 'Nextpass1!'
+    controller.confirmation.value = 'Nextpass1!'
+
+    await expect(controller.submitPasswordChange()).resolves.toBeUndefined()
+
+    expect(controller.error.value).toBe(
+      'Não foi possível concluir a operação de segurança.',
+    )
+    expect(controller.currentPassword.value).toBe('')
+    expect(controller.password.value).toBe('')
+    expect(controller.confirmation.value).toBe('')
   })
 
   it('resets the vault when APAGAR is confirmed', async () => {
@@ -86,7 +189,9 @@ describe('createSecurityAccessController', () => {
     await expect(controller.submitReset()).resolves.toBeUndefined()
 
     expect(session.request).not.toHaveBeenCalled()
-    expect(controller.error.value).toBe('Digite APAGAR para confirmar a remoção.')
+    expect(controller.error.value).toBe(
+      'Digite APAGAR para confirmar a remoção.',
+    )
   })
 
   it('sends a lock command and clears local form values', async () => {
