@@ -11,7 +11,9 @@ import { formatApiKeyHint } from '@providers/services/providerAccounts'
 import {
   notifyProviderConnectionFeedback,
   notifyProviderConnectionFailure,
+  providerAccountFailureMessage,
   providerConnectionFailureMessage,
+  providerConnectionStateLabel,
 } from '@providers/services/providerConnectionFeedback'
 import { useNotifications } from '@app/services/notifications'
 import { useSecuritySession } from '@security/services/securitySession'
@@ -21,6 +23,7 @@ import ProviderIcon from './ProviderIcon.vue'
 
 const props = defineProps<{
   snapshot: SecuritySnapshot
+  open: boolean
 }>()
 
 const emit = defineEmits<{
@@ -48,6 +51,17 @@ watch(() => props.snapshot.state, (state) => {
   activeSaveAttempt = undefined
   connectingId.value = undefined
   saving.value = false
+})
+
+// The settings layer only hides itself, so closing it never unmounts this
+// panel. Without dropping the editor, a typed API key and secret would sit in
+// the hidden DOM until the operator cancelled, switched section or locked.
+watch(() => props.open, (open) => {
+  if (open) {
+    return
+  }
+  view.value = 'accounts'
+  editingAccount.value = undefined
 })
 
 function openCatalog(): void {
@@ -250,6 +264,13 @@ async function removeAccount(accountId: string): Promise<void> {
             Binance · {{ account.markets.join(' + ') }} ·
             {{ formatApiKeyHint(account.apiKeySuffix) }}
           </small>
+          <small
+            v-if="providerAccountFailureMessage(account)"
+            class="provider-account-failure"
+            role="status"
+          >
+            {{ providerAccountFailureMessage(account) }}
+          </small>
         </div>
         <span
           :class="['provider-connection', account.connection]"
@@ -257,9 +278,7 @@ async function removeAccount(accountId: string): Promise<void> {
             ? 'Conta conectada'
             : undefined"
         >
-          {{ isActiveAccount(account.accountId)
-            ? 'Conectado'
-            : account.connection }}
+          {{ providerConnectionStateLabel(account.connection) }}
         </span>
         <button
           :disabled="connectingId !== undefined

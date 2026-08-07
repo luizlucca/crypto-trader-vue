@@ -1135,6 +1135,15 @@
   white-space: nowrap;
 }
 
+/* The diagnosis has to be readable in full, so it opts out of the single
+   ellipsized line the other account details share. */
+.provider-account-copy small.provider-account-failure {
+  overflow: visible;
+  color: var(--red);
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .provider-connection {
   color: var(--muted);
   font-size: 10px;

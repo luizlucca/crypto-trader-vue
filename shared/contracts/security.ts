@@ -94,7 +94,8 @@ export interface DesktopSecurityAPI {
 }
 
 const ACCOUNT_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/
-const MAX_API_CREDENTIAL_LENGTH = 256
+export const MIN_API_CREDENTIAL_LENGTH = 8
+export const MAX_API_CREDENTIAL_LENGTH = 256
 const SECURITY_PREFERENCE_KEYS = [
   'lockOnMinimize',
   'lockOnSuspend',
@@ -120,7 +121,7 @@ function isAccountId(value: unknown): value is string {
 
 function isCredential(value: unknown): value is string {
   return typeof value === 'string'
-    && value.length >= 8
+    && value.length >= MIN_API_CREDENTIAL_LENGTH
     && value.length <= MAX_API_CREDENTIAL_LENGTH
 }
 
@@ -178,7 +179,14 @@ function isIdleTimeoutMinutes(value: unknown): value is IdleTimeoutMinutes {
     || value === 120
 }
 
-function isBinanceAccountDraft(value: unknown): value is BinanceAccountDraft {
+/**
+ * Exported so the renderer gates its Save button on the very rule the IPC
+ * boundary enforces. A looser UI rule presents a draft as valid and then the
+ * save rejects with nothing rendered.
+ */
+export function isBinanceAccountDraft(
+  value: unknown,
+): value is BinanceAccountDraft {
   if (!hasExactKeys(value, [
     'label',
     'markets',

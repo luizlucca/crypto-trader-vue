@@ -2,7 +2,10 @@
 /* eslint-disable @stylistic/max-len */
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { SecuritySnapshot } from '@shared/contracts/security'
+import type {
+  ProviderAccountSummary,
+  SecuritySnapshot,
+} from '@shared/contracts/security'
 import ProviderAccountsPanel from './ProviderAccountsPanel.vue'
 
 const mocks = vi.hoisted(() => ({
@@ -45,7 +48,7 @@ function deferred<T>() {
 
 function snapshotWith(
   connection: SecuritySnapshot['connection'],
-  accounts = [account],
+  accounts: readonly ProviderAccountSummary[] = [account],
 ): SecuritySnapshot {
   return {
     state: 'unlocked',
@@ -61,15 +64,17 @@ function snapshotWith(
   }
 }
 
+const catalogStub = {
+  emits: ['cancel', 'select'],
+  template: '<button class="select-binance" @click="$emit(\'select\', \'binance\')" />',
+}
+
 function mountPanel(snapshot: SecuritySnapshot) {
   return mount(ProviderAccountsPanel, {
-    props: { snapshot },
+    props: { snapshot, open: true },
     global: {
       stubs: {
-        ProviderCatalog: {
-          emits: ['cancel', 'select'],
-          template: '<button class="select-binance" @click="$emit(\'select\', \'binance\')" />',
-        },
+        ProviderCatalog: catalogStub,
         BinanceAccountForm: {
           props: ['account', 'pending'],
           emits: ['cancel', 'save'],
@@ -84,6 +89,67 @@ function mountPanel(snapshot: SecuritySnapshot) {
     },
   })
 }
+
+describe('ProviderAccountsPanel draft lifetime', () => {
+  beforeEach(() => {
+    mocks.notify.mockReset()
+    mocks.request.mockReset()
+  })
+
+  it('drops a typed credential draft when the settings layer closes', async () => {
+    // The settings layer is hidden with v-show, so nothing unmounts this panel
+    // on close: the real form is mounted here to prove the secret is gone.
+    const wrapper = mount(ProviderAccountsPanel, {
+      props: { snapshot: snapshotWith({ state: 'disconnected' }), open: true },
+      global: { stubs: { ProviderCatalog: catalogStub } },
+    })
+
+    await wrapper.get('.create-theme-button').trigger('click')
+    await wrapper.get('.select-binance').trigger('click')
+    const secret = wrapper.get('.provider-account-form input[type="password"]')
+    await secret.setValue('super-secret-value')
+    expect((secret.element as HTMLInputElement).value).toBe('super-secret-value')
+
+    await wrapper.setProps({ open: false })
+
+    expect(wrapper.find('.provider-account-form').exists()).toBe(false)
+    expect(wrapper.findAll('input[type="password"]')).toHaveLength(0)
+
+    await wrapper.setProps({ open: true })
+
+    expect(wrapper.find('.provider-account-form').exists()).toBe(false)
+    expect(wrapper.find('.provider-account-list').exists()).toBe(true)
+  })
+})
+
+describe('ProviderAccountsPanel failure diagnosis', () => {
+  beforeEach(() => {
+    mocks.notify.mockReset()
+    mocks.request.mockReset()
+  })
+
+  it.each([
+    ['credentials' as const, 'Não foi possível validar as credenciais da conta.'],
+    ['permission' as const, 'A conta não tem a permissão necessária para conectar.'],
+    ['clock' as const, 'A data e a hora do computador precisam ser ajustadas.'],
+    ['network' as const, 'Não foi possível alcançar a Binance. Tente novamente.'],
+  ])('names the %s reason instead of the generic failed state', (failureCode, message) => {
+    const wrapper = mountPanel(snapshotWith(
+      { accountId: 'account-one', state: 'failed', failureCode },
+      [{ ...account, connection: 'failed', failureCode }],
+    ))
+
+    expect(wrapper.get('.provider-account-failure').text()).toBe(message)
+    expect(wrapper.get('.provider-connection').text()).toBe('Falhou')
+  })
+
+  it('shows no failure reason for an account that has not failed', () => {
+    const wrapper = mountPanel(snapshotWith({ state: 'disconnected' }))
+
+    expect(wrapper.find('.provider-account-failure').exists()).toBe(false)
+    expect(wrapper.get('.provider-connection').text()).toBe('Desconectado')
+  })
+})
 
 describe('ProviderAccountsPanel connection feedback', () => {
   beforeEach(() => {

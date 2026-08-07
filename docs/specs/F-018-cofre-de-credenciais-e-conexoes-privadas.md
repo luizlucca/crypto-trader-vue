@@ -58,6 +58,16 @@ ativa e oculta a boleta enquanto não houver conexão autenticada.
 - O painel mostra somente o apelido, provider, mercados e sufixo mascarado da
   API key; o secret nunca volta ao renderer. Editar uma credencial pede o valor
   novamente.
+- O estado de cada conta é exibido no idioma do operador e, quando a conta
+  falhou, a linha nomeia a causa normalizada — credencial, permissão, relógio,
+  rede ou desconhecida — em vez de repetir apenas `falhou`. O toast é
+  transitório; a lista precisa dizer o que corrigir depois que ele some.
+- O formulário só habilita **Salvar** para um rascunho que o validador de IPC
+  aceitaria. API key e secret têm de 8 a 256 caracteres, o mesmo limite
+  aplicado na fronteira, e os campos declaram esses limites.
+- Fechar a camada de configurações descarta o rascunho em edição. A camada é
+  apenas ocultada, então sem esse descarte a API key e o secret digitados
+  permaneceriam no DOM oculto e na memória do renderer.
 - **Adicionar provedor** abre um catálogo declarativo com ícone, nome,
   descrição e disponibilidade. Binance é a única opção habilitada nesta
   versão; escolhê-la abre o formulário próprio de API key e secret.
@@ -76,8 +86,14 @@ ativa e oculta a boleta enquanto não houver conexão autenticada.
   configurações; a mensagem bruta do provider não atravessa o IPC.
 - **Bloquear** cancela logicamente validações pendentes, descarta conta ativa e
   material sensível em memória. O modo público continua funcionando.
-- A boleta só é renderizada quando a conta ativa estiver `conectada`; sem
-  conexão, sua coluna é devolvida ao workspace.
+- Uma falha oferece **tentar novamente**, mas o aviso sobrevive à sessão e à
+  conta que o originou. A retentativa revalida sessão desbloqueada e existência
+  da conta **antes** de abrir qualquer diálogo, e o caminho de conexão fecha o
+  seletor quando a conta desaparece enquanto a desconexão anterior se resolve.
+- A boleta só é renderizada quando a conta ativa estiver `conectada` **e** o
+  mercado selecionado no workspace estiver habilitado nessa conta. Uma conta só
+  de Spot não libera a boleta ao alternar a aba para Futures: essas credenciais
+  nunca foram validadas para esse mercado.
 
 ### Preferências de bloqueio
 
@@ -283,6 +299,16 @@ tick no renderer.
   `SecurityAccessDialog*.test.ts` cobrem pendência e rotação;
   `ProviderAccountsPanel.test.ts` e `providerConnectionFeedback.test.ts`
   cobrem feedback e serialização; `securityLifecycle.test.ts` cobre Darwin.
+- Regressões da revisão do renderer: `providerAccounts.test.ts` compara
+  `canSaveBinanceDraft` com `isSecurityRequest` rascunho a rascunho, para que a
+  regra da interface não possa divergir da fronteira;
+  `providerConnectionFeedback.test.ts` cobre o rótulo de estado e a mensagem
+  por `failureCode` na própria conta; `ProviderAccountsPanel.test.ts` cobre a
+  causa exibida na lista e o descarte do rascunho ao fechar a camada, montando
+  o formulário real para provar que o secret digitado sai do DOM;
+  `privateAccessFlow.test.ts` cobre a guarda de retentativa por sessão e por
+  conta; `privateTradingAccess.test.ts` cobre o mercado selecionado ausente na
+  conta conectada e a conta conectada que sumiu da lista.
 - Integridade do envelope e do arquivo: `vaultCrypto.test.ts` cobre a tag
   truncada para 4 bytes e a recusa de `salt`/`iv` encurtados em `unlock()` e
   em `seal()`; `vaultRepository.test.ts` cobre a propagação de falha de
@@ -314,6 +340,16 @@ tick no renderer.
       suspensão/bloqueio suportado e fechamento descartam essa escolha.
 - [ ] A boleta só aparece com a conta ativa conectada, sem interromper gráfico
       ou livro durante seleção, validação ou falha.
+- [x] A boleta permanece oculta quando o mercado selecionado não está
+      habilitado na conta conectada, mesmo com a conexão em `connected`.
+- [x] Uma conta que falhou mostra na lista a causa normalizada correspondente
+      ao `failureCode`, e não apenas o estado genérico.
+- [x] **Salvar** só fica habilitado para credenciais entre 8 e 256 caracteres,
+      exatamente a regra que o validador de IPC aplica.
+- [x] Fechar as configurações com o formulário Binance aberto remove o
+      formulário e não deixa a API key nem o secret no DOM oculto.
+- [x] Tentar novamente a partir de um aviso de falha não abre o seletor de
+      contas quando a sessão foi bloqueada ou a conta já foi removida.
 - [x] A tela Segurança e sessão persiste os gatilhos e o tempo escolhidos.
 - [x] Um envelope com `salt`, `iv` ou `authTag` de tamanho decodificado
       diferente do especificado é recusado, e uma tag GCM truncada não abre o

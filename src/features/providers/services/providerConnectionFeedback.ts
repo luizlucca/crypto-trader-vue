@@ -1,5 +1,7 @@
 import type {
+  AccountConnectionState,
   AccountFailureCode,
+  ProviderAccountSummary,
   SecuritySnapshot,
 } from '@shared/contracts/security'
 import type { AppNotifications } from '@app/services/notifications'
@@ -36,6 +38,37 @@ export function providerConnectionFailureMessage(
     case 'unknown':
       return 'Não foi possível conectar a conta agora. Tente novamente.'
   }
+}
+
+export function providerConnectionStateLabel(
+  state: AccountConnectionState,
+): string {
+  switch (state) {
+    case 'disconnected':
+      return 'Desconectado'
+    case 'connecting':
+      return 'Conectando…'
+    case 'connected':
+      return 'Conectado'
+    case 'failed':
+      return 'Falhou'
+  }
+}
+
+/**
+ * The account list outlives the toast that announced the failure, so the row
+ * has to carry the normalized reason itself: "falhou" alone does not tell the
+ * operator whether to re-enter keys, grant a permission or fix the clock.
+ */
+export function providerAccountFailureMessage(
+  account: Pick<ProviderAccountSummary, 'connection' | 'failureCode'>,
+): string | undefined {
+  if (account.connection !== 'failed') {
+    return undefined
+  }
+  return providerConnectionFailureMessage(
+    normalizeAccountFailureCode(account.failureCode),
+  )
 }
 
 export function providerConnectionFeedback(

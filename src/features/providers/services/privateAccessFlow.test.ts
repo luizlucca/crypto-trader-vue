@@ -3,7 +3,10 @@ import type {
   ProviderAccountSummary,
   SecuritySnapshot,
 } from '@shared/contracts/security'
-import { nextPrivateAccessAction } from './privateAccessFlow'
+import {
+  canRetryProviderConnection,
+  nextPrivateAccessAction,
+} from './privateAccessFlow'
 
 const accountOne: ProviderAccountSummary = {
   accountId: 'one',
@@ -54,5 +57,29 @@ describe('nextPrivateAccessAction', () => {
   it('asks the user to choose when more than one account is available', () => {
     expect(nextPrivateAccessAction(snapshotWith([accountOne, accountTwo])))
       .toEqual({ kind: 'choose-account' })
+  })
+})
+
+describe('canRetryProviderConnection', () => {
+  it('allows a retry for an account of the unlocked session', () => {
+    expect(canRetryProviderConnection(snapshotWith([accountOne]), 'one'))
+      .toBe(true)
+  })
+
+  it('refuses a retry for an account removed since the failure', () => {
+    expect(canRetryProviderConnection(snapshotWith([accountTwo]), 'one'))
+      .toBe(false)
+    expect(canRetryProviderConnection(snapshotWith([]), 'one')).toBe(false)
+  })
+
+  it.each([
+    ['locked' as const],
+    ['unlocking' as const],
+    ['setup-required' as const],
+  ])('refuses a retry while the session is %s', (state) => {
+    expect(canRetryProviderConnection(
+      { ...snapshotWith([accountOne]), state },
+      'one',
+    )).toBe(false)
   })
 })

@@ -1,4 +1,5 @@
 import type { BinanceAccountDraft } from '@shared/contracts/security'
+import { isBinanceAccountDraft } from '@shared/contracts/security'
 
 export function emptyBinanceAccountDraft(): BinanceAccountDraft {
   return {
@@ -10,11 +11,10 @@ export function emptyBinanceAccountDraft(): BinanceAccountDraft {
   }
 }
 
+// Delegating keeps the enabled Save button and the accepted IPC payload from
+// drifting: any rule added at the boundary applies to the form for free.
 export function canSaveBinanceDraft(draft: BinanceAccountDraft): boolean {
-  return draft.label.trim().length > 0
-    && draft.markets.length > 0
-    && draft.apiKey.trim().length > 0
-    && draft.apiSecret.trim().length > 0
+  return isBinanceAccountDraft(draft)
 }
 
 export function formatApiKeyHint(apiKeySuffix: string): string {

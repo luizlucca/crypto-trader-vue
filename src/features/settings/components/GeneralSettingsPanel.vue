@@ -705,6 +705,7 @@ defineExpose({ selectSection })
 
           <ProviderAccountsPanel
             v-else-if="activeSection === 'providers'"
+            :open="open"
             :snapshot="security.snapshot.value"
             @request-access="emit('requestAccess')"
           />

@@ -38,7 +38,10 @@ import type {
 import ProviderConnectionDialog
   from '@providers/components/ProviderConnectionDialog.vue'
 import { useNotifications } from '@app/services/notifications'
-import { nextPrivateAccessAction } from '@providers/services/privateAccessFlow'
+import {
+  canRetryProviderConnection,
+  nextPrivateAccessAction,
+} from '@providers/services/privateAccessFlow'
 import { canShowTradingTicket } from '@trading/domain/privateTradingAccess'
 import {
   createProviderConnectionAttempt,
@@ -115,7 +118,7 @@ const activeTabPosition = computed(
 
 const statusLabel = computed(() => sessionStatusLabel(activeTab.value))
 const tradingTicketVisible = computed(
-  () => canShowTradingTicket(security.snapshot.value),
+  () => canShowTradingTicket(security.snapshot.value, selection.value.market),
 )
 
 /**
@@ -243,6 +246,9 @@ function cancelProviderConnection(): void {
 function connectionFeedbackActions() {
   return {
     retry: (accountId: string) => {
+      if (!canRetryProviderConnection(security.snapshot.value, accountId)) {
+        return
+      }
       providerConnectionOpen.value = true
       void connectProviderAccount(accountId)
     },
@@ -285,9 +291,10 @@ async function connectProviderAccount(accountId: string): Promise<void> {
     )) {
       return
     }
-    if (!security.snapshot.value.accounts.some(
-      (account) => account.accountId === accountId,
-    )) {
+    // The account can disappear while the previous disconnect settles; leaving
+    // the dialog open would strand an empty account picker over the workspace.
+    if (!canRetryProviderConnection(security.snapshot.value, accountId)) {
+      providerConnectionOpen.value = false
       return
     }
     const snapshot = await security.request({

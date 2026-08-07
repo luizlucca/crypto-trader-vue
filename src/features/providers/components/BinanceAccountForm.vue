@@ -5,6 +5,10 @@ import type {
   ProviderAccountSummary,
 } from '@shared/contracts/security'
 import {
+  MAX_API_CREDENTIAL_LENGTH,
+  MIN_API_CREDENTIAL_LENGTH,
+} from '@shared/contracts/security'
+import {
   canSaveBinanceDraft,
   emptyBinanceAccountDraft,
 } from '@providers/services/providerAccounts'
@@ -103,6 +107,8 @@ function submit(): void {
           <input
             v-model="apiKey"
             autocomplete="off"
+            :maxlength="MAX_API_CREDENTIAL_LENGTH"
+            :minlength="MIN_API_CREDENTIAL_LENGTH"
             required
             spellcheck="false"
           >
@@ -112,6 +118,8 @@ function submit(): void {
           <input
             v-model="apiSecret"
             autocomplete="new-password"
+            :maxlength="MAX_API_CREDENTIAL_LENGTH"
+            :minlength="MIN_API_CREDENTIAL_LENGTH"
             required
             spellcheck="false"
             type="password"
