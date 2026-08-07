@@ -33,22 +33,24 @@ export class SecurityPreferencesStore {
   constructor(readonly path: string) {}
 
   async read(): Promise<SecurityPreferences> {
+    let contents: unknown
     try {
-      const contents: unknown = JSON.parse(await readFile(this.path, 'utf8'))
-      const preferences = projectSecurityPreferences(contents)
-      if (!preferences) {
-        throw new Error('Preferências de segurança inválidas')
-      }
-      if (!isSecurityPreferences(contents)) {
-        await this.write(preferences)
-      }
-      return copyPreferences(preferences)
+      contents = JSON.parse(await readFile(this.path, 'utf8'))
     } catch (error: unknown) {
       if (this.isMissingFile(error)) {
         return copyPreferences(DEFAULT_SECURITY_PREFERENCES)
       }
-      throw error
+      return this.replaceWithDefaults()
     }
+
+    const preferences = projectSecurityPreferences(contents)
+    if (!preferences) {
+      return this.replaceWithDefaults()
+    }
+    if (!isSecurityPreferences(contents)) {
+      await this.persistQuietly(preferences)
+    }
+    return copyPreferences(preferences)
   }
 
   async write(preferences: SecurityPreferences): Promise<SecurityPreferences> {
@@ -72,6 +74,37 @@ export class SecurityPreferencesStore {
     } finally {
       await handle?.close()
       await rm(temporaryPath, { force: true })
+    }
+  }
+
+  // SecuritySession.initialize() runs before the window is opened, and
+  // index.ts awaits it without a handler. A preferences file that cannot be
+  // parsed must therefore degrade to the safe defaults: throwing here leaves
+  // the process alive with no interface to repair the file from.
+  private async replaceWithDefaults(): Promise<SecurityPreferences> {
+    await this.quarantine()
+    const defaults = copyPreferences(DEFAULT_SECURITY_PREFERENCES)
+    await this.persistQuietly(defaults)
+    return defaults
+  }
+
+  // The rejected file is kept for diagnosis rather than overwritten blindly.
+  private async quarantine(): Promise<void> {
+    try {
+      await rename(this.path, `${this.path}.corrupt`)
+    } catch {
+      // Boot continues on safe defaults whether or not the move succeeds.
+    }
+  }
+
+  private async persistQuietly(
+    preferences: SecurityPreferences,
+  ): Promise<void> {
+    try {
+      await this.write(preferences)
+    } catch {
+      // Lock preferences are not credentials: an unwritable file costs the
+      // choices made, never the ability to start.
     }
   }
 

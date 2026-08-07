@@ -72,6 +72,34 @@ describe('SecurityPreferencesStore', () => {
       .resolves.toEqual(DEFAULT_SECURITY_PREFERENCES)
   })
 
+  it('quarantines a truncated preferences file instead of failing the boot',
+    async () => {
+      const path = await temporaryPath()
+      await writeFile(path, '{"lockOnMinimize": tru', 'utf8')
+      const store = new SecurityPreferencesStore(path)
+
+      await expect(store.read()).resolves.toEqual(DEFAULT_SECURITY_PREFERENCES)
+
+      await expect(readFile(`${path}.corrupt`, 'utf8'))
+        .resolves.toBe('{"lockOnMinimize": tru')
+      await expect(readFile(path, 'utf8').then(JSON.parse))
+        .resolves.toEqual(DEFAULT_SECURITY_PREFERENCES)
+    },
+  )
+
+  it('quarantines preferences written with an unsupported shape', async () => {
+    const path = await temporaryPath()
+    await writeFile(path, JSON.stringify({
+      ...DEFAULT_SECURITY_PREFERENCES,
+      closeAction: 'stay-unlocked',
+    }), 'utf8')
+    const store = new SecurityPreferencesStore(path)
+
+    await expect(store.read()).resolves.toEqual(DEFAULT_SECURITY_PREFERENCES)
+    await expect(readFile(`${path}.corrupt`, 'utf8'))
+      .resolves.toContain('stay-unlocked')
+  })
+
   it('sanitizes legacy preference files with injected fields', async () => {
     const path = await temporaryPath()
     await writeFile(path, JSON.stringify({

@@ -201,6 +201,31 @@ conta depois de troca, lock, reset ou remoção.
 - No macOS, fechar com `quit-and-lock` bloqueia e solicita o quit uma única
   vez; o caminho `before-quit` continua sendo responsável pelo shutdown real.
 
+### Integridade do envelope e do arquivo
+
+- O validador do envelope confere o **tamanho decodificado** de `salt` (16),
+  `iv` (12) e `authTag` (16) em vez de aceitar qualquer string não vazia, e a
+  decifra é inicializada com `authTagLength: 16`. Sem as duas medidas, o Node
+  aceita tags GCM truncadas de até 4 bytes: quem editasse o arquivo poderia
+  cortar uma tag legítima e rebaixar a verificação de integridade de 128 para
+  32 bits com o cofre ainda abrindo. O mesmo validador protege `seal()`, que
+  de outro modo propagaria um `salt` enfraquecido para toda escrita seguinte.
+- `VaultRepository.exists()` responde `false` apenas para `ENOENT` e propaga
+  qualquer outra falha de sistema de arquivos. Tratar um erro de I/O como
+  ausência de cofre levaria a sessão a `setup-required` e a escrita seguinte
+  substituiria as credenciais existentes sem pedir a senha delas.
+- A permissão `0600` é aplicada no descritor aberto, **antes** do `rename` que
+  é o ponto de commit. Com o `chmod` depois do `rename`, uma falha de
+  permissão devolvia erro ao chamador com o documento novo já em disco — numa
+  troca de senha, o cofre passava a exigir a senha nova enquanto a interface
+  informava que a rotação falhou.
+- Um arquivo de preferências truncado, corrompido ou de formato desconhecido é
+  movido para `<arquivo>.corrupt` e substituído pelos padrões seguros.
+  `SecuritySession.initialize()` é aguardado antes de `openMainWindow()`, então
+  um `throw` nesse ponto deixaria o processo vivo sem janela e sem como
+  corrigir o arquivo pela interface. Preferências de bloqueio não são
+  credenciais: perder as escolhas é aceitável, perder o boot não é.
+
 ### Interface e estado
 
 `src/features/security/` mantém somente estado de baixo volume: `setup-required`,
@@ -258,6 +283,12 @@ tick no renderer.
   `SecurityAccessDialog*.test.ts` cobrem pendência e rotação;
   `ProviderAccountsPanel.test.ts` e `providerConnectionFeedback.test.ts`
   cobrem feedback e serialização; `securityLifecycle.test.ts` cobre Darwin.
+- Integridade do envelope e do arquivo: `vaultCrypto.test.ts` cobre a tag
+  truncada para 4 bytes e a recusa de `salt`/`iv` encurtados em `unlock()` e
+  em `seal()`; `vaultRepository.test.ts` cobre a propagação de falha de
+  sistema de arquivos em `exists()` e a preservação do documento anterior
+  quando a permissão não pode ser aplicada; `securityPreferences.test.ts`
+  cobre a quarentena de arquivo truncado e de formato não suportado.
 - Manual: com gráfico, livro e oito indicadores ativos, cadastrar/desbloquear
   e bloquear não pode criar *long task* acima de 50 ms no renderer nem pausar
   os streams públicos.
@@ -284,6 +315,16 @@ tick no renderer.
 - [ ] A boleta só aparece com a conta ativa conectada, sem interromper gráfico
       ou livro durante seleção, validação ou falha.
 - [x] A tela Segurança e sessão persiste os gatilhos e o tempo escolhidos.
+- [x] Um envelope com `salt`, `iv` ou `authTag` de tamanho decodificado
+      diferente do especificado é recusado, e uma tag GCM truncada não abre o
+      cofre nem é aceita ao recifrar.
+- [x] Uma falha de sistema de arquivos ao procurar o cofre é propagada em vez
+      de virar `setup-required`, e nenhuma escrita substitui um cofre
+      existente sem a senha dele.
+- [x] Uma escrita do cofre que falha ao aplicar a permissão deixa o documento
+      anterior intacto em disco, coerente com o erro devolvido ao chamador.
+- [x] Um arquivo de preferências inválido é posto em quarentena e substituído
+      pelos padrões seguros; a aplicação inicia com janela em vez de abortar.
 - [ ] Nenhum processo de dados públicos recebe credenciais, e gráfico/livro
       continuam atualizando durante os fluxos de segurança.
 

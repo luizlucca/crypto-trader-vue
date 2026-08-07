@@ -47,6 +47,56 @@ describe('VaultCrypto', () => {
       .toBeInstanceOf(VaultIntegrityError)
   })
 
+  it('rejects an authentication tag truncated to fewer than 16 bytes',
+    async () => {
+      const crypto = new VaultCrypto()
+      const created = await crypto.create(password, contents)
+      const authTag = Buffer.from(created.envelope.cipher.authTag, 'base64')
+      const truncated = {
+        ...created.envelope,
+        cipher: {
+          ...created.envelope.cipher,
+          authTag: authTag.subarray(0, 4).toString('base64'),
+        },
+      }
+
+      await expect(crypto.unlock(password, truncated)).rejects
+        .toBeInstanceOf(VaultIntegrityError)
+    },
+  )
+
+  it('rejects an envelope whose salt or IV was shortened', async () => {
+    const crypto = new VaultCrypto()
+    const created = await crypto.create(password, contents)
+    const shortSalt = {
+      ...created.envelope,
+      kdf: {
+        ...created.envelope.kdf,
+        salt: Buffer.from(created.envelope.kdf.salt, 'base64')
+          .subarray(0, 4)
+          .toString('base64'),
+      },
+    }
+    const shortIv = {
+      ...created.envelope,
+      cipher: {
+        ...created.envelope.cipher,
+        iv: Buffer.from(created.envelope.cipher.iv, 'base64')
+          .subarray(0, 4)
+          .toString('base64'),
+      },
+    }
+
+    await expect(crypto.unlock(password, shortSalt)).rejects
+      .toBeInstanceOf(VaultIntegrityError)
+    await expect(crypto.unlock(password, shortIv)).rejects
+      .toBeInstanceOf(VaultIntegrityError)
+
+    // Resealing is what would carry a weakened salt into every later write.
+    await expect(crypto.seal(created.contents, created.key, shortSalt)).rejects
+      .toBeInstanceOf(VaultIntegrityError)
+  })
+
   it('uses a fresh IV each time an unlocked vault is persisted', async () => {
     const crypto = new VaultCrypto()
     const created = await crypto.create(password, contents)

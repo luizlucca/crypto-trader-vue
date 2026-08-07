@@ -1,6 +1,5 @@
 import {
   access,
-  chmod,
   mkdir,
   open,
   readFile,
@@ -13,6 +12,15 @@ import type { EncryptedCredentialVaultV1 } from './vaultCrypto'
 
 const FILE_MODE = 0o600
 
+function isMissingFile(error: unknown): boolean {
+  return Boolean(
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && error.code === 'ENOENT',
+  )
+}
+
 export class VaultRepository {
   constructor(readonly path: string) {}
 
@@ -20,8 +28,15 @@ export class VaultRepository {
     try {
       await access(this.path)
       return true
-    } catch {
-      return false
+    } catch (error: unknown) {
+      // Only a missing file proves there is no vault. Reading an I/O failure
+      // as "no vault" drops the session into setup-required, and the next
+      // write then replaces real credentials without asking for their
+      // password.
+      if (isMissingFile(error)) {
+        return false
+      }
+      throw error
     }
   }
 
@@ -38,13 +53,16 @@ export class VaultRepository {
     try {
       handle = await open(temporaryPath, 'wx', FILE_MODE)
       await handle.writeFile(JSON.stringify(envelope), 'utf8')
+      if (process.platform !== 'win32') {
+        // The open mode is filtered by umask, so the mode is forced here --
+        // before the rename, which is the commit point. Doing it afterwards
+        // leaves the new document on disk while write() reports failure.
+        await handle.chmod(FILE_MODE)
+      }
       await handle.sync()
       await handle.close()
       handle = undefined
       await rename(temporaryPath, this.path)
-      if (process.platform !== 'win32') {
-        await chmod(this.path, FILE_MODE)
-      }
     } finally {
       await handle?.close()
       await rm(temporaryPath, { force: true })

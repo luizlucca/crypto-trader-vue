@@ -69,6 +69,14 @@ function isBase64(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0
 }
 
+// Base64 decoding is lenient, so only the decoded size proves an envelope
+// field is intact. A tag shortened here would otherwise reach the decipher,
+// where GCM accepts truncated tags and drops authentication to 32 bits.
+function isBase64OfLength(value: unknown, bytes: number): value is string {
+  return typeof value === 'string'
+    && Buffer.from(value, 'base64').length === bytes
+}
+
 function isEncryptedCredentialVaultV1(
   value: unknown,
 ): value is EncryptedCredentialVaultV1 {
@@ -81,11 +89,11 @@ function isEncryptedCredentialVaultV1(
     && envelope.kdf.N === KDF_N
     && envelope.kdf.r === KDF_R
     && envelope.kdf.p === KDF_P
-    && isBase64(envelope.kdf.salt)
+    && isBase64OfLength(envelope.kdf.salt, SALT_LENGTH)
     && envelope.cipher?.name === 'aes-256-gcm'
-    && isBase64(envelope.cipher.iv)
+    && isBase64OfLength(envelope.cipher.iv, IV_LENGTH)
     && isBase64(envelope.cipher.ciphertext)
-    && isBase64(envelope.cipher.authTag)
+    && isBase64OfLength(envelope.cipher.authTag, AUTH_TAG_LENGTH)
 }
 
 function isMarket(value: unknown): value is Market {
@@ -188,6 +196,7 @@ export class VaultCrypto {
         'aes-256-gcm',
         key,
         Buffer.from(envelope.cipher.iv, 'base64'),
+        { authTagLength: AUTH_TAG_LENGTH },
       )
       decipher.setAAD(VAULT_AAD)
       decipher.setAuthTag(Buffer.from(envelope.cipher.authTag, 'base64'))
