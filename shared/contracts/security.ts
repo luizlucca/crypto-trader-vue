@@ -106,8 +106,11 @@ function hasExactKeys(value: unknown, keys: readonly string[]): boolean {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return false
   }
-  const actualKeys = Object.keys(value)
+  const actualKeys = Reflect.ownKeys(value)
   return actualKeys.length === keys.length
+    && actualKeys.every((key) => (
+      typeof key === 'string' && keys.includes(key)
+    ))
     && keys.every((key) => Object.hasOwn(value, key))
 }
 

@@ -138,4 +138,58 @@ describe('security contract', () => {
       },
     })).toBe(false)
   })
+
+  it('rejects non-enumerable fields at every security DTO level', () => {
+    const command = { kind: 'get-snapshot' }
+    Object.defineProperty(command, 'hidden', { value: true })
+
+    const preferences = { ...DEFAULT_SECURITY_PREFERENCES }
+    Object.defineProperty(preferences, 'hidden', { value: true })
+
+    const draft = {
+      label: 'Principal',
+      markets: ['spot'],
+      apiKey: 'key-1234567890',
+      apiSecret: 'secret-1234567890',
+      validateAndConnect: true,
+    }
+    Object.defineProperty(draft, 'hidden', { value: true })
+
+    expect(isSecurityRequest(command)).toBe(false)
+    expect(isSecurityRequest({
+      kind: 'update-preferences',
+      preferences,
+    })).toBe(false)
+    expect(isSecurityRequest({
+      kind: 'save-binance-account',
+      draft,
+    })).toBe(false)
+  })
+
+  it('rejects symbol fields at every security DTO level', () => {
+    const command = { kind: 'get-snapshot' }
+    Object.defineProperty(command, Symbol('hidden'), { value: true })
+
+    const preferences = { ...DEFAULT_SECURITY_PREFERENCES }
+    Object.defineProperty(preferences, Symbol('hidden'), { value: true })
+
+    const draft = {
+      label: 'Principal',
+      markets: ['spot'],
+      apiKey: 'key-1234567890',
+      apiSecret: 'secret-1234567890',
+      validateAndConnect: true,
+    }
+    Object.defineProperty(draft, Symbol('hidden'), { value: true })
+
+    expect(isSecurityRequest(command)).toBe(false)
+    expect(isSecurityRequest({
+      kind: 'update-preferences',
+      preferences,
+    })).toBe(false)
+    expect(isSecurityRequest({
+      kind: 'save-binance-account',
+      draft,
+    })).toBe(false)
+  })
 })
