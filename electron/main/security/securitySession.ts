@@ -457,7 +457,7 @@ export class SecuritySession {
   }
 
   shutdown(): SecuritySnapshot {
-    if (this.state === 'locked') {
+    if (this.state === 'locked' || this.state === 'setup-required') {
       return this.getSnapshot()
     }
     return this.lock('shutdown')

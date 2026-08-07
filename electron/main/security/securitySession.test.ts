@@ -777,6 +777,28 @@ describe('SecuritySession credential vault mutation queue', () => {
     },
   )
 
+  it('does not lock a public setup-required session twice after a window close',
+    async () => {
+      const session = await createSession()
+      const lock = vi.spyOn(session, 'lock')
+      const window = Object.assign(new EventEmitter(), { minimize: vi.fn() })
+      const dispose = bindSecurityLifecycle({
+        window,
+        powerMonitor: new EventEmitter(),
+        session,
+        isQuitting: () => false,
+        requestQuit: vi.fn(),
+      })
+
+      window.emit('close', { preventDefault: vi.fn() })
+      session.shutdown()
+
+      expect(lock).toHaveBeenCalledOnce()
+      expect(lock).toHaveBeenCalledWith('window-close')
+      dispose()
+    },
+  )
+
   it(
     'continues with the next mutation after a queued write fails',
     async () => {
