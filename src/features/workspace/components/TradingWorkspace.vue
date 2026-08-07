@@ -181,6 +181,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  connectionAttempt.dispose()
   releaseSecuritySession?.()
   releaseSecuritySession = undefined
   releaseWindowEvents.forEach((release) => release())

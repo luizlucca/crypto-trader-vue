@@ -31,6 +31,15 @@ describe('provider connection attempt ownership', () => {
     expect(attempts.isCurrent(attempt, 'unlocked')).toBe(false)
   })
 
+  it('rejects a late completion after its renderer lifecycle disposes', () => {
+    const attempts = createProviderConnectionAttempt()
+    const attempt = attempts.begin('one')!
+
+    attempts.dispose()
+
+    expect(attempts.isCurrent(attempt, 'unlocked')).toBe(false)
+  })
+
   it('disconnects once for an explicit cancellation', async () => {
     let disconnects = 0
     const attempts = createProviderConnectionAttempt({

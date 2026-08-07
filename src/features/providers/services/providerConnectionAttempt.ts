@@ -12,6 +12,7 @@ export interface ProviderConnectionAttemptOptions {
 export interface ProviderConnectionAttempt {
   begin(accountId: string): ProviderConnectionAttemptToken | undefined
   invalidate(): boolean
+  dispose(): void
   cancel(): boolean
   finish(token: ProviderConnectionAttemptToken): void
   isCurrent(
@@ -32,6 +33,15 @@ export function createProviderConnectionAttempt(
     return active?.revision === token.revision
   }
 
+  function invalidate(): boolean {
+    if (!active) {
+      return false
+    }
+    revision += 1
+    active = undefined
+    return true
+  }
+
   return {
     begin(accountId) {
       if (active) {
@@ -41,16 +51,12 @@ export function createProviderConnectionAttempt(
       active = token
       return token
     },
-    invalidate() {
-      if (!active) {
-        return false
-      }
-      revision += 1
-      active = undefined
-      return true
+    invalidate,
+    dispose() {
+      invalidate()
     },
     cancel() {
-      const invalidated = this.invalidate()
+      const invalidated = invalidate()
       if (!invalidated || !options.disconnect) {
         return invalidated
       }
