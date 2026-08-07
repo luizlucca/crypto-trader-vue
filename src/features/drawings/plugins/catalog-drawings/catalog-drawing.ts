@@ -139,7 +139,7 @@ export class CatalogDrawing implements ISeriesPrimitive<Time> {
         return { hit: true, type: 'point', index }
       }
     }
-    return hitsDrawing(this.tool, { x, y }, points)
+    return hitsDrawing(this.tool, { x, y }, points, this._options.levels)
       ? { hit: true, type: points.length === 1 ? 'point' : 'shape' }
       : null
   }

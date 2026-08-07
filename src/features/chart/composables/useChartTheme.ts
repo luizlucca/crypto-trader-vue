@@ -33,7 +33,7 @@ export interface ChartThemeOptions {
   symbol: () => string
   interval: () => string
   /** The indicator palette is resolved against the surface it lands on. */
-  onRetheme?: () => void
+  onRetheme?: (palette: ThemePalette) => void
 }
 
 /** Volume bars take their colour from the candle's own direction. */
@@ -125,7 +125,7 @@ export function useChartTheme(options: ChartThemeOptions) {
 
     // The catalog's own colours are resolved against the surface they land on,
     // so a new theme can turn a readable line into an invisible one.
-    options.onRetheme?.()
+    options.onRetheme?.(palette)
   }
 
   return { apply, watermarkLines }

@@ -313,7 +313,11 @@ describe('controles globais dos desenhos', () => {
     drawings.restore([annotation])
 
     expect(drawings.selected.value).toBeNull()
-    drawings.handlePointerDown({ clientX: 80, clientY: 100 } as MouseEvent)
+    drawings.handlePointerDown({
+      button: 0,
+      clientX: 80,
+      clientY: 100,
+    } as MouseEvent)
     drawings.handleMove({
       logical: 9,
       point: { x: 90, y: 110 },
@@ -324,6 +328,35 @@ describe('controles globais dos desenhos', () => {
       price: 110,
     })
     expect(drawings.selected.value?.id).toBe(annotation.id)
+  })
+
+  it('ignora gestos de desenho que não usam o botão primário', () => {
+    const { drawings, gravado } = drawingsOver(() => bars)
+    drawings.select('trend-line')
+
+    drawings.handlePointerDown({
+      button: 1,
+      clientX: 10,
+      clientY: 100,
+    } as MouseEvent)
+    drawings.handlePointerUp({
+      button: 1,
+      clientX: 10,
+      clientY: 100,
+    } as MouseEvent)
+    drawings.handlePointerDown({
+      button: 2,
+      clientX: 20,
+      clientY: 90,
+    } as MouseEvent)
+    drawings.handlePointerUp({
+      button: 2,
+      clientX: 20,
+      clientY: 90,
+    } as MouseEvent)
+
+    expect(gravado).not.toHaveBeenCalled()
+    expect(drawings.activeTool.value).toBe('trend-line')
   })
 
   it('reprojeta as mesmas âncoras ao trocar de 1h para 1d', () => {

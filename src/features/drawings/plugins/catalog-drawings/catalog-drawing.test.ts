@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { CanvasRenderingTarget2D } from 'fancy-canvas'
 import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts'
+import type {
+  CatalogDrawingToolId,
+  DrawingLevel,
+} from '@drawings/domain/chartDrawings'
 import {
   CATALOG_DRAWING_TOOL_IDS,
   DRAWING_ANCHORS,
@@ -42,6 +46,26 @@ function renderingTargetStub(
       target[property] = value
       onAssignment?.(property, value)
       return true
+    },
+  }) as unknown as CanvasRenderingContext2D
+  return {
+    useMediaCoordinateSpace: (callback) => callback({
+      context,
+      mediaSize: { width: 800, height: 500 } as never,
+    }),
+  } as CanvasRenderingTarget2D
+}
+
+function radiiRenderingTarget(radii: number[]): CanvasRenderingTarget2D {
+  const values: Record<PropertyKey, unknown> = {
+    arc: (...args: unknown[]) => radii.push(args[2] as number),
+  }
+  const context = new Proxy(values, {
+    get(target, property) {
+      if (property === 'measureText') {
+        return (text: string) => ({ width: text.length * 7 })
+      }
+      return property in target ? target[property] : vi.fn()
     },
   }) as unknown as CanvasRenderingContext2D
   return {
@@ -164,6 +188,128 @@ describe('primitive do catálogo de desenhos', () => {
 
     expect(drawing.toolHitTest(50, 75)).toBeNull()
     expect(drawing.toolHitTest(20, 100)?.type).toBe('shape')
+  })
+
+  it('seleciona a geometria pintada das ferramentas compostas', () => {
+    const { chart, series } = chartStub()
+    const levels: DrawingLevel[] = [{ value: 0.5, color: '#2962FF' }]
+    const cases: Array<{
+      tool: CatalogDrawingToolId
+      anchors: { logical: number, price: number }[]
+      target: [number, number]
+      levels?: DrawingLevel[]
+    }> = [
+      {
+        tool: 'regression-trend' as const,
+        anchors: [{ logical: 1, price: 100 }, { logical: 10, price: 10 }],
+        target: [55, 55],
+      },
+      {
+        tool: 'andrews-pitchfork' as const,
+        anchors: [
+          { logical: 1, price: 100 },
+          { logical: 3, price: 70 },
+          { logical: 3, price: 130 },
+        ],
+        target: [80, 100],
+      },
+      {
+        tool: 'fib-channel' as const,
+        anchors: [
+          { logical: 1, price: 100 },
+          { logical: 10, price: 100 },
+          { logical: 1, price: 50 },
+        ],
+        target: [55, 75],
+      },
+      {
+        tool: 'fib-time-zone' as const,
+        anchors: [{ logical: 1, price: 100 }, { logical: 5, price: 100 }],
+        target: [30, 220],
+      },
+      {
+        tool: 'fib-speed-fan' as const,
+        anchors: [{ logical: 1, price: 100 }, { logical: 10, price: 50 }],
+        target: [55, 87.5],
+      },
+      {
+        tool: 'fib-circles' as const,
+        anchors: [{ logical: 1, price: 100 }, { logical: 2, price: 100 }],
+        target: [30, 100],
+        levels: [{ value: 2, color: '#2962FF' }],
+      },
+      {
+        tool: 'fib-arcs' as const,
+        anchors: [{ logical: 1, price: 100 }, { logical: 2, price: 100 }],
+        target: [10, 80],
+        levels: [{ value: 2, color: '#2962FF' }],
+      },
+      {
+        tool: 'fib-wedge' as const,
+        anchors: [
+          { logical: 1, price: 100 },
+          { logical: 3, price: 100 },
+          { logical: 1, price: 120 },
+        ],
+        target: [17, 107],
+      },
+      {
+        tool: 'pitchfan' as const,
+        anchors: [
+          { logical: 1, price: 100 },
+          { logical: 10, price: 50 },
+          { logical: 10, price: 150 },
+        ],
+        target: [55, 100],
+      },
+      {
+        tool: 'gann-fan' as const,
+        anchors: [{ logical: 1, price: 100 }, { logical: 10, price: 50 }],
+        target: [55, 75],
+      },
+    ]
+
+    for (const entry of cases) {
+      const drawing = new CatalogDrawing(
+        chart,
+        series,
+        entry.tool,
+        entry.anchors,
+        { levels: entry.levels ?? levels },
+      )
+      expect(drawing.toolHitTest(...entry.target), entry.tool).toMatchObject({
+        hit: true,
+        type: 'shape',
+      })
+    }
+  })
+
+  it('nunca passa raios Fibonacci negativos ou infinitos ao canvas', () => {
+    const { chart, series } = chartStub()
+    const radii: number[] = []
+    const levels = [
+      { value: -0.5, color: '#2962FF' },
+      { value: Number.MAX_VALUE, color: '#EF5350' },
+    ]
+    const circles = new CatalogDrawing(chart, series, 'fib-circles', [
+      { logical: 1, price: 100 },
+      { logical: 5, price: 100 },
+    ], { levels })
+    const wedge = new CatalogDrawing(chart, series, 'fib-wedge', [
+      { logical: 1, price: 100 },
+      { logical: 5, price: 100 },
+      { logical: 1, price: 120 },
+    ], { levels })
+
+    circles.updateAllViews()
+    wedge.updateAllViews()
+    circles.paneViews()[0].renderer()?.draw(radiiRenderingTarget(radii))
+    wedge.paneViews()[0].renderer()?.draw(radiiRenderingTarget(radii))
+
+    expect(radii).toHaveLength(2)
+    expect(radii.every((radius) => (
+      Number.isFinite(radius) && radius >= 0
+    ))).toBe(true)
   })
 
   it('pinta borda, texto e fundo da anotação de forma independente', () => {

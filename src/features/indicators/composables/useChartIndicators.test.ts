@@ -14,6 +14,7 @@ import type {
   IndicatorPatchHandler,
 } from '@indicators/services/indicators'
 import { peekIndicatorReadout } from '@indicators/services/indicatorReadout'
+import { readableOnCached } from '@settings/domain/readableColor'
 import { useChartIndicators } from './useChartIndicators'
 
 const definition: IndicatorDefinition = {
@@ -36,7 +37,13 @@ const definition: IndicatorDefinition = {
 
 class FakeSeries {
   points: unknown[] = []
-  readonly priceLines: { price: number, lineStyle: number }[] = []
+  readonly appliedOptions: unknown[] = []
+  readonly priceLines: Array<{
+    price: number
+    lineStyle: number
+    updates: unknown[]
+  }> = []
+
   readonly primitives: unknown[] = []
 
   attachPrimitive(primitive: unknown): void {
@@ -49,8 +56,11 @@ class FakeSeries {
   }
 
   createPriceLine(options: { price: number, lineStyle: number }): unknown {
-    this.priceLines.push(options)
-    return {}
+    const line = { ...options, updates: [] as unknown[] }
+    this.priceLines.push(line)
+    return {
+      applyOptions: (update: unknown) => line.updates.push(update),
+    }
   }
 
   setData(points: unknown[]): void {
@@ -65,7 +75,9 @@ class FakeSeries {
     return this.points
   }
 
-  applyOptions(): void {}
+  applyOptions(options: unknown): void {
+    this.appliedOptions.push(options)
+  }
 
   moveToPane(index: number): void {
     this.movedTo = index
@@ -100,6 +112,10 @@ class FakePane {
 function chartHarness() {
   const panes = [new FakePane(0), new FakePane(1)]
   const chart = {
+    timeScale: () => ({
+      getVisibleLogicalRange: () => null,
+      setVisibleLogicalRange: vi.fn(),
+    }),
     addPane: vi.fn(() => {
       const pane = new FakePane(panes.length)
       panes.push(pane)
@@ -158,6 +174,32 @@ function patches(): IndicatorPlotPatch[] {
 }
 
 describe('chart indicator visual lifecycle', () => {
+  it('recalcula cores de catálogo para a superfície recebida no retheme', () => {
+    const { chart, panes } = chartHarness()
+    let apply!: IndicatorPatchHandler
+    const indicators = useChartIndicators({
+      chart: () => chart,
+      candleSeries: () => null,
+      bars: () => ({
+        time: [], open: [], high: [], low: [], close: [], volume: [],
+      }),
+      createClient: (handler) => {
+        apply = handler
+        return stubClient()
+      },
+    })
+    const instance = indicators.add(definition)!
+    apply(instance.instanceId, { patches: patches() })
+
+    indicators.retheme('#FFFFFF')
+
+    const plot = definition.plots[0]!
+    const series = panes[2].series[0]
+    expect(series.appliedOptions.at(-1)).toMatchObject({
+      color: readableOnCached(plot.color!, '#FFFFFF'),
+    })
+  })
+
   it('reads only the indicator series currently under the pointer', () => {
     const { chart, panes } = chartHarness()
     let apply!: IndicatorPatchHandler
@@ -274,6 +316,11 @@ describe('chart indicator visual lifecycle', () => {
       LineStyle.Solid,
       LineStyle.Dotted,
     ])
+
+    indicators.retheme('#FFFFFF')
+    expect(drawn[0].updates.at(-1)).toEqual({
+      color: readableOnCached('#787B86', '#FFFFFF', 1.8),
+    })
   })
 
   it('keeps reference levels off the candle pane for overlays', () => {
@@ -348,6 +395,13 @@ describe('chart indicator visual lifecycle', () => {
       { time: 2, open: 0, high: 12, low: -1, close: 11, color: '#26A69A', borderColor: '#26A69A', wickColor: '#26A69A' },
       { time: 3, open: 0, high: 14, low: 0, close: 13, color: '#EF5350', borderColor: '#EF5350', wickColor: '#EF5350' },
     ])
+
+    indicators.retheme('#FFFFFF')
+    expect(panes[2].series[0].points[0]).toMatchObject({
+      color: readableOnCached('#26A69A', '#FFFFFF'),
+      borderColor: readableOnCached('#26A69A', '#FFFFFF'),
+      wickColor: readableOnCached('#26A69A', '#FFFFFF'),
+    })
 
     indicators.remove(instance!.instanceId)
     expect(api.removePane).toHaveBeenCalledWith(2)
@@ -441,6 +495,17 @@ describe('chart indicator visual lifecycle', () => {
     expect(api.addPane).not.toHaveBeenCalled()
     expect(candles.primitives).toHaveLength(1)
     expect(indicators.hasCalculated(instance!.instanceId)).toBe(true)
+
+    const primitive = candles.primitives[0] as {
+      setDrawings: (drawings: { lines: Array<{ color: string }> }) => void
+    }
+    const setDrawings = vi.spyOn(primitive, 'setDrawings')
+    indicators.retheme('#FFFFFF')
+    expect(setDrawings).toHaveBeenLastCalledWith(expect.objectContaining({
+      lines: [expect.objectContaining({
+        color: readableOnCached('#2962FF', '#FFFFFF'),
+      })],
+    }))
 
     indicators.remove(instance!.instanceId)
     expect(candles.primitives).toHaveLength(0)

@@ -211,7 +211,7 @@ const chartTheme = useChartTheme({
   candles: () => displayedCandles,
   symbol: displaySymbol,
   interval: () => props.selection.interval,
-  onRetheme: () => indicators.retheme(),
+  onRetheme: (palette) => indicators.retheme(palette.chartBackground),
 })
 
 /**
@@ -381,6 +381,7 @@ function cancelDrawingOnEscape(event: KeyboardEvent): void {
   }
   if (event.key === 'Enter' && drawings.finishActive()) {
     event.preventDefault()
+    event.stopPropagation()
     return
   }
   if (event.key === 'Escape' && drawings.activeTool.value) {
@@ -1058,7 +1059,9 @@ onMounted(() => {
     }
   })
 
-  document.addEventListener('keydown', cancelDrawingOnEscape)
+  // Capture wins over the workspace's bubble-phase bare-Enter shortcut. A
+  // polyline must finish before the symbol picker can consider opening.
+  document.addEventListener('keydown', cancelDrawingOnEscape, true)
 
   // The chart owns its initial load. This avoids a parent-ref race while
   // Vue replaces keyed chart instances during tab and interval changes.
@@ -1085,7 +1088,7 @@ onBeforeUnmount(() => {
   releaseDrawingPointer?.()
   releaseDrawingPointer = undefined
   drawings.dispose()
-  document.removeEventListener('keydown', cancelDrawingOnEscape)
+  document.removeEventListener('keydown', cancelDrawingOnEscape, true)
   releaseVerticalPricePan?.()
   releaseVerticalPricePan = undefined
   unsubscribeCandle?.()

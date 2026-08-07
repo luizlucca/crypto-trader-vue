@@ -147,6 +147,19 @@ Por consequência para quem opera, não por facilidade de correção.
       aguardar o utility process. Uma aba fechada durante o restart não é
       restaurada; starts pendentes não duplicam e updates aguardam a restauração
       da sessão.
+- [x] **RV-031** · O retheme dos indicadores recebe explicitamente a nova
+      superfície do gráfico; séries, marcadores, níveis de referência, candles
+      pintados e primitives são recalculados sem usar a variável CSS da paleta
+      anterior.
+- [x] **RV-032** · Cada geometria composta do catálogo testa o traço que pinta:
+      canais, forquilhas, leques, zonas de tempo, círculos, arcos, cunhas,
+      espirais e regressões voltam a poder ser selecionados fora das âncoras.
+- [x] **RV-033** · `Enter` termina uma polilinha antes de alcançar o atalho
+      global que abre a busca de ativo, inclusive após remontar o gráfico.
+- [x] **RV-034** · Só o botão primário inicia ou conclui um gesto de desenho;
+      clique direito e botão do meio continuam pertencendo ao gráfico/sistema.
+- [x] **RV-035** · Níveis negativos ou grandes demais não passam raios
+      negativos ou não finitos a `CanvasRenderingContext2D.arc()`.
 
 ### Pendências de verificação
 
@@ -388,6 +401,55 @@ antiga antes de o stop ter chance de removê-la. A intenção agora é atualizad
 antes da espera. Starts que já aguardam o processo são excluídos da restauração
 para não duplicar, e a restauração é enfileirada antes de liberar updates e
 mudanças de visibilidade que dependem da sessão recém-criada.
+
+### RV-031 — a paleta deve chegar antes da leitura da superfície
+
+O watcher síncrono da paleta chama o gráfico antes de `applyAppearance()`
+publicar `--chart-bg` no DOM. A rethematização dos indicadores lia essa variável
+e, por uma troca, calculava contraste contra a superfície anterior. O callback
+agora recebe a `ThemePalette` que está sendo aplicada e encaminha seu
+`chartBackground` ao compositor de indicadores. O valor opcional mantém a
+leitura de CSS para os demais caminhos, mas uma troca de tema não depende mais
+da ordem entre watcher e escrita no DOM.
+
+O compositor também retém apenas a apresentação bruta necessária para o evento
+raro de tema: marcadores, níveis de referência, cores por candle e desenhos
+livres. Eles são projetados novamente contra a nova superfície sem pedir novo
+cálculo ao Worker. Para candles, que usam cor por barra em vez de opção de
+série, a reaplicação preserva a faixa lógica visível; troca de tema não pode
+deslocar o operador no histórico.
+
+### RV-032 — geometria composta precisa responder pela própria pintura
+
+Remover o bounding box amplo corrigiu a seleção fantasma, mas deixou algumas
+formas compostas selecionáveis apenas nas alças. O catálogo passou a derivar a
+mesma geometria que desenha: paralelas para regressão e canal, semirretas para
+forquilhas e leques, coordenadas para zonas temporais e distância radial para
+círculos, arcos e cunhas. Não há volta ao fallback retangular: uma região só é
+clicável quando contém uma área preenchida ou fica próxima de um traço pintado.
+
+O teste percorre as ferramentas afetadas e clica longe das âncoras, mas sobre
+o traço de cada uma.
+
+### RV-033 e RV-034 — gesto de desenho vem antes do atalho global
+
+O handler do gráfico é registrado depois do listener persistente do workspace
+quando uma aba ou período remonta. Ele agora escuta em fase de captura e, ao
+terminar uma ferramenta variável com `Enter`, previne e interrompe a
+propagação. Assim a tecla não chega à busca de ativo.
+
+No ponteiro, a mesma fronteira ficou explícita: `mousedown` e `mouseup` só
+entram no estado de desenho para `button === 0`. Isso evita âncoras e seleções
+acidentais por contexto ou botão do meio, sem alterar o caminho do drag
+primário nem os fluxos imperativos de candle/livro.
+
+### RV-035 — círculo não tem raio negativo
+
+Níveis de Fibonacci são genéricos e podem ser negativos em outras ferramentas,
+mas `arc()` não aceita raio negativo. Círculos, arcos e cunhas convertem o nível
+radial para magnitude e ignoram qualquer resultado não finito; o valor salvo
+continua preservado para o editor. O teste captura os argumentos enviados ao
+canvas e confirma que apenas raios finitos e não negativos chegam a ele.
 
 ### RV-017 — a semântica que faltava não era a que estava escrita
 

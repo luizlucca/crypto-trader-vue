@@ -17,6 +17,8 @@ export interface ViewPoint {
 }
 
 const GANN_RATIOS = [0.125, 0.25, 0.333, 0.5, 1, 2, 3, 4, 8]
+const HIT_DISTANCE = 7
+const FULL_TURN = Math.PI * 2
 const AUXILIARY_LEVEL_COLORS = [
   '#ef5350',
   '#ff9800',
@@ -446,7 +448,8 @@ function drawFibCircles(
 ): void {
   const radius = Math.hypot(edge.x - center.x, edge.y - center.y)
   levels.forEach((level) => {
-    if (level.value === 0) {
+    const scaledRadius = nonNegativeRadius(radius, level.value)
+    if (scaledRadius === null) {
       return
     }
     context.save()
@@ -455,7 +458,7 @@ function drawFibCircles(
     context.arc(
       center.x,
       center.y,
-      radius * level.value,
+      scaledRadius,
       arcsOnly ? Math.PI : 0,
       arcsOnly ? Math.PI * 2 : Math.PI * 2,
     )
@@ -507,13 +510,14 @@ function drawFibWedge(
     Math.hypot(edge2.x - pivot.x, edge2.y - pivot.y),
   )
   levels.forEach((level) => {
-    if (level.value === 0) {
+    const scaledRadius = nonNegativeRadius(radius, level.value)
+    if (scaledRadius === null) {
       return
     }
     context.save()
     context.strokeStyle = level.color
     context.beginPath()
-    context.arc(pivot.x, pivot.y, radius * level.value, start, end)
+    context.arc(pivot.x, pivot.y, scaledRadius, start, end)
     context.stroke()
     context.restore()
   })
@@ -908,6 +912,7 @@ export function hitsDrawing(
   tool: CatalogDrawingToolId,
   target: ViewPoint,
   points: readonly ViewPoint[],
+  levels: readonly DrawingLevel[] = [],
 ): boolean {
   const [first, second] = points
   if (!first) {
@@ -925,13 +930,13 @@ export function hitsDrawing(
     return Math.hypot(target.x - first.x, target.y - first.y) <= 22
   }
   if (tool === 'extended-line') {
-    return distanceToInfiniteLine(target, first, second) <= 6
+    return distanceToInfiniteLine(target, first, second) <= HIT_DISTANCE
   }
   if (tool === 'ray') {
-    return distanceToRay(target, first, second) <= 6
+    return distanceToRay(target, first, second) <= HIT_DISTANCE
   }
   if (tool === 'ellipse') {
-    return distanceToEllipse(target, first, second) <= 7
+    return distanceToEllipse(target, first, second) <= HIT_DISTANCE
   }
   if (tool === 'path') {
     const dx = second.x - first.x
@@ -941,7 +946,7 @@ export function hitsDrawing(
       { x: first.x + dx * 0.34, y: first.y },
       { x: first.x + dx * 0.66, y: second.y },
       second,
-    ) <= 7
+    ) <= HIT_DISTANCE
   }
   if (tool === 'arc' && points[2]) {
     return distanceToBezier(
@@ -950,7 +955,7 @@ export function hitsDrawing(
       second,
       second,
       points[2],
-    ) <= 7
+    ) <= HIT_DISTANCE
   }
   if (tool === 'curve' && points[2] && points[3]) {
     return distanceToBezier(
@@ -963,13 +968,13 @@ export function hitsDrawing(
   }
   if (tool === 'double-curve' && points[2]) {
     const center = midpoint(first, points[2])
-    return distanceToQuadratic(target, first, second, points[2]) <= 7
+    return distanceToQuadratic(target, first, second, points[2]) <= HIT_DISTANCE
       || distanceToQuadratic(
         target,
         first,
         mirror(second, center),
         points[2],
-      ) <= 7
+      ) <= HIT_DISTANCE
   }
   if (tool === 'rotated-rectangle' && points[2]) {
     const edge = subtract(second, first)
@@ -986,6 +991,59 @@ export function hitsDrawing(
   if (tool === 'gann-box' || tool === 'gann-square') {
     return pointInBounds(target, boundingBox([first, second]))
   }
+  if (tool === 'regression-trend') {
+    return hitsRegression(target, first, second)
+  }
+  if (
+    (tool === 'andrews-pitchfork'
+      || tool === 'schiff-pitchfork'
+      || tool === 'modified-schiff-pitchfork'
+      || tool === 'inside-pitchfork')
+    && points[2]
+  ) {
+    return hitsPitchfork(tool, target, first, second, points[2])
+  }
+  if (tool === 'flat-top-bottom' && points[2]) {
+    return distanceToSegment(target, first, { x: points[2].x, y: first.y })
+      <= HIT_DISTANCE
+      || distanceToSegment(target, second, points[2]) <= HIT_DISTANCE
+      || distanceToSegment(target, first, second) <= HIT_DISTANCE
+  }
+  if (tool === 'fib-channel' && points[2]) {
+    return hitsFibChannel(target, first, second, points[2], levels)
+  }
+  if (tool === 'fib-time-zone') {
+    return hitsFibTimes(target, first.x, second.x, levels)
+  }
+  if (tool === 'fib-time-extension' && points[2]) {
+    return hitsFibTimes(
+      target,
+      points[2].x,
+      points[2].x + second.x - first.x,
+      levels,
+    )
+  }
+  if (tool === 'fib-speed-fan') {
+    return hitsFibFan(target, first, second, levels)
+  }
+  if (tool === 'fib-circles') {
+    return hitsFibCircles(target, first, second, false, levels)
+  }
+  if (tool === 'fib-arcs') {
+    return hitsFibCircles(target, first, second, true, levels)
+  }
+  if (tool === 'fib-wedge' && points[2]) {
+    return hitsFibWedge(target, first, second, points[2], levels)
+  }
+  if (tool === 'fib-spiral') {
+    return hitsFibSpiral(target, first, second)
+  }
+  if (tool === 'pitchfan' && points[2]) {
+    return hitsPitchfan(target, first, second, points[2], levels)
+  }
+  if (tool === 'gann-fan') {
+    return hitsGannFan(target, first, second)
+  }
   if (tool === 'forecast') {
     const spread = Math.max(12, Math.abs(second.y - first.y) * 0.2)
     return pointInOrNearPolygon(target, [
@@ -995,8 +1053,8 @@ export function hitsDrawing(
     ])
   }
   if (tool === 'disjoint-channel' && points[2] && points[3]) {
-    return distanceToSegment(target, first, second) <= 7
-      || distanceToSegment(target, points[2], points[3]) <= 7
+    return distanceToSegment(target, first, second) <= HIT_DISTANCE
+      || distanceToSegment(target, points[2], points[3]) <= HIT_DISTANCE
   }
   if (!CHAIN_SEGMENT_HIT_TEST_TOOLS.has(tool)) {
     return false
@@ -1007,6 +1065,230 @@ export function hitsDrawing(
     }
   }
   return false
+}
+
+function hitsRegression(
+  target: ViewPoint,
+  start: ViewPoint,
+  end: ViewPoint,
+): boolean {
+  const edge = subtract(end, start)
+  const length = Math.max(1, Math.hypot(edge.x, edge.y))
+  const offset = Math.max(10, length * 0.1)
+  const normal = { x: -edge.y / length * offset, y: edge.x / length * offset }
+  return distanceToSegment(target, start, end) <= HIT_DISTANCE
+    || distanceToSegment(target, add(start, normal), add(end, normal))
+    <= HIT_DISTANCE
+    || distanceToSegment(target, subtract(start, normal), subtract(end, normal))
+    <= HIT_DISTANCE
+}
+
+function hitsPitchfork(
+  tool: 'andrews-pitchfork' | 'schiff-pitchfork'
+    | 'modified-schiff-pitchfork' | 'inside-pitchfork',
+  target: ViewPoint,
+  pivot: ViewPoint,
+  upper: ViewPoint,
+  lower: ViewPoint,
+): boolean {
+  let origin = pivot
+  if (tool === 'schiff-pitchfork') {
+    origin = midpoint(pivot, upper)
+  } else if (tool === 'modified-schiff-pitchfork') {
+    origin = { x: (pivot.x + upper.x) / 2, y: pivot.y }
+  }
+  const middle = midpoint(upper, lower)
+  const vector = subtract(middle, origin)
+  const upperStart = tool === 'inside-pitchfork'
+    ? midpoint(upper, middle)
+    : upper
+  const lowerStart = tool === 'inside-pitchfork'
+    ? midpoint(lower, middle)
+    : lower
+  return distanceToRay(target, origin, middle) <= HIT_DISTANCE
+    || distanceToRay(target, upperStart, add(upperStart, vector)) <= HIT_DISTANCE
+    || distanceToRay(target, lowerStart, add(lowerStart, vector)) <= HIT_DISTANCE
+}
+
+function hitsFibChannel(
+  target: ViewPoint,
+  start: ViewPoint,
+  end: ViewPoint,
+  offsetPoint: ViewPoint,
+  levels: readonly DrawingLevel[],
+): boolean {
+  const offset = subtract(offsetPoint, start)
+  return someFiniteLevel(levels, (value) => (
+    distanceToSegment(
+      target,
+      add(start, scale(offset, value)),
+      add(end, scale(offset, value)),
+    ) <= HIT_DISTANCE
+  ))
+}
+
+function hitsFibTimes(
+  target: ViewPoint,
+  originX: number,
+  referenceX: number,
+  levels: readonly DrawingLevel[],
+): boolean {
+  const span = referenceX - originX
+  return someFiniteLevel(levels, (value) => (
+    Math.abs(target.x - (originX + span * value)) <= HIT_DISTANCE
+  ))
+}
+
+function hitsFibFan(
+  target: ViewPoint,
+  origin: ViewPoint,
+  reference: ViewPoint,
+  levels: readonly DrawingLevel[],
+): boolean {
+  return someFiniteLevel(levels, (value) => {
+    if (value === 0 || value === 1) {
+      return false
+    }
+    return distanceToRay(target, origin, {
+      x: reference.x,
+      y: origin.y + (reference.y - origin.y) * value,
+    }) <= HIT_DISTANCE
+  })
+}
+
+function hitsFibCircles(
+  target: ViewPoint,
+  center: ViewPoint,
+  edge: ViewPoint,
+  arcsOnly: boolean,
+  levels: readonly DrawingLevel[],
+): boolean {
+  const baseRadius = Math.hypot(edge.x - center.x, edge.y - center.y)
+  const angle = normalizedAngle(target, center)
+  return someFiniteLevel(levels, (value) => {
+    const radius = nonNegativeRadius(baseRadius, value)
+    return radius !== null
+      && (!arcsOnly || angle >= Math.PI)
+      && Math.abs(Math.hypot(target.x - center.x, target.y - center.y) - radius)
+      <= HIT_DISTANCE
+  })
+}
+
+function hitsFibWedge(
+  target: ViewPoint,
+  pivot: ViewPoint,
+  edge1: ViewPoint,
+  edge2: ViewPoint,
+  levels: readonly DrawingLevel[],
+): boolean {
+  if (
+    distanceToSegment(target, pivot, edge1) <= HIT_DISTANCE
+    || distanceToSegment(target, pivot, edge2) <= HIT_DISTANCE
+  ) {
+    return true
+  }
+  const radius = Math.max(
+    Math.hypot(edge1.x - pivot.x, edge1.y - pivot.y),
+    Math.hypot(edge2.x - pivot.x, edge2.y - pivot.y),
+  )
+  const start = Math.atan2(edge1.y - pivot.y, edge1.x - pivot.x)
+  const end = Math.atan2(edge2.y - pivot.y, edge2.x - pivot.x)
+  const targetAngle = normalizedAngle(target, pivot)
+  if (!angleOnClockwiseArc(targetAngle, start, end)) {
+    return false
+  }
+  return someFiniteLevel(levels, (value) => {
+    const levelRadius = nonNegativeRadius(radius, value)
+    return levelRadius !== null
+      && Math.abs(Math.hypot(target.x - pivot.x, target.y - pivot.y) - levelRadius)
+      <= HIT_DISTANCE
+  })
+}
+
+function hitsFibSpiral(
+  target: ViewPoint,
+  center: ViewPoint,
+  edge: ViewPoint,
+): boolean {
+  const baseRadius = Math.max(
+    2,
+    Math.hypot(edge.x - center.x, edge.y - center.y),
+  )
+  const startAngle = Math.atan2(edge.y - center.y, edge.x - center.x)
+  return distanceToSampledCurve(target, (ratio) => {
+    const theta = ratio * Math.PI * 4
+    const radius = baseRadius * 0.08 * Math.exp(0.19 * theta)
+    return {
+      x: center.x + Math.cos(startAngle + theta) * radius,
+      y: center.y + Math.sin(startAngle + theta) * radius,
+    }
+  }) <= HIT_DISTANCE
+}
+
+function hitsPitchfan(
+  target: ViewPoint,
+  pivot: ViewPoint,
+  start: ViewPoint,
+  end: ViewPoint,
+  levels: readonly DrawingLevel[],
+): boolean {
+  return someFiniteLevel(levels, (value) => (
+    distanceToRay(target, pivot, lerp(start, end, value)) <= HIT_DISTANCE
+  ))
+}
+
+function hitsGannFan(
+  target: ViewPoint,
+  origin: ViewPoint,
+  reference: ViewPoint,
+): boolean {
+  const dx = reference.x - origin.x
+  const dy = reference.y - origin.y
+  return GANN_RATIOS.some((ratio) => (
+    distanceToRay(target, origin, {
+      x: origin.x + dx,
+      y: origin.y + dy * ratio,
+    }) <= HIT_DISTANCE
+  ))
+}
+
+function someFiniteLevel(
+  levels: readonly DrawingLevel[],
+  predicate: (value: number) => boolean,
+): boolean {
+  for (const level of levels) {
+    if (Number.isFinite(level.value) && predicate(level.value)) {
+      return true
+    }
+  }
+  return false
+}
+
+function nonNegativeRadius(radius: number, level: number): number | null {
+  const scaled = Math.abs(radius * level)
+  return Number.isFinite(scaled) && scaled > 0 ? scaled : null
+}
+
+function normalizedAngle(point: ViewPoint, center: ViewPoint): number {
+  const angle = Math.atan2(point.y - center.y, point.x - center.x)
+  return angle < 0 ? angle + FULL_TURN : angle
+}
+
+function angleOnClockwiseArc(
+  angle: number,
+  start: number,
+  end: number,
+): boolean {
+  const normalizedStart = start < 0 ? start + FULL_TURN : start
+  let normalizedEnd = end < 0 ? end + FULL_TURN : end
+  let normalizedAngle = angle
+  if (normalizedEnd < normalizedStart) {
+    normalizedEnd += FULL_TURN
+  }
+  if (normalizedAngle < normalizedStart) {
+    normalizedAngle += FULL_TURN
+  }
+  return normalizedAngle >= normalizedStart && normalizedAngle <= normalizedEnd
 }
 
 const CHAIN_SEGMENT_HIT_TEST_TOOLS = new Set<CatalogDrawingToolId>([

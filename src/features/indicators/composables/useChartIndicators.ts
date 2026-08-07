@@ -8,6 +8,7 @@ import {
   LineStyle,
   type IChartApi,
   type IPaneApi,
+  type IPriceLine,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
   type SeriesMarker,
@@ -90,6 +91,12 @@ interface MountedIndicator {
    * indicators, every candlestick pattern among them, draw nothing else.
    */
   markers?: ISeriesMarkersPluginApi<Time>
+  /** Raw markers are retained so a theme repaint needs no worker round-trip. */
+  markerSource?: readonly IndicatorMarker[]
+  /** Raw candle shades, keyed by output then instant, for low-frequency theming. */
+  candleColors: Map<string, Map<number, IndicatorCandlePatch['palette'][number]>>
+  /** Reference lines are independent chart objects, not series options. */
+  referenceLines: Array<{ line: IPriceLine, color: string }>
   /**
    * Free-form shapes, drawn by a primitive attached to a host series. The host
    * is recorded because detaching needs the same series that received it.
@@ -98,6 +105,8 @@ interface MountedIndicator {
     primitive: IndicatorDrawingsPrimitive
     host: ISeriesApi<SeriesType>
   }
+  /** Worker geometry stays raw; the primitive receives a themed projection. */
+  drawingSource?: IndicatorDrawings
 }
 
 export interface ChartIndicatorsOptions {
@@ -132,7 +141,7 @@ const CANDLE_OPTIONS = {
 function indicatorCandlePoint(
   patch: IndicatorCandlePatch,
   index: number,
-  colored: boolean,
+  palette: readonly IndicatorCandlePatch['palette'][number][],
 ) {
   const candle = {
     time: patch.time[index] as UTCTimestamp,
@@ -141,28 +150,44 @@ function indicatorCandlePoint(
     low: patch.low[index],
     close: patch.close[index],
   }
-  if (!colored) {
-    return candle
-  }
-  const shade = patch.palette[patch.colorIndex[index]]
+  const shade = palette[patch.colorIndex[index]]
   return shade ? Object.assign(candle, shade) : candle
+}
+
+function themedCandlePalette(
+  palette: readonly IndicatorCandlePatch['palette'][number][],
+  surface: string,
+): IndicatorCandlePatch['palette'] {
+  return palette.map((shade) => themedCandleColor(shade, surface))
+}
+
+function themedCandleColor(
+  shade: IndicatorCandlePatch['palette'][number],
+  surface: string,
+): IndicatorCandlePatch['palette'][number] {
+  return {
+    color: readableOnCached(shade.color, surface),
+    borderColor: readableOnCached(shade.borderColor, surface),
+    wickColor: readableOnCached(shade.wickColor, surface),
+  }
 }
 
 function applyCandlePatch(
   series: ISeriesApi<SeriesType>,
   patch: IndicatorCandlePatch,
+  surface = chartSurface(),
 ): void {
-  const colored = patch.palette.length > 0
+  const palette = themedCandlePalette(patch.palette, surface)
   if (patch.full) {
     const points = new Array(patch.time.length)
     for (let i = 0; i < patch.time.length; i += 1) {
-      points[i] = indicatorCandlePoint(patch, i, colored)
+      points[i] = indicatorCandlePoint(patch, i, palette)
     }
     series.setData(points)
     return
   }
   for (let i = 0; i < patch.time.length; i += 1) {
-    series.update(indicatorCandlePoint(patch, i, colored))
+    series.update(indicatorCandlePoint(patch, i, palette))
   }
 }
 
@@ -180,16 +205,85 @@ function chartSurface(): string {
     .trim() || '#000000'
 }
 
+/** Maps worker-owned colours once per result, never while a primitive paints. */
+function themedDrawings(
+  drawings: IndicatorDrawings,
+  surface: string,
+): IndicatorDrawings {
+  return {
+    lines: drawings.lines.map((line) => ({
+      ...line,
+      color: readableOnCached(line.color, surface),
+    })),
+    boxes: drawings.boxes.map((box) => ({
+      ...box,
+      bgColor: readableOnCached(box.bgColor, surface),
+      ...(box.borderColor === undefined
+        ? {}
+        : {
+            borderColor: readableOnCached(box.borderColor, surface),
+          }),
+      ...(box.textColor === undefined
+        ? {}
+        : {
+            textColor: readableOnCached(box.textColor, surface),
+          }),
+    })),
+    labels: drawings.labels.map((label) => ({
+      ...label,
+      ...(label.color === undefined
+        ? {}
+        : {
+            color: readableOnCached(label.color, surface),
+          }),
+      textColor: readableOnCached(label.textColor, surface),
+    })),
+    // rgba colours keep their alpha because readableOnCached leaves non-hex
+    // values alone; opaque catalog bands still need contrast on a new surface.
+    bands: drawings.bands.map((band) => ({
+      ...band,
+      color: readableOnCached(band.color, surface),
+    })),
+  }
+}
+
+function rememberCandleColors(
+  entry: MountedIndicator,
+  patch: IndicatorCandlePatch,
+): void {
+  let colors = entry.candleColors.get(patch.plotId)
+  if (!colors) {
+    colors = new Map()
+    entry.candleColors.set(patch.plotId, colors)
+  }
+  if (patch.full) {
+    colors.clear()
+  }
+  for (let index = 0; index < patch.time.length; index += 1) {
+    const shade = patch.palette[patch.colorIndex[index]]
+    const time = patch.time[index]
+    if (shade) {
+      colors.set(time, shade)
+    } else {
+      colors.delete(time)
+    }
+  }
+}
+
 /**
  * Adapts a colour only while it is still the catalog's own. The moment the
  * operator picks one, it is a decision — and correcting a decision would be
  * worse than the problem this solves.
  */
-function themedColor(color: string, catalogColor: string | undefined): string {
+function themedColor(
+  color: string,
+  catalogColor: string | undefined,
+  surface = chartSurface(),
+): string {
   if (!catalogColor || color.toLowerCase() !== catalogColor.toLowerCase()) {
     return color
   }
-  return readableOnCached(color, chartSurface())
+  return readableOnCached(color, surface)
 }
 
 /**
@@ -333,13 +427,13 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
 
   function applyMarkers(
     entry: MountedIndicator,
-    markers: IndicatorMarker[],
+    markers: readonly IndicatorMarker[],
+    surface = chartSurface(),
   ): void {
     const series = options.candleSeries()
     if (!series) {
       return
     }
-    const surface = chartSurface()
     const points = new Array<SeriesMarker<Time>>(markers.length)
     for (let index = 0; index < markers.length; index += 1) {
       const marker = markers[index]
@@ -355,10 +449,12 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
 
     if (entry.markers) {
       entry.markers.setMarkers(points)
+      entry.markerSource = markers
       return
     }
     if (points.length > 0) {
       entry.markers = createSeriesMarkers(series, points)
+      entry.markerSource = markers
     }
   }
 
@@ -379,6 +475,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
   function applyDrawings(
     entry: MountedIndicator,
     drawings: IndicatorDrawings,
+    surface = chartSurface(),
   ): void {
     if (!entry.drawings) {
       const own = entry.series.values().next().value
@@ -398,7 +495,8 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       host.attachPrimitive(primitive)
       entry.drawings = { primitive, host }
     }
-    entry.drawings.primitive.setDrawings(drawings)
+    entry.drawings.primitive.setDrawings(themedDrawings(drawings, surface))
+    entry.drawingSource = drawings
   }
 
   function rememberLastValue(
@@ -501,6 +599,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       if (!entry.populated.has(patch.plotId)) {
         newlyPopulated.push(patch.plotId)
       }
+      rememberCandleColors(entry, patch)
       applyCandlePatch(series, patch)
     }
   }
@@ -584,10 +683,14 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     style: IndicatorPlotStyle,
     kind: ReturnType<typeof plotStyleKind>,
     catalogColor?: string,
+    surface?: string,
   ) {
     // Themed once: the area gradient has to follow the same colour the line
     // got, or a light preset draws a readable line over the catalog's own fill.
-    const themed = { ...style, color: themedColor(style.color, catalogColor) }
+    const themed = {
+      ...style,
+      color: themedColor(style.color, catalogColor, surface),
+    }
     const color = plotColor(themed)
     const shared = {
       visible: style.visible,
@@ -685,20 +788,21 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
    * that way if the catalog ever changes.
    */
   function createHLines(
-    definition: IndicatorDefinition,
+    entry: MountedIndicator,
     anchor: ISeriesApi<SeriesType> | undefined,
+    surface = chartSurface(),
   ): void {
-    if (!anchor || definition.overlay) {
+    if (!anchor || entry.definition.overlay) {
       return
     }
-    const surface = chartSurface()
-    for (const hline of definition.hlines) {
+    for (const hline of entry.definition.hlines) {
       if (!Number.isFinite(hline.price)) {
         continue
       }
-      anchor.createPriceLine({
+      const color = hline.color ?? '#787B86'
+      const line = anchor.createPriceLine({
         price: hline.price,
-        color: readableOnCached(hline.color ?? '#787B86', surface, 1.8),
+        color: readableOnCached(color, surface, 1.8),
         lineWidth: 1,
         lineStyle: priceLineStyle(hline.linestyle),
         // The pane's own price scale already shows the values; a label per
@@ -706,6 +810,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         axisLabelVisible: false,
         title: '',
       })
+      entry.referenceLines.push({ line, color })
     }
   }
 
@@ -757,7 +862,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       for (const patch of candles ?? []) {
         mountCandleSeries(chart, entry, patch.plotId)
       }
-      createHLines(entry.definition, entry.series.values().next().value)
+      createHLines(entry, entry.series.values().next().value)
       return true
     } catch (error) {
       removeChartObjects(chart, entry)
@@ -816,6 +921,9 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       )
     }
     entry.markers = undefined
+    entry.markerSource = undefined
+    entry.candleColors.clear()
+    entry.referenceLines.length = 0
 
     if (entry.drawings) {
       try {
@@ -829,6 +937,7 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
       }
       entry.drawings = undefined
     }
+    entry.drawingSource = undefined
 
     entry.series.forEach((series, plotId) => {
       try {
@@ -864,14 +973,76 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
     }
   }
 
-  function applyStyles(entry: MountedIndicator): void {
+  function applyStyles(entry: MountedIndicator, surface?: string): void {
     for (const plot of entry.definition.plots) {
       entry.series.get(plot.id)?.applyOptions(seriesOptions(
         entry.instance.styles[plot.id],
         plotStyleKind(plot),
         plot.color,
+        surface,
       ))
     }
+  }
+
+  function rethemeReferenceLines(
+    entry: MountedIndicator,
+    surface: string,
+  ): void {
+    for (const reference of entry.referenceLines) {
+      reference.line.applyOptions({
+        color: readableOnCached(reference.color, surface, 1.8),
+      })
+    }
+  }
+
+  function rethemeMarkers(entry: MountedIndicator, surface: string): void {
+    if (entry.markerSource) {
+      applyMarkers(entry, entry.markerSource, surface)
+    }
+  }
+
+  function rethemeDrawings(entry: MountedIndicator, surface: string): void {
+    if (entry.drawings && entry.drawingSource) {
+      entry.drawings.primitive.setDrawings(
+        themedDrawings(entry.drawingSource, surface),
+      )
+    }
+  }
+
+  function rethemeCandles(entry: MountedIndicator, surface: string): boolean {
+    let repainted = false
+    for (const [plotId, colors] of entry.candleColors) {
+      if (colors.size === 0) {
+        continue
+      }
+      const series = entry.series.get(candleSeriesId(plotId))
+      if (!series) {
+        continue
+      }
+      const data = series.data() as Array<{
+        time: Time
+        color?: string
+        borderColor?: string
+        wickColor?: string
+      }>
+      const points = new Array(data.length)
+      let recolored = false
+      for (let index = 0; index < data.length; index += 1) {
+        const point = data[index]
+        const raw = typeof point.time === 'number'
+          ? colors.get(point.time)
+          : undefined
+        points[index] = raw
+          ? { ...point, ...themedCandleColor(raw, surface) }
+          : point
+        recolored ||= raw !== undefined
+      }
+      if (recolored) {
+        series.setData(points)
+        repainted = true
+      }
+    }
+    return repainted
   }
 
   return {
@@ -908,6 +1079,8 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
         pendingPopulated: [],
         calculated: false,
         lastValues: new Map(),
+        candleColors: new Map(),
+        referenceLines: [],
       })
       // The client seeds every worker it creates, so there is no "first
       // indicator" special case to get wrong here.
@@ -1057,9 +1230,21 @@ export function useChartIndicators(options: ChartIndicatorsOptions) {
      * The theme changed: catalog colours are resolved against the new surface.
      * Only appearance is touched — no recalculation, no data leaves the worker.
      */
-    retheme(): void {
+    retheme(surface?: string): void {
+      const nextSurface = surface ?? chartSurface()
+      const timeScale = options.chart()?.timeScale()
+      const visibleRange = timeScale?.getVisibleLogicalRange()
+      let repaintedCandles = false
       for (const entry of mounted.values()) {
-        applyStyles(entry)
+        applyStyles(entry, nextSurface)
+        rethemeReferenceLines(entry, nextSurface)
+        rethemeMarkers(entry, nextSurface)
+        rethemeDrawings(entry, nextSurface)
+        repaintedCandles = rethemeCandles(entry, nextSurface)
+          || repaintedCandles
+      }
+      if (repaintedCandles && visibleRange) {
+        timeScale?.setVisibleLogicalRange(visibleRange)
       }
     },
 

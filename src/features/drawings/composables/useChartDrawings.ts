@@ -965,6 +965,9 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
      * over the gesture when it lands on the drawing already selected.
      */
     handlePointerDown(event: MouseEvent): void {
+      if (event.button !== 0) {
+        return
+      }
       pressedAt = { x: event.clientX, y: event.clientY }
       if (drag) {
         // The previous drag never saw its release: the button came up outside
@@ -1018,6 +1021,9 @@ export function useChartDrawings(options: ChartDrawingsOptions) {
      * second click of a trend line simply did nothing.
      */
     handlePointerUp(event: MouseEvent): void {
+      if (event.button !== 0) {
+        return
+      }
       const start = pressedAt
       const finishedDrag = drag
       pressedAt = null
