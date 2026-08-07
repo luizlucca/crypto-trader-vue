@@ -38,6 +38,9 @@ import ProviderConnectionDialog
 import { useNotifications } from '@app/services/notifications'
 import { nextPrivateAccessAction } from '@providers/services/privateAccessFlow'
 import {
+  createProviderConnectionAttempt,
+} from '@providers/services/providerConnectionAttempt'
+import {
   marketPanelVisible,
   orderBookPanelVisible,
   toggleMarketPanel,
@@ -63,6 +66,8 @@ const settingsPanel = ref<{
 const favoriteKeys = shallowRef(loadFavoriteKeys())
 const security = useSecuritySession()
 const notifications = useNotifications()
+const connectionAttempt = createProviderConnectionAttempt()
+let pendingDisconnect: Promise<void> | undefined
 
 const {
   width: sidebarWidth,
@@ -185,9 +190,26 @@ function openSecurityAccess(): void {
 }
 
 function openProviderSettings(): void {
-  providerConnectionOpen.value = false
+  cancelProviderConnection()
   settingsPanel.value?.selectSection('providers')
   settingsOpen.value = true
+}
+
+function cancelProviderConnection(): void {
+  const cancelled = connectionAttempt.cancel()
+  providerConnectionOpen.value = false
+  if (!cancelled) {
+    return
+  }
+  const disconnect = security.request({ kind: 'disconnect-account' })
+    .then(() => undefined)
+    .catch(() => undefined)
+  pendingDisconnect = disconnect
+  void disconnect.finally(() => {
+    if (pendingDisconnect === disconnect) {
+      pendingDisconnect = undefined
+    }
+  })
 }
 
 function connectionFailureMessage(failureCode: AccountFailureCode): string {
@@ -221,19 +243,36 @@ function notifyConnectionFailure(
 }
 
 async function connectProviderAccount(accountId: string): Promise<void> {
-  const account = security.snapshot.value.accounts.find(
-    (candidate) => candidate.accountId === accountId,
-  )
-  if (!account) {
-    providerConnectionOpen.value = false
+  const attempt = connectionAttempt.begin(accountId)
+  if (!attempt) {
     return
   }
 
   try {
+    await pendingDisconnect
+    if (!connectionAttempt.isCurrent(
+      attempt,
+      security.snapshot.value.state,
+    )) {
+      return
+    }
+    const account = security.snapshot.value.accounts.find(
+      (candidate) => candidate.accountId === accountId,
+    )
+    if (!account) {
+      return
+    }
+
     const snapshot = await security.request({
       kind: 'connect-account',
       accountId,
     })
+    if (!connectionAttempt.isCurrent(
+      attempt,
+      security.snapshot.value.state,
+    ) || snapshot.state !== 'unlocked') {
+      return
+    }
     const connection = snapshot.connection
     if (connection.accountId !== accountId) {
       providerConnectionOpen.value = false
@@ -252,8 +291,16 @@ async function connectProviderAccount(accountId: string): Promise<void> {
       notifyConnectionFailure(accountId, connection.failureCode ?? 'unknown')
     }
   } catch {
+    if (!connectionAttempt.isCurrent(
+      attempt,
+      security.snapshot.value.state,
+    )) {
+      return
+    }
     providerConnectionOpen.value = false
     notifyConnectionFailure(accountId, 'unknown')
+  } finally {
+    connectionAttempt.finish(attempt)
   }
 }
 
@@ -276,12 +323,13 @@ watch(
   () => security.snapshot.value.state,
   (state) => {
     if (state !== 'unlocked') {
-      providerConnectionOpen.value = false
+      cancelProviderConnection()
     }
   },
 )
 
 function lockSecuritySession(): void {
+  cancelProviderConnection()
   void security.request({ kind: 'lock' })
 }
 </script>
@@ -411,7 +459,7 @@ function lockSecuritySession(): void {
       :accounts="security.snapshot.value.accounts"
       :connection="security.snapshot.value.connection"
       :open="providerConnectionOpen"
-      @close="providerConnectionOpen = false"
+      @close="cancelProviderConnection"
       @open-settings="openProviderSettings"
       @select="connectProviderAccount"
     />
