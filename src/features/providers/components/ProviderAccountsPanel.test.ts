@@ -35,10 +35,12 @@ const accountTwo = {
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((nextResolve) => {
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((nextResolve, nextReject) => {
     resolve = nextResolve
+    reject = nextReject
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 function snapshotWith(
@@ -185,6 +187,27 @@ describe('ProviderAccountsPanel connection feedback', () => {
     }))
     expect(wrapper.get('.provider-connect-button').text()).toBe('Conectar')
   })
+
+  it('suppresses a connection rejection that arrives after the session locks',
+    async () => {
+      const pending = deferred<SecuritySnapshot>()
+      mocks.request.mockReturnValueOnce(pending.promise)
+      const wrapper = mountPanel(snapshotWith({ state: 'disconnected' }))
+
+      await wrapper.get('.provider-connect-button').trigger('click')
+      await wrapper.setProps({
+        snapshot: {
+          ...snapshotWith({ state: 'disconnected' }),
+          state: 'locked',
+          accounts: [],
+        },
+      })
+      pending.reject(new Error('offline'))
+      await flushPromises()
+
+      expect(mocks.notify).not.toHaveBeenCalled()
+    },
+  )
 
   it('uses the returned connection account id when saving a new account to validate', async () => {
     mocks.request.mockResolvedValueOnce(snapshotWith({

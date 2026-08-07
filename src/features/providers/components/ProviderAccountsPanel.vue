@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { KeyRound, Pencil, Plus, PlugZap, Trash2 } from '@lucide/vue'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type {
   BinanceAccountDraft,
   ProviderAccountSummary,
@@ -36,7 +36,19 @@ const removingId = ref<string>()
 const connectingId = ref<string>()
 let activeConnectionAttempt: { accountId: string, id: number } | undefined
 let nextConnectionAttemptId = 1
+let activeSaveAttempt: number | undefined
+let nextSaveAttemptId = 1
 const unlocked = computed(() => props.snapshot.state === 'unlocked')
+
+watch(() => props.snapshot.state, (state) => {
+  if (state === 'unlocked') {
+    return
+  }
+  activeConnectionAttempt = undefined
+  activeSaveAttempt = undefined
+  connectingId.value = undefined
+  saving.value = false
+})
 
 function openCatalog(): void {
   view.value = 'catalog'
@@ -64,18 +76,26 @@ function cancelForm(): void {
 }
 
 async function saveAccount(draft: BinanceAccountDraft): Promise<void> {
+  const attempt = nextSaveAttemptId++
+  activeSaveAttempt = attempt
   saving.value = true
   try {
     const snapshot = await session.request({
       kind: 'save-binance-account',
       draft,
     })
+    if (activeSaveAttempt !== attempt || !unlocked.value) {
+      return
+    }
     view.value = 'accounts'
     editingAccount.value = undefined
     if (draft.validateAndConnect && snapshot.connection.accountId) {
       notifyConnectionFeedback(snapshot, snapshot.connection.accountId)
     }
   } catch {
+    if (activeSaveAttempt !== attempt || !unlocked.value) {
+      return
+    }
     if (draft.validateAndConnect && draft.accountId) {
       notifyConnectionFailure(draft.accountId)
     } else if (draft.validateAndConnect) {
@@ -85,12 +105,15 @@ async function saveAccount(draft: BinanceAccountDraft): Promise<void> {
       })
     }
   } finally {
-    saving.value = false
+    if (activeSaveAttempt === attempt) {
+      activeSaveAttempt = undefined
+      saving.value = false
+    }
   }
 }
 
 async function connectAccount(accountId: string): Promise<void> {
-  if (activeConnectionAttempt) {
+  if (!unlocked.value || activeConnectionAttempt) {
     return
   }
   const attempt = {
@@ -104,8 +127,14 @@ async function connectAccount(accountId: string): Promise<void> {
       kind: 'connect-account',
       accountId,
     })
+    if (activeConnectionAttempt !== attempt || !unlocked.value) {
+      return
+    }
     notifyConnectionFeedback(snapshot, accountId)
   } catch {
+    if (activeConnectionAttempt !== attempt || !unlocked.value) {
+      return
+    }
     notifyConnectionFailure(accountId)
   } finally {
     if (activeConnectionAttempt === attempt) {
