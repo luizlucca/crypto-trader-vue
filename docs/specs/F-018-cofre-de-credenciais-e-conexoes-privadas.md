@@ -1,7 +1,7 @@
 # F-018 — Cofre de credenciais e conexões privadas de providers
 
-**Status:** validação final — automação concluída, com pendências de lint
-preexistentes e validação manual de UI
+**Status:** validação final — remediações automatizadas verificadas; validação
+manual de UI e de desempenho ainda pendente
 **Última revisão:** 2026-08-07\
 **Relaciona-se a:** [F-002](./F-002-providers-binance.md),
 [F-009](./F-009-temas-configuracoes.md),
@@ -163,6 +163,7 @@ interface AccountProvider<Credentials> {
   validateConnection(
     credentials: Credentials,
     markets: readonly Market[],
+    context: { signal: AbortSignal },
   ): Promise<readonly AccountMarketValidation[]>
 }
 ```
@@ -175,8 +176,30 @@ de conta não entra no `utilityProcess` de candles/livro, e
 `ProviderConnectionCoordinator` mantém somente a conta ativa, estado da
 tentativa e falha normalizada. `SecuritySession` localiza a credencial no cofre
 desbloqueado e a entrega ao coordenador dentro do processo principal. Revisões
-lógicas impedem respostas antigas de reconectar uma conta depois de troca,
-lock, reset ou remoção.
+lógicas e o cancelamento físico impedem respostas antigas de reconectar uma
+conta depois de troca, lock, reset ou remoção.
+
+### Remediações após a revisão de segurança
+
+- As mutações completas do cofre passam por uma fila FIFO exclusiva e
+  recuperável. Lock continua revogando a sessão imediatamente, enquanto
+  unlock, reset, salvar, remover e rotação aguardam a transação persistente
+  anterior quando necessário.
+- Cada validação de provider recebe sinal de aborto e prazo de 10 segundos;
+  substituir uma conta, bloquear, redefinir, remover ou editar interrompe a
+  tentativa anterior. As leituras autenticadas da Binance usam `GET` explícito
+  e recusam redirects.
+- Todos os comandos de segurança rejeitam propriedades desconhecidas. As
+  preferências são projetadas para os quatro campos permitidos antes de serem
+  expostas ou persistidas, inclusive quando o arquivo legado contém dados
+  extras.
+- A rotação de senha está disponível somente na sessão desbloqueada e invalida
+  resultados que retornem após lock. Setup e unlock não podem fechar por X,
+  Escape ou close enquanto uma solicitação está pendente.
+- O painel normaliza sucesso e falha de conectar/salvar-e-conectar, vincula
+  retry/configurações à conta exata e serializa uma tentativa em voo.
+- No macOS, fechar com `quit-and-lock` bloqueia e solicita o quit uma única
+  vez; o caminho `before-quit` continua sendo responsável pelo shutdown real.
 
 ### Interface e estado
 
@@ -226,6 +249,15 @@ tick no renderer.
 - Renderer: diálogos de cadastro/desbloqueio/reset, lista mascarada, caminhos
   de zero/uma/várias contas, catálogo de providers, toast, preferências e
   guarda visual da boleta.
+- Regressões da revisão: `securitySession.test.ts` cobre fila FIFO, rotação e
+  barreiras de lock/reset; `providerConnectionCoordinator.test.ts` cobre
+  aborto, deadline e a substituição determinística A→B, incluindo deadline e
+  resultado tardio de A sem publicação ou interferência em B;
+  `binanceAccountProvider.test.ts` cobre sinal, `GET` e bloqueio de redirect;
+  `security.test.ts`/`securityPreferences.test.ts` cobrem DTOs exatos;
+  `SecurityAccessDialog*.test.ts` cobrem pendência e rotação;
+  `ProviderAccountsPanel.test.ts` e `providerConnectionFeedback.test.ts`
+  cobrem feedback e serialização; `securityLifecycle.test.ts` cobre Darwin.
 - Manual: com gráfico, livro e oito indicadores ativos, cadastrar/desbloquear
   e bloquear não pode criar *long task* acima de 50 ms no renderer nem pausar
   os streams públicos.
@@ -259,17 +291,15 @@ tick no renderer.
 
 - A cobertura automatizada confirma o cofre cifrado, a recuperação com
   confirmação `APAGAR`, a conexão explícita de uma única conta, o descarte de
-  resultados tardios, o catálogo declarativo, as decisões para zero/uma/várias
-  contas e o guarda que libera a boleta apenas em `connected`.
-- A verificação fresca executou `npm run typecheck`, `npm test` e `npm run
-  build` com sucesso; `git diff --check` também não encontrou erro de espaço.
-- `npm run lint` permanece pendente por 14 erros de indentação preexistentes em
-  `electron/main/security/vaultCrypto.test.ts` (linhas 92–105). Esta entrega
-  não alterou esse arquivo para ocultar o erro.
-- O processo de desenvolvimento iniciou o main, o preload e o servidor do
-  renderer, mas este ambiente não permitiu interação gráfica. Permanecem
-  pendentes de observação manual os fluxos visuais críticos, a continuidade de
-  candles/livro e a medição de long tasks acima de 50 ms.
+  resultados tardios — inclusive A→B em deadline controlado —, o catálogo
+  declarativo, as decisões para zero/uma/várias contas e o guarda que libera a
+  boleta apenas em `connected`.
+- A matriz fresca de typecheck, lint, testes, build e espaço em todo o range é
+  registrada com os outputs exatos em `task-15-report.md`. O lint não possui
+  erros; os warnings existentes permanecem informativos.
+- A interface gráfica e a captura DevTools continuam pendentes: este registro
+  não afirma observação manual dos fluxos críticos, continuidade de
+  candles/livro ou a medição de *long tasks* acima de 50 ms.
 
 Saldos, ordens, posições, histórico e streams privados continuam fora de
 escopo; esta entrega valida somente a conexão autenticada de uma conta ativa.

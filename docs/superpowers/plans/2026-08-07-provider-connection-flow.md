@@ -658,16 +658,13 @@ Expected: test and typecheck PASS.
 
 ### Task 8: Final documentation, regression and PR update
 
-**Verification record (2026-08-07):** `npm run typecheck`, `npm test`,
-`npm run build` and `git diff --check` completed successfully. `npm run lint`
-reported 14 preexisting `@stylistic/indent` errors in
-`electron/main/security/vaultCrypto.test.ts` (lines 92–105), plus warnings;
-this task does not alter that unrelated file merely to make the global command
-green. `npm run dev` built the main and preload processes and started the
-renderer server, but no graphical interaction or DevTools Performance capture
-was available. The manual UI path and the 50 ms renderer-long-task observation
-therefore remain pending. Balances, orders, positions, history and private
-streams remain explicitly excluded.
+**Verification record (2026-08-07):** the subsequent security remediation
+verification requires `npm run typecheck`, `npm run lint`, `npm test`,
+`npm run build` and `git diff --check main..HEAD`. Lint must finish with zero
+errors; existing warnings remain informational. No graphical interaction or
+DevTools Performance capture was available, so the manual UI path and the
+50 ms renderer-long-task observation remain pending. Balances, orders,
+positions, history and private streams remain explicitly excluded.
 
 **Files:**
 - Modify: `docs/specs/F-018-cofre-de-credenciais-e-conexoes-privadas.md`
@@ -730,3 +727,77 @@ Inspect `git status --short`, `git log main..HEAD` and the full diff summary.
 Use the requesting-code-review workflow. Push verified commits to the existing
 `feature/secure-provider-credentials` branch only after authorization and
 update PR #4 instead of creating another pull request.
+
+---
+
+## Remediation after full security review
+
+### Task 9: Serialize credential-vault mutations
+
+- Add a recoverable FIFO exclusive queue around complete vault transactions.
+- Preserve immediate lock revocation while making unlock/reset wait for prior
+  persistent work.
+- Cover concurrent saves/removes, save versus password rotation, save versus
+  reset, lock/unlock barriers and queue recovery after rejection.
+
+### Task 10: Abort and constrain provider validation transport
+
+- Give every provider validation attempt an `AbortSignal` and deadline.
+- Abort on disconnect, replacement, lock, reset, removal and account editing.
+- Use explicit GET and reject redirects for the fixed Binance endpoints.
+- Test physical cancellation, timeout and redirect/header containment.
+
+### Task 11: Parse security IPC with exact DTOs
+
+- Reject unknown properties at every request level and bound raw strings.
+- Project security preferences to the four supported fields before writing or
+  exposing them; sanitize legacy files containing extra properties.
+- Test poisoned preference objects, disk records and oversized raw labels.
+
+### Task 12: Complete authentication UI safety
+
+- Expose password rotation in the unlocked security preferences UI.
+- Prevent X/Escape/close while setup or unlock is pending so a hidden dialog
+  cannot authenticate later.
+- Cover controller cleanup, errors, confirmation and pending-close behavior.
+
+### Task 13: Unify provider-panel feedback
+
+- Route connect and save-and-connect outcomes through normalized success/error
+  notifications with retry/settings actions.
+- Handle rejected IPC promises without unhandled renderer errors.
+- Preserve one in-flight connection attempt and masked account data only.
+
+### Task 14: Honor quit-and-lock on macOS
+
+- Make the lifecycle request application quit explicitly for quit-and-lock,
+  while preserving lock-and-minimize and before-quit re-entry semantics.
+- Add deterministic Darwin lifecycle tests.
+
+### Task 15: Re-run complete verification and amend F-018
+
+- Run typecheck, lint, full tests, build and full-range whitespace checks.
+- Re-run broad security review and update F-018 with the remediation evidence.
+- Keep the manual UI/DevTools measurements pending unless actually observed.
+
+**Automated remediation evidence:**
+
+- Vault FIFO, recoverable failures and lock/unlock/reset/rotation ordering:
+  `electron/main/security/securitySession.test.ts`.
+- Provider signal propagation, physical abort, deadline, redirect containment
+  and A→B replacement with late deadline/result isolation:
+  `electron/main/security/providerConnectionCoordinator.test.ts` and
+  `electron/main/providers/binance/binanceAccountProvider.test.ts`.
+- Exact IPC DTO parsing and projected preferences:
+  `shared/contracts/security.test.ts`,
+  `electron/main/security/securityPreferences.test.ts` and
+  `electron/main/security/registerSecurityIPC.test.ts`.
+- Password-rotation pending state, safe dialog close behavior, panel feedback
+  and one-at-a-time attempts: `SecurityAccessDialog*.test.ts`,
+  `ProviderAccountsPanel.test.ts` and `providerConnectionFeedback.test.ts`.
+- Darwin quit-and-lock re-entry and single quit request:
+  `electron/main/security/securityLifecycle.test.ts`.
+
+The fresh command outputs belong in `task-15-report.md`. Do not convert the
+manual UI flow or the 50 ms DevTools performance observation into completed
+criteria without direct observation.
