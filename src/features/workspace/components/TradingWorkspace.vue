@@ -66,8 +66,10 @@ const settingsPanel = ref<{
 const favoriteKeys = shallowRef(loadFavoriteKeys())
 const security = useSecuritySession()
 const notifications = useNotifications()
-const connectionAttempt = createProviderConnectionAttempt()
-let pendingDisconnect: Promise<void> | undefined
+const connectionAttempt = createProviderConnectionAttempt({
+  disconnect: () => security.request({ kind: 'disconnect-account' })
+    .then(() => undefined),
+})
 
 const {
   width: sidebarWidth,
@@ -195,21 +197,14 @@ function openProviderSettings(): void {
   settingsOpen.value = true
 }
 
-function cancelProviderConnection(): void {
-  const cancelled = connectionAttempt.cancel()
+function invalidateProviderConnection(): void {
+  connectionAttempt.invalidate()
   providerConnectionOpen.value = false
-  if (!cancelled) {
-    return
-  }
-  const disconnect = security.request({ kind: 'disconnect-account' })
-    .then(() => undefined)
-    .catch(() => undefined)
-  pendingDisconnect = disconnect
-  void disconnect.finally(() => {
-    if (pendingDisconnect === disconnect) {
-      pendingDisconnect = undefined
-    }
-  })
+}
+
+function cancelProviderConnection(): void {
+  connectionAttempt.cancel()
+  providerConnectionOpen.value = false
 }
 
 function connectionFailureMessage(failureCode: AccountFailureCode): string {
@@ -249,7 +244,7 @@ async function connectProviderAccount(accountId: string): Promise<void> {
   }
 
   try {
-    await pendingDisconnect
+    await connectionAttempt.waitForDisconnect()
     if (!connectionAttempt.isCurrent(
       attempt,
       security.snapshot.value.state,
@@ -323,13 +318,13 @@ watch(
   () => security.snapshot.value.state,
   (state) => {
     if (state !== 'unlocked') {
-      cancelProviderConnection()
+      invalidateProviderConnection()
     }
   },
 )
 
 function lockSecuritySession(): void {
-  cancelProviderConnection()
+  invalidateProviderConnection()
   void security.request({ kind: 'lock' })
 }
 </script>

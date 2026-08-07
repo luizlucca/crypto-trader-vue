@@ -5,19 +5,28 @@ export interface ProviderConnectionAttemptToken {
   revision: number
 }
 
+export interface ProviderConnectionAttemptOptions {
+  disconnect?(): Promise<void>
+}
+
 export interface ProviderConnectionAttempt {
   begin(accountId: string): ProviderConnectionAttemptToken | undefined
+  invalidate(): boolean
   cancel(): boolean
   finish(token: ProviderConnectionAttemptToken): void
   isCurrent(
     token: ProviderConnectionAttemptToken,
     state: SecurityState,
   ): boolean
+  waitForDisconnect(): Promise<void>
 }
 
-export function createProviderConnectionAttempt(): ProviderConnectionAttempt {
+export function createProviderConnectionAttempt(
+  options: ProviderConnectionAttemptOptions = {},
+): ProviderConnectionAttempt {
   let revision = 0
   let active: ProviderConnectionAttemptToken | undefined
+  let pendingDisconnect: Promise<void> | undefined
 
   function owns(token: ProviderConnectionAttemptToken): boolean {
     return active?.revision === token.revision
@@ -32,12 +41,26 @@ export function createProviderConnectionAttempt(): ProviderConnectionAttempt {
       active = token
       return token
     },
-    cancel() {
+    invalidate() {
       if (!active) {
         return false
       }
       revision += 1
       active = undefined
+      return true
+    },
+    cancel() {
+      const invalidated = this.invalidate()
+      if (!invalidated || !options.disconnect) {
+        return invalidated
+      }
+      const disconnect = options.disconnect().catch(() => undefined)
+      pendingDisconnect = disconnect
+      void disconnect.finally(() => {
+        if (pendingDisconnect === disconnect) {
+          pendingDisconnect = undefined
+        }
+      })
       return true
     },
     finish(token) {
@@ -47,6 +70,9 @@ export function createProviderConnectionAttempt(): ProviderConnectionAttempt {
     },
     isCurrent(token, state) {
       return state === 'unlocked' && owns(token)
+    },
+    waitForDisconnect() {
+      return pendingDisconnect ?? Promise.resolve()
     },
   }
 }

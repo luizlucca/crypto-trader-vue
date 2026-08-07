@@ -30,4 +30,68 @@ describe('provider connection attempt ownership', () => {
     expect(attempts.cancel()).toBe(true)
     expect(attempts.isCurrent(attempt, 'unlocked')).toBe(false)
   })
+
+  it('disconnects once for an explicit cancellation', async () => {
+    let disconnects = 0
+    const attempts = createProviderConnectionAttempt({
+      disconnect: async () => { disconnects += 1 },
+    })
+    attempts.begin('one')
+
+    attempts.cancel()
+    attempts.cancel()
+    await attempts.waitForDisconnect()
+
+    expect(disconnects).toBe(1)
+  })
+
+  it('invalidates on lock without requesting another disconnect', () => {
+    let disconnects = 0
+    const attempts = createProviderConnectionAttempt({
+      disconnect: async () => { disconnects += 1 },
+    })
+    const token = attempts.begin('one')!
+
+    expect(attempts.invalidate()).toBe(true)
+
+    expect(disconnects).toBe(0)
+    expect(attempts.isCurrent(token, 'unlocked')).toBe(false)
+  })
+
+  it(
+    'waits for an explicit disconnect before allowing its successor to run',
+    async () => {
+      let releaseDisconnect!: () => void
+      const disconnected = new Promise<void>((resolve) => {
+        releaseDisconnect = resolve
+      })
+      const attempts = createProviderConnectionAttempt({
+        disconnect: () => disconnected,
+      })
+      attempts.begin('one')
+      attempts.cancel()
+      const successor = attempts.begin('two')!
+      let ran = false
+      const afterDisconnect = attempts.waitForDisconnect().then(() => {
+        ran = attempts.isCurrent(successor, 'unlocked')
+      })
+
+      expect(ran).toBe(false)
+      releaseDisconnect()
+      await afterDisconnect
+
+      expect(ran).toBe(true)
+    },
+  )
+
+  it('absorbs a rejected disconnect before the next attempt', async () => {
+    const attempts = createProviderConnectionAttempt({
+      disconnect: async () => { throw new Error('offline') },
+    })
+    attempts.begin('one')
+
+    attempts.cancel()
+
+    await expect(attempts.waitForDisconnect()).resolves.toBeUndefined()
+  })
 })

@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { LoaderCircle, Settings2, X } from '@lucide/vue'
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, watch } from 'vue'
 import type {
   ProviderAccountSummary,
   ProviderConnectionSnapshot,
 } from '@shared/contracts/security'
 import ProviderIcon from './ProviderIcon.vue'
+import {
+  bindProviderConnectionDialogEscape,
+} from '@providers/services/providerConnectionDialogEscape'
 
 const props = defineProps<{
   open: boolean
@@ -23,6 +26,20 @@ const connectingAccount = computed(() => props.accounts.find(
   (account) => account.accountId === props.connection.accountId,
 ))
 const isConnecting = computed(() => props.connection.state === 'connecting')
+let releaseEscape: (() => void) | undefined
+
+watch(
+  () => props.open,
+  (open) => {
+    releaseEscape?.()
+    releaseEscape = open
+      ? bindProviderConnectionDialogEscape(document, () => emit('close'))
+      : undefined
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => releaseEscape?.())
 </script>
 
 <template>
@@ -33,7 +50,6 @@ const isConnecting = computed(() => props.connection.state === 'connecting')
       aria-modal="true"
       class="provider-connection-dialog"
       role="dialog"
-      @keydown.esc="emit('close')"
     >
       <header>
         <div>
