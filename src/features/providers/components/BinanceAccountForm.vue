@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import type { Market, MarketEnvironment } from '@shared/types/market'
 import type {
   BinanceAccountDraft,
   ProviderAccountSummary,
@@ -8,6 +9,7 @@ import {
   MAX_API_CREDENTIAL_LENGTH,
   MIN_API_CREDENTIAL_LENGTH,
 } from '@shared/contracts/security'
+import { providerCapabilities } from '@shared/domain/providerCapabilities'
 import {
   canSaveBinanceDraft,
   emptyBinanceAccountDraft,
@@ -24,14 +26,53 @@ const emit = defineEmits<{
 }>()
 
 const label = ref('')
+const environment = ref<MarketEnvironment>('live')
 const spot = ref(true)
 const futures = ref(false)
 const apiKey = ref('')
 const apiSecret = ref('')
-const validateAndConnect = ref(true)
+
+/**
+ * Immutable once saved: a credential is only valid in the venue that issued
+ * it, so changing this on an existing account would describe a key that does
+ * not exist. Creating the sibling account is the supported path.
+ */
+const environmentLocked = computed(() => props.account !== undefined)
+
+const binance = providerCapabilities('binance')
+const bothMarketsAllowed = computed(
+  () => binance.coversBothMarkets(environment.value),
+)
+
+/**
+ * Where this credential has to have come from. Named per market because the
+ * two testnets are separate sign-ups, and pairing a key with the wrong one
+ * fails as "credenciais inválidas" — which reads as a bad key.
+ */
+const testnetOrigin = computed(() => (
+  spot.value ? 'testnet.binance.vision' : 'testnet.binancefuture.com'
+))
+
+/*
+ * Leaving the test environment restores nothing: production genuinely allows
+ * one key across both markets, but a selection narrowed under `test` is still
+ * a valid production selection, so there is nothing to undo.
+ */
+watch(environment, (next) => {
+  if (!binance.coversBothMarkets(next) && spot.value && futures.value) {
+    futures.value = false
+  }
+})
+
+/** Radio semantics under `test`, where exactly one market is possible. */
+function selectMarket(market: Market): void {
+  spot.value = market === 'spot'
+  futures.value = market === 'futures'
+}
 
 const draft = computed<BinanceAccountDraft>(() => ({
   ...(props.account ? { accountId: props.account.accountId } : {}),
+  environment: environment.value,
   label: label.value,
   markets: [
     ...(spot.value ? ['spot' as const] : []),
@@ -39,7 +80,6 @@ const draft = computed<BinanceAccountDraft>(() => ({
   ],
   apiKey: apiKey.value,
   apiSecret: apiSecret.value,
-  validateAndConnect: validateAndConnect.value,
 }))
 
 const canSave = computed(() => canSaveBinanceDraft(draft.value))
@@ -47,11 +87,11 @@ const canSave = computed(() => canSaveBinanceDraft(draft.value))
 watch(() => props.account, (account) => {
   const initial = emptyBinanceAccountDraft()
   label.value = account?.label ?? initial.label
+  environment.value = account?.environment ?? initial.environment
   spot.value = account?.markets.includes('spot') ?? true
   futures.value = account?.markets.includes('futures') ?? false
   apiKey.value = ''
   apiSecret.value = ''
-  validateAndConnect.value = initial.validateAndConnect
 }, { immediate: true })
 
 function submit(): void {
@@ -85,15 +125,73 @@ function submit(): void {
     </section>
 
     <section
+      aria-labelledby="provider-environment-title"
+      class="provider-form-section"
+    >
+      <h5 id="provider-environment-title">Ambiente</h5>
+      <fieldset :disabled="environmentLocked">
+        <legend>Onde esta credencial é válida</legend>
+        <label>
+          <input v-model="environment" type="radio" value="live">
+          <span>
+            <strong>Produção</strong>
+            <small>Conta real, dinheiro real.</small>
+          </span>
+        </label>
+        <label>
+          <input v-model="environment" type="radio" value="test">
+          <span>
+            <strong>Testes (testnet)</strong>
+            <small>
+              Dinheiro fictício. Exige uma chave própria da testnet — uma
+              chave de produção não autentica aqui.
+            </small>
+          </span>
+        </label>
+      </fieldset>
+      <p v-if="environmentLocked" class="provider-form-note">
+        O ambiente não muda depois de salvo. Para operar no outro, adicione
+        uma conta separada com a credencial dele.
+      </p>
+    </section>
+
+    <section
       aria-labelledby="provider-markets-title"
       class="provider-form-section"
     >
       <h5 id="provider-markets-title">Mercados</h5>
-      <fieldset>
+      <fieldset v-if="bothMarketsAllowed">
         <legend>Mercados autorizados</legend>
         <label><input v-model="spot" type="checkbox"> Spot</label>
         <label><input v-model="futures" type="checkbox"> Futuros</label>
       </fieldset>
+      <fieldset v-else>
+        <legend>Mercado desta credencial</legend>
+        <label>
+          <input
+            :checked="spot"
+            name="test-market"
+            type="radio"
+            @change="selectMarket('spot')"
+          >
+          Spot
+        </label>
+        <label>
+          <input
+            :checked="futures"
+            name="test-market"
+            type="radio"
+            @change="selectMarket('futures')"
+          >
+          Futuros
+        </label>
+      </fieldset>
+      <p v-if="!bothMarketsAllowed" class="provider-form-note">
+        As duas testnets da Binance são cadastros separados, e uma chave só
+        vale na sua. Esta credencial precisa ter vindo de
+        <strong>{{ testnetOrigin }}</strong>. Para operar no outro mercado,
+        cadastre uma conta com a chave de lá.
+      </p>
     </section>
 
     <section
@@ -126,22 +224,6 @@ function submit(): void {
           >
         </label>
       </div>
-    </section>
-
-    <section
-      aria-labelledby="provider-save-title"
-      class="provider-form-section"
-    >
-      <h5 id="provider-save-title">Ao salvar</h5>
-      <label class="provider-connect-option">
-        <input v-model="validateAndConnect" type="checkbox">
-        <span>
-          <strong>Validar e conectar ao salvar</strong>
-          <small>
-            Faz uma chamada autenticada de leitura após cifrar a conta.
-          </small>
-        </span>
-      </label>
     </section>
 
     <footer>

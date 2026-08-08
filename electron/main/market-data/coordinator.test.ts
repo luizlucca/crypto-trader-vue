@@ -52,6 +52,7 @@ const { MarketDataCoordinator } = await import('./coordinator')
 
 const selection: MarketSelection = {
   provider: 'binance',
+  environment: 'live',
   market: 'spot',
   symbol: 'BTCUSDT',
   interval: '1m',

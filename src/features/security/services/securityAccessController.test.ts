@@ -7,6 +7,7 @@ const snapshot: SecuritySnapshot = {
   hasVault: true,
   accounts: [],
   connection: { state: 'disconnected' },
+  environment: 'live',
   preferences: {
     lockOnMinimize: true,
     lockOnSuspend: true,

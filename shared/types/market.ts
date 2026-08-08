@@ -1,7 +1,20 @@
 export type Market = 'spot' | 'futures'
 
+/**
+ * Which venue serves the data. A testnet is not production under another
+ * address: it is a separate exchange, with its own book, its own prices and
+ * its own credentials.
+ *
+ * It therefore belongs to the *address* of a stream, alongside provider and
+ * market — not beside it as session context. Keeping it here is what makes
+ * `marketSelectionFingerprint` and `drawingKey` tell the two environments
+ * apart without either of them knowing this feature exists.
+ */
+export type MarketEnvironment = 'live' | 'test'
+
 export interface MarketSelection {
   provider: string
+  environment: MarketEnvironment
   market: Market
   symbol: string
   interval: string
@@ -39,6 +52,8 @@ export interface MarketPair extends MarketSymbol {
 
 export interface MarketCatalog {
   provider: string
+  /** Stamped so a catalog that outlived an environment switch is detectable. */
+  environment: MarketEnvironment
   market: Market
   quoteAsset: string
   items: MarketPair[]

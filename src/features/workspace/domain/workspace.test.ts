@@ -13,6 +13,7 @@ import {
 
 const selection: MarketSelection = {
   provider: 'binance',
+  environment: 'live',
   market: 'futures',
   symbol: 'BTCUSDT',
   interval: '1h',
@@ -35,7 +36,7 @@ describe('workspace tabs', () => {
     expect(tab.orderBookAggregation).toBe(0.01)
     expect(workspaceTabLabel(tab)).toBe('BTC/USDT')
     expect(marketSelectionFingerprint(tab.selection)).toBe(
-      'binance:futures:BTCUSDT:5m',
+      'binance:live:futures:BTCUSDT:5m',
     )
   })
 

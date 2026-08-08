@@ -5,15 +5,24 @@
  * because it reads as working software on screen, and nobody should trade
  * against what it shows.
  */
+import { computed } from 'vue'
 import type { MarketSelection } from '@shared/types/market'
 
-defineProps<{ selection: MarketSelection }>()
+const props = defineProps<{ selection: MarketSelection }>()
+
+/**
+ * The ticket is the last surface read before an order would be sent, so it
+ * carries the environment too — the chart badge is easy to stop seeing. Taken
+ * from the selection, so it always agrees with the market on screen.
+ */
+const testing = computed(() => props.selection.environment === 'test')
 </script>
 
 <template>
-  <aside class="trading-ticket panel">
+  <aside class="trading-ticket panel" :class="{ 'ticket-testing': testing }">
     <header class="panel-header">
       <h2>BOLETA</h2>
+      <span v-if="testing" class="ticket-environment">TESTNET</span>
       <button type="button">⌃</button>
     </header>
     <div class="ticket-tabs">

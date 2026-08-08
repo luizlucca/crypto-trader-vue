@@ -7,6 +7,7 @@ import {
 
 const selection: MarketSelection = {
   provider: 'binance',
+  environment: 'live',
   market: 'futures',
   symbol: 'BTCUSDT',
   interval: '1h',
@@ -83,7 +84,7 @@ describe('candle history cache', () => {
     cache.attach('tab-1', () => selection)
 
     emit(candle(300, 999))
-    cache.store('tab-1', 'binance:futures:BTCUSDT:1h', [
+    cache.store('tab-1', 'binance:live:futures:BTCUSDT:1h', [
       candle(100),
       candle(200),
     ])
@@ -97,7 +98,7 @@ describe('candle history cache', () => {
     cache.attach('tab-1', () => selection)
 
     emit(candle(200, 999))
-    cache.store('tab-1', 'binance:futures:BTCUSDT:1h', [
+    cache.store('tab-1', 'binance:live:futures:BTCUSDT:1h', [
       candle(100),
       candle(200, 111),
     ])
@@ -109,7 +110,7 @@ describe('candle history cache', () => {
 
   it('does not return history from a different selection', () => {
     const cache = createCache()
-    cache.store('tab-1', 'binance:futures:BTCUSDT:1h', [candle(100)])
+    cache.store('tab-1', 'binance:live:futures:BTCUSDT:1h', [candle(100)])
 
     expect(
       cache.read('tab-1', { ...selection, interval: '5m' }),
@@ -119,7 +120,7 @@ describe('candle history cache', () => {
   it('bounds the window and drops the oldest candles', () => {
     const cache = createCache(3)
     cache.attach('tab-1', () => selection)
-    cache.store('tab-1', 'binance:futures:BTCUSDT:1h', [
+    cache.store('tab-1', 'binance:live:futures:BTCUSDT:1h', [
       candle(100),
       candle(200),
       candle(300),
@@ -134,7 +135,7 @@ describe('candle history cache', () => {
   it('ignores a candle that does not belong to the session selection', () => {
     const cache = createCache()
     cache.attach('tab-1', () => selection)
-    cache.store('tab-1', 'binance:futures:BTCUSDT:1h', [candle(100)])
+    cache.store('tab-1', 'binance:live:futures:BTCUSDT:1h', [candle(100)])
 
     emit({ ...candle(200), symbol: 'ETHUSDT' })
 
@@ -144,7 +145,7 @@ describe('candle history cache', () => {
 
   it('forgets a session when it is detached', () => {
     const cache = createCache()
-    cache.store('tab-1', 'binance:futures:BTCUSDT:1h', [candle(100)])
+    cache.store('tab-1', 'binance:live:futures:BTCUSDT:1h', [candle(100)])
 
     cache.detach('tab-1')
 

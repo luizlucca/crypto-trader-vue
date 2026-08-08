@@ -7,6 +7,31 @@
   scrollbar-color: color-mix(in srgb, var(--selected-bg) 90%, var(--text-strong)) transparent;
 }
 
+/*
+ * Test environment. Deliberately a border and a header tint rather than a
+ * recolouring of the buy/sell buttons: those two colours mean direction, and
+ * overloading them with venue is how a trader misreads a side.
+ */
+.trading-ticket.ticket-testing {
+  border: 1px solid color-mix(in srgb, var(--warning) 38%, var(--border));
+  box-shadow: inset 0 2px 0 0 var(--warning);
+}
+
+.trading-ticket.ticket-testing .panel-header {
+  background: color-mix(in srgb, var(--warning) 12%, var(--panel));
+  color: var(--warning);
+}
+
+.ticket-environment {
+  margin-left: auto;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid currentcolor;
+  border-radius: 0.3rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
 .ticket-tabs,
 .side-buttons {
   display: grid;

@@ -2,10 +2,18 @@ import { shallowRef } from 'vue'
 import type { MarketCatalog, MarketSelection } from '@shared/types/market'
 import { loadMarketCatalog } from '@desktop/marketData'
 
-type CatalogScope = Pick<MarketSelection, 'provider' | 'market'>
+type CatalogScope = Pick<
+  MarketSelection,
+  'provider' | 'environment' | 'market'
+>
 
+/**
+ * The environment belongs in the key for the same reason the market does: the
+ * two venues list different pairs. Without it, switching to the testnet would
+ * be served the production list straight from this cache.
+ */
 export function catalogKey(scope: CatalogScope): string {
-  return `${scope.provider}:${scope.market}`
+  return `${scope.provider}:${scope.environment}:${scope.market}`
 }
 
 /**
@@ -87,6 +95,7 @@ export function useCatalogCache() {
     setFailed(key, false)
     const request = loadMarketCatalog(
       scope.provider,
+      scope.environment,
       scope.market,
       '',
       forceRefresh,

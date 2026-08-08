@@ -101,7 +101,7 @@ export class ProviderConnectionCoordinator {
         .then(() => this.providers.get(account.provider).validateConnection({
           apiKey: account.apiKey,
           apiSecret: account.apiSecret,
-        }, account.markets, { signal }))
+        }, account.markets, { signal, environment: account.environment }))
         .then((results) => this.toConnection(account.markets, results))
       return await Promise.race([validation, aborted, deadline])
     } catch {

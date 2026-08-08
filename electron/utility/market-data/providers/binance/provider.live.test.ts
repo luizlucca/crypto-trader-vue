@@ -8,6 +8,7 @@ const live = process.env.BINANCE_LIVE_TEST === '1'
 function selection(market: Market): MarketSelection {
   return {
     provider: 'binance',
+    environment: 'live',
     market,
     symbol: 'BTCUSDT',
     interval: '1m',
@@ -27,6 +28,7 @@ describe.runIf(live)('BinanceProvider live', () => {
       const [catalog, candles] = await Promise.all([
         provider.getCatalog({
           market,
+          environment: 'live',
           quoteAsset: 'USDT',
           forceRefresh: true,
         }),

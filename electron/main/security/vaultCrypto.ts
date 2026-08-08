@@ -4,7 +4,12 @@ import {
   randomBytes,
   scrypt,
 } from 'node:crypto'
-import type { Market } from '@shared/types/market'
+import type { Market, MarketEnvironment } from '@shared/types/market'
+import { isMarketEnvironment } from '@shared/domain/providerEnvironment'
+import {
+  isProviderId,
+  type ProviderId,
+} from '@shared/domain/providerCapabilities'
 
 const KDF_NAME = 'scrypt' as const
 const KDF_N = 32_768 as const
@@ -36,7 +41,8 @@ export interface EncryptedCredentialVaultV1 {
 
 export interface ProviderAccountRecord {
   accountId: string
-  provider: 'binance'
+  provider: ProviderId
+  environment: MarketEnvironment
   label: string
   markets: readonly Market[]
   apiKey: string
@@ -112,13 +118,19 @@ function isVaultContents(value: unknown): value is VaultContents {
       return account
         && typeof account === 'object'
         && typeof stored.accountId === 'string'
-        && stored.provider === 'binance'
+        && isProviderId(stored.provider)
         && typeof stored.label === 'string'
         && Array.isArray(stored.markets)
         && stored.markets.every(isMarket)
         && typeof stored.apiKey === 'string'
         && typeof stored.apiSecret === 'string'
         && (stored.enabled === undefined || typeof stored.enabled === 'boolean')
+        // Absent in vaults written before environments existed. Rejecting
+        // those would lock the operator out of their own credentials.
+        && (
+          stored.environment === undefined
+          || isMarketEnvironment(stored.environment)
+        )
     })
 }
 
@@ -128,6 +140,8 @@ function normalizeContents(contents: VaultContents): VaultContents {
     accounts: contents.accounts.map((stored) => ({
       accountId: stored.accountId,
       provider: stored.provider,
+      // Anything stored before this field existed was a production key.
+      environment: stored.environment ?? 'live',
       label: stored.label,
       markets: [...stored.markets],
       apiKey: stored.apiKey,

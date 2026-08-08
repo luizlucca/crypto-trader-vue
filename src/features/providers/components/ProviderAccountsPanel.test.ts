@@ -24,6 +24,7 @@ vi.mock('@security/services/securitySession', () => ({
 const account = {
   accountId: 'account-one',
   provider: 'binance' as const,
+  environment: 'live' as const,
   label: 'Principal',
   markets: ['spot'] as const,
   apiKeySuffix: '••••1234',
@@ -55,6 +56,7 @@ function snapshotWith(
     hasVault: true,
     accounts,
     connection,
+    environment: 'live',
     preferences: {
       lockOnMinimize: true,
       lockOnSuspend: true,
@@ -79,10 +81,7 @@ function mountPanel(snapshot: SecuritySnapshot) {
           props: ['account', 'pending'],
           emits: ['cancel', 'save'],
           template: `
-            <div>
-              <button class="save-account" @click="$emit('save', { label: 'Nova', markets: ['spot'], apiKey: 'key-12345678', apiSecret: 'secret-12345678', validateAndConnect: true })" />
-              <button class="save-without-validation" @click="$emit('save', { label: 'Nova', markets: ['spot'], apiKey: 'key-12345678', apiSecret: 'secret-12345678', validateAndConnect: false })" />
-            </div>
+            <button class="save-account" @click="$emit('save', { environment: 'live', label: 'Nova', markets: ['spot'], apiKey: 'key-12345678', apiSecret: 'secret-12345678' })" />
           `,
         },
       },
@@ -275,11 +274,45 @@ describe('ProviderAccountsPanel connection feedback', () => {
     },
   )
 
-  it('uses the returned connection account id when saving a new account to validate', async () => {
-    mocks.request.mockResolvedValueOnce(snapshotWith({
-      accountId: 'new-account',
-      state: 'connected',
-    }, [{ ...account, accountId: 'new-account', label: 'Nova' }]))
+  /*
+   * Saving registers a credential and nothing else. Connecting on save made
+   * the active venue a side effect of filling in a form, and the workspace
+   * kept showing the other exchange's prices underneath.
+   */
+  /*
+   * The snapshot the save resolves with reports a live connection, and the
+   * panel must still say nothing about it: connecting on save made the active
+   * venue a side effect of filling in a form, and the workspace kept showing
+   * the other exchange's prices underneath.
+   */
+  it('confirms the account was saved and never reports a connection',
+    async () => {
+      mocks.request.mockResolvedValueOnce(snapshotWith({
+        accountId: 'new-account',
+        state: 'connected',
+      }, [{ ...account, accountId: 'new-account', label: 'Nova' }]))
+      const wrapper = mountPanel(snapshotWith({ state: 'disconnected' }))
+
+      await wrapper.get('.create-theme-button').trigger('click')
+      await wrapper.get('.select-binance').trigger('click')
+      await wrapper.get('.save-account').trigger('click')
+      await flushPromises()
+
+      expect(mocks.request).toHaveBeenCalledWith({
+        kind: 'save-binance-account',
+        draft: expect.objectContaining({ label: 'Nova' }),
+      })
+      expect(mocks.notify).toHaveBeenCalledTimes(1)
+      const [feedback] = mocks.notify.mock.calls[0] as [
+        { tone: string, message: string },
+      ]
+      expect(feedback.tone).toBe('success')
+      expect(feedback.message).toContain('salva')
+      expect(feedback.message).not.toContain('Conectado')
+    })
+
+  it('reports a save that failed without blaming the connection', async () => {
+    mocks.request.mockRejectedValueOnce(new Error('disco cheio'))
     const wrapper = mountPanel(snapshotWith({ state: 'disconnected' }))
 
     await wrapper.get('.create-theme-button').trigger('click')
@@ -287,28 +320,9 @@ describe('ProviderAccountsPanel connection feedback', () => {
     await wrapper.get('.save-account').trigger('click')
     await flushPromises()
 
-    expect(mocks.request).toHaveBeenCalledWith({
-      kind: 'save-binance-account',
-      draft: expect.objectContaining({ validateAndConnect: true }),
-    })
     expect(mocks.notify).toHaveBeenCalledWith({
-      tone: 'success',
-      message: 'Conectado à Binance — Nova',
+      tone: 'error',
+      message: 'Não foi possível salvar a conta.',
     })
-  })
-
-  it('does not show connection feedback when saving without validation', async () => {
-    mocks.request.mockResolvedValueOnce(snapshotWith({
-      accountId: 'account-one',
-      state: 'connected',
-    }))
-    const wrapper = mountPanel(snapshotWith({ state: 'disconnected' }))
-
-    await wrapper.get('.create-theme-button').trigger('click')
-    await wrapper.get('.select-binance').trigger('click')
-    await wrapper.get('.save-without-validation').trigger('click')
-    await flushPromises()
-
-    expect(mocks.notify).not.toHaveBeenCalled()
   })
 })

@@ -91,6 +91,19 @@ onBeforeUnmount(() => releaseEscape?.())
             <strong>{{ account.label }}</strong>
             <small>Binance · {{ account.markets.join(' + ') }}</small>
           </span>
+          <!--
+            Two test accounts differ only by market, so the market has to be
+            readable here: picking the wrong one fails as "credenciais".
+          -->
+          <span
+            v-if="account.environment === 'test'"
+            class="provider-account-environment"
+          >TESTNET</span>
+          <span
+            v-if="account.accountId === connection.accountId
+              && connection.state === 'connected'"
+            class="provider-account-connected"
+          >Conectada</span>
         </button>
       </div>
 

@@ -11,6 +11,7 @@ import {
 const accountOne: ProviderAccountSummary = {
   accountId: 'one',
   provider: 'binance',
+  environment: 'live',
   label: 'Principal',
   markets: ['spot'],
   apiKeySuffix: '••••1234',
@@ -31,6 +32,7 @@ function snapshotWith(
     hasVault: true,
     accounts,
     connection: { state: 'disconnected' },
+    environment: 'live',
     preferences: {
       lockOnMinimize: true,
       lockOnSuspend: true,

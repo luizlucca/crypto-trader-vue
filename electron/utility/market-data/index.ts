@@ -27,13 +27,18 @@ async function execute(request: MarketDataRequest): Promise<unknown> {
     case 'catalog':
       return registry.get(request.provider).getCatalog({
         market: request.market,
+        environment: request.environment,
         quoteAsset: request.quoteAsset,
         forceRefresh: request.forceRefresh,
       })
     case 'symbols':
       return registry
         .get(request.provider)
-        .getSymbols(request.market, request.quoteAsset)
+        .getSymbols(
+          request.market,
+          request.environment,
+          request.quoteAsset,
+        )
     case 'candles':
       return registry
         .get(request.selection.provider)

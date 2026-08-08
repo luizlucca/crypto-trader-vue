@@ -11,6 +11,7 @@ import type {
   Candle,
   Market,
   MarketCatalog,
+  MarketEnvironment,
   MarketSelection,
   MarketSymbol,
 } from '@shared/types/market'
@@ -65,6 +66,8 @@ export interface WorkspaceTabsController {
   reportError: (tab: WorkspaceTab, error: unknown, scope?: StreamScope) => void
   activate: (tabId: string) => void
   close: (tabId: string) => void
+  /** Closes every tab and rebuilds the workspace against another venue. */
+  resetTo: (environment: MarketEnvironment) => Promise<void>
   openInNewTab: (symbol: MarketSymbol, sourceTab?: WorkspaceTab) => void
   changeMarket: (market: Market) => Promise<void>
   changeSymbol: (symbol: MarketSymbol, tab?: WorkspaceTab) => Promise<void>
@@ -372,13 +375,7 @@ export function useWorkspaceTabs(
       return
     }
     const [closedTab] = tabs.splice(index, 1)
-    // Invalidating the generation stops any continuation still in flight from
-    // writing into a tab the user already closed.
-    closedTab.generation += 1
-    history.detach(closedTab.id)
-    resetStreamLatency(closedTab.id)
-    dropIndicatorLayout(closedTab.id)
-    void stopMarketStream(closedTab.id)
+    void teardown(closedTab)
 
     if (activeTabId.value !== tabId) {
       return
@@ -386,6 +383,50 @@ export function useWorkspaceTabs(
     const nextTab = tabs[Math.min(index, tabs.length - 1)]
     activeTabId.value = nextTab.id
     setVisibility(nextTab, true)
+  }
+
+  /**
+   * Undoes one tab completely, without touching the tab list.
+   *
+   * Bumping the generation first is what makes a continuation still in flight
+   * — a candle page, a catalog — notice it no longer owns the tab and abort
+   * instead of writing into a workspace that has moved on.
+   */
+  async function teardown(tab: WorkspaceTab): Promise<void> {
+    tab.generation += 1
+    history.detach(tab.id)
+    resetStreamLatency(tab.id)
+    dropIndicatorLayout(tab.id)
+    await stopMarketStream(tab.id).catch(() => {
+      // The stream is being abandoned either way; a failure to stop it must
+      // not prevent the remaining tabs from being torn down.
+    })
+  }
+
+  /**
+   * Rebuilds the workspace against another venue.
+   *
+   * Nothing is migrated. Keeping the tabs and swapping the data underneath
+   * would raise a question per tab — a pair the other venue does not list, a
+   * period with no history there, indicators computed over a series about to
+   * vanish — and the reset makes all of them disappear instead of answering
+   * each one.
+   *
+   * The replacement tab is installed in the same `splice` that removes the old
+   * ones, so the list is never observably empty: `activeTab` is typed as
+   * always present, and a gap would make that a lie mid-switch.
+   */
+  async function resetTo(environment: MarketEnvironment): Promise<void> {
+    const fresh = createWorkspaceTab({
+      ...createDefaultMarketSelection(),
+      environment,
+    })
+    const discarded = tabs.splice(0, tabs.length, fresh)
+    activeTabId.value = fresh.id
+    history.attach(fresh.id, () => fresh.selection)
+
+    await Promise.all(discarded.map(teardown))
+    await bootstrap()
   }
 
   async function bootstrap(): Promise<void> {
@@ -451,6 +492,7 @@ export function useWorkspaceTabs(
     reportError,
     activate,
     close,
+    resetTo,
     openInNewTab,
     changeMarket,
     changeSymbol,

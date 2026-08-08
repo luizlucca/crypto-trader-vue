@@ -12,6 +12,7 @@ const INITIAL_SECURITY_SNAPSHOT: SecuritySnapshot = {
   hasVault: false,
   accounts: [],
   connection: { state: 'disconnected' },
+  environment: 'live',
   preferences: DEFAULT_SECURITY_PREFERENCES,
 }
 

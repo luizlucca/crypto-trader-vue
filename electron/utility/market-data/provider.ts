@@ -3,6 +3,7 @@ import type {
   Candle,
   Market,
   MarketCatalog,
+  MarketEnvironment,
   MarketSelection,
   MarketSymbol,
   OrderBookSnapshot,
@@ -23,6 +24,7 @@ export type ConnectionStateHandler = (state: ConnectionState) => void
 
 export interface CatalogOptions {
   market: Market
+  environment: MarketEnvironment
   quoteAsset: string
   forceRefresh: boolean
 }
@@ -44,7 +46,11 @@ export interface OrderBookStreamOptions {
 export interface MarketDataProvider {
   readonly name: string
   getCatalog(options: CatalogOptions): Promise<MarketCatalog>
-  getSymbols(market: Market, quoteAsset: string): Promise<MarketSymbol[]>
+  getSymbols(
+    market: Market,
+    environment: MarketEnvironment,
+    quoteAsset: string,
+  ): Promise<MarketSymbol[]>
   getCandles(
     selection: MarketSelection,
     options: CandleHistoryOptions,

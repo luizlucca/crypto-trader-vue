@@ -97,10 +97,14 @@ class DeferredVaultCrypto extends VaultCrypto {
   }
 }
 
-function account(id: string): ProviderAccountRecord {
+function account(
+  id: string,
+  environment: ProviderAccountRecord['environment'] = 'live',
+): ProviderAccountRecord {
   return {
     accountId: id,
     provider: 'binance',
+    environment,
     label: `Conta ${id}`,
     markets: ['spot'],
     apiKey: `api-key-${id}`,
@@ -322,6 +326,7 @@ describe('SecuritySession', () => {
         state: 'locked',
         accounts: [],
         connection: { state: 'disconnected' },
+        environment: 'live',
       })
     },
   )
@@ -362,10 +367,18 @@ describe('SecuritySession', () => {
     expect(session.getSnapshot()).toMatchObject({
       state: 'setup-required',
       connection: { state: 'disconnected' },
+      environment: 'live',
     })
   })
 
-  it('encrypts accounts, masks API keys and connects with explicit save intent',
+  /*
+   * Saving registers a credential and stops there. Connecting on save made
+   * the active venue a side effect of filling in a form — a production key
+   * saved while the workspace was on a testnet moved the private side to
+   * production and left every price on screen coming from the test exchange.
+   * It happened in this process, past the renderer's check for exactly that.
+   */
+  it('encrypts and masks a saved account without connecting it',
     async () => {
       const validateConnection = vi.fn().mockResolvedValue([
         { market: 'futures', state: 'connected' },
@@ -375,26 +388,21 @@ describe('SecuritySession', () => {
       await session.setup(password)
 
       await session.saveBinanceAccount({
+        environment: 'live',
         label: 'Futuros principal',
         markets: ['futures'],
         apiKey: 'binance-api-key-ABCD',
         apiSecret: 'binance-api-secret',
-        validateAndConnect: true,
       })
 
-      expect(validateConnection).toHaveBeenCalledWith(
-        {
-          apiKey: 'binance-api-key-ABCD',
-          apiSecret: 'binance-api-secret',
-        },
-        ['futures'],
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      )
+      expect(validateConnection).not.toHaveBeenCalled()
+      expect(session.getSnapshot().connection)
+        .toEqual({ state: 'disconnected' })
       expect(session.getSnapshot().accounts).toEqual([
         expect.objectContaining({
           accountId: 'new-account-id',
           apiKeySuffix: '••••ABCD',
-          connection: 'connected',
+          connection: 'disconnected',
         }),
       ])
     },
@@ -409,11 +417,11 @@ describe('SecuritySession', () => {
     await session.setup(password)
 
     await session.saveBinanceAccount({
+      environment: 'live',
       label: 'Spot',
       markets: ['spot'],
       apiKey,
       apiSecret,
-      validateAndConnect: false,
     })
 
     const serialized = JSON.stringify(snapshots.at(-1))
@@ -451,11 +459,11 @@ describe('SecuritySession', () => {
       const session = await createSession()
       await session.setup(password)
       await session.saveBinanceAccount({
+        environment: 'live',
         label: 'Spot',
         markets: ['spot'],
         apiKey: 'binance-api-key-ABCD',
         apiSecret: 'binance-api-secret',
-        validateAndConnect: false,
       })
 
       await expect(session.resetVault('INVALIDAR' as never))
@@ -485,11 +493,11 @@ describe('SecuritySession', () => {
     const session = await createSession()
     await session.setup(password)
     await session.saveBinanceAccount({
+      environment: 'live',
       label: 'Spot',
       markets: ['spot'],
       apiKey: 'binance-api-key-ABCD',
       apiSecret: 'binance-api-secret',
-      validateAndConnect: false,
     })
     await session.connectAccount('new-account-id')
 
@@ -502,11 +510,11 @@ describe('SecuritySession', () => {
     const session = await createSession()
     await session.setup(password)
     await session.saveBinanceAccount({
+      environment: 'live',
       label: 'Spot',
       markets: ['spot'],
       apiKey: 'binance-api-key-ABCD',
       apiSecret: 'binance-api-secret',
-      validateAndConnect: false,
     })
     await session.connectAccount('new-account-id')
 
@@ -520,21 +528,21 @@ describe('SecuritySession', () => {
       const session = await createSession()
       await session.setup(password)
       await session.saveBinanceAccount({
+        environment: 'live',
         label: 'Spot',
         markets: ['spot'],
         apiKey: 'binance-api-key-OLD',
         apiSecret: 'binance-api-secret-OLD',
-        validateAndConnect: false,
       })
       await session.connectAccount('new-account-id')
 
       await session.saveBinanceAccount({
         accountId: 'new-account-id',
+        environment: 'live',
         label: 'Spot editada',
         markets: ['spot'],
         apiKey: 'binance-api-key-NEW',
         apiSecret: 'binance-api-secret-NEW',
-        validateAndConnect: false,
       })
 
       expect(session.getSnapshot().connection).toEqual({ state: 'disconnected' })
@@ -547,7 +555,12 @@ describe('SecuritySession', () => {
     },
   )
 
-  it('disconnects before reconnecting an edited active account when requested',
+  /*
+   * Editing the connected account replaces the very key the session was
+   * validated with, so the connection has to drop — and stay dropped, because
+   * reconnecting is now the operator's explicit choice.
+   */
+  it('drops the connection when the active account is edited, and leaves it so',
     async () => {
       const validateConnection = vi.fn().mockResolvedValue([
         { market: 'spot', state: 'connected' },
@@ -557,11 +570,11 @@ describe('SecuritySession', () => {
       })
       await session.setup(password)
       await session.saveBinanceAccount({
+        environment: 'live',
         label: 'Spot',
         markets: ['spot'],
         apiKey: 'binance-api-key-OLD',
         apiSecret: 'binance-api-secret-OLD',
-        validateAndConnect: false,
       })
       await session.connectAccount('new-account-id')
       validateConnection.mockClear()
@@ -570,22 +583,24 @@ describe('SecuritySession', () => {
 
       await session.saveBinanceAccount({
         accountId: 'new-account-id',
+        environment: 'live',
         label: 'Spot editada',
         markets: ['spot'],
         apiKey: 'binance-api-key-NEW',
         apiSecret: 'binance-api-secret-NEW',
-        validateAndConnect: true,
       })
 
       expect(snapshots[0].connection).toEqual({ state: 'disconnected' })
+      expect(validateConnection).not.toHaveBeenCalled()
+      expect(session.getSnapshot().connection)
+        .toEqual({ state: 'disconnected' })
+
+      // The new credential is what a later connect would use.
+      await session.connectAccount('new-account-id')
       expect(validateConnection).toHaveBeenCalledWith({
         apiKey: 'binance-api-key-NEW',
         apiSecret: 'binance-api-secret-NEW',
       }, ['spot'], expect.objectContaining({ signal: expect.any(AbortSignal) }))
-      expect(session.getSnapshot().connection).toEqual({
-        accountId: 'new-account-id',
-        state: 'connected',
-      })
     },
   )
 })
@@ -645,12 +660,10 @@ describe('SecuritySession credential vault mutation queue', () => {
 
     const firstSave = session.saveBinanceAccount({
       ...account('one'),
-      validateAndConnect: false,
     })
     await firstWrite.started.promise
     const secondSave = session.saveBinanceAccount({
       ...account('two'),
-      validateAndConnect: false,
     })
     firstWrite.completion.resolve()
     await Promise.all([firstSave, secondSave])
@@ -671,7 +684,6 @@ describe('SecuritySession credential vault mutation queue', () => {
 
     const save = session.saveBinanceAccount({
       ...account('one'),
-      validateAndConnect: false,
     })
     await firstWrite.started.promise
     const changePassword = session.changePassword(password, 'NewPassword1!')
@@ -701,7 +713,6 @@ describe('SecuritySession credential vault mutation queue', () => {
 
     const save = session.saveBinanceAccount({
       ...account('one'),
-      validateAndConnect: false,
     })
     await firstWrite.started.promise
     const reset = session.resetVault('APAGAR')
@@ -726,7 +737,6 @@ describe('SecuritySession credential vault mutation queue', () => {
 
       const save = session.saveBinanceAccount({
         ...account('one'),
-        validateAndConnect: false,
       })
       await firstWrite.started.promise
       session.lock('manual')
@@ -808,12 +818,10 @@ describe('SecuritySession credential vault mutation queue', () => {
 
       const rejectedSave = session.saveBinanceAccount({
         ...account('one'),
-        validateAndConnect: false,
       })
       await failedWrite.started.promise
       const nextSave = session.saveBinanceAccount({
         ...account('two'),
-        validateAndConnect: false,
       })
       failedWrite.completion.reject(new Error('disk unavailable'))
 
@@ -839,7 +847,6 @@ describe('SecuritySession credential vault mutation queue', () => {
       await firstWrite.started.promise
       const save = session.saveBinanceAccount({
         ...account('three'),
-        validateAndConnect: false,
       })
       firstWrite.completion.resolve()
       await Promise.all([remove, save])
@@ -848,4 +855,153 @@ describe('SecuritySession credential vault mutation queue', () => {
         .toEqual(['two', 'three'])
     },
   )
+})
+
+describe('account environment', () => {
+  it('surfaces the environment of every stored account', async () => {
+    const session = await createSession({
+      accounts: [account('live-one'), account('test-one', 'test')],
+    })
+    await session.unlock(password)
+
+    expect(session.getSnapshot().accounts.map((a) => a.environment))
+      .toEqual(['live', 'test'])
+  })
+
+  it('reports production while nothing is connected', async () => {
+    const session = await createSession({
+      accounts: [account('test-one', 'test')],
+    })
+    await session.unlock(password)
+
+    expect(session.getSnapshot().environment).toBe('live')
+  })
+
+  it('reports the environment of the connected account', async () => {
+    const session = await createSession({
+      accounts: [account('live-one'), account('test-one', 'test')],
+    })
+    await session.unlock(password)
+
+    await session.connectAccount('test-one')
+
+    expect(session.getSnapshot().environment).toBe('test')
+  })
+
+  it('returns to production when the account is disconnected', async () => {
+    const session = await createSession({
+      accounts: [account('test-one', 'test')],
+    })
+    await session.unlock(password)
+    await session.connectAccount('test-one')
+
+    session.disconnectAccount()
+
+    expect(session.getSnapshot().environment).toBe('live')
+  })
+
+  /*
+   * Refused rather than silently honoured. The stored key is only valid at the
+   * venue that issued it, so accepting the change would describe a credential
+   * that does not exist and surface much later as "credencial inválida".
+   */
+  it('refuses to change the environment of an existing account', async () => {
+    const session = await createSession({ accounts: [account('live-one')] })
+    await session.unlock(password)
+
+    await expect(session.saveBinanceAccount({
+      accountId: 'live-one',
+      environment: 'test',
+      label: 'Conta live-one',
+      markets: ['spot'],
+      apiKey: 'api-key-live-one',
+      apiSecret: 'api-secret-live-one',
+    })).rejects.toThrow(/ambiente/i)
+
+    expect(session.getSnapshot().accounts[0].environment).toBe('live')
+  })
+
+  it('accepts a save that keeps the environment unchanged', async () => {
+    const session = await createSession({ accounts: [account('live-one')] })
+    await session.unlock(password)
+
+    await session.saveBinanceAccount({
+      accountId: 'live-one',
+      environment: 'live',
+      label: 'Renomeada',
+      markets: ['spot'],
+      apiKey: 'api-key-live-one',
+      apiSecret: 'api-secret-live-one',
+    })
+
+    expect(session.getSnapshot().accounts[0].label).toBe('Renomeada')
+  })
+
+  it('stores a brand-new test account with its environment', async () => {
+    const session = await createSession()
+    await session.setup(password)
+
+    await session.saveBinanceAccount({
+      environment: 'test',
+      label: 'Testnet',
+      markets: ['spot'],
+      apiKey: 'api-key-testnet',
+      apiSecret: 'api-secret-testnet',
+    })
+
+    expect(session.getSnapshot().accounts[0].environment).toBe('test')
+  })
+})
+
+describe('saving never chooses the venue', () => {
+  /*
+   * The regression this pins. Saving a production credential while a test
+   * account was connected used to connect it here, in the main process, past
+   * the renderer's guard against exactly that divergence — leaving the private
+   * side on production and every price on screen coming from the testnet.
+   */
+  it('leaves a connected test account connected when a live one is saved',
+    async () => {
+      const session = await createSession({
+        accounts: [account('test-one', 'test')],
+      })
+      await session.unlock(password)
+      await session.connectAccount('test-one')
+      expect(session.getSnapshot().environment).toBe('test')
+
+      await session.saveBinanceAccount({
+        environment: 'live',
+        label: 'Produção somente leitura',
+        markets: ['spot'],
+        apiKey: 'binance-api-key-LIVE',
+        apiSecret: 'binance-api-secret-LIVE',
+      })
+
+      const snapshot = session.getSnapshot()
+      expect(snapshot.connection.accountId).toBe('test-one')
+      expect(snapshot.environment).toBe('test')
+      expect(snapshot.accounts).toHaveLength(2)
+    })
+
+  it('registers the account so it can be connected on purpose afterwards',
+    async () => {
+      const session = await createSession({
+        accounts: [account('test-one', 'test')],
+      })
+      await session.unlock(password)
+      await session.connectAccount('test-one')
+
+      await session.saveBinanceAccount({
+        environment: 'live',
+        label: 'Produção',
+        markets: ['spot'],
+        apiKey: 'binance-api-key-LIVE',
+        apiSecret: 'binance-api-secret-LIVE',
+      })
+      await session.connectAccount('new-account-id')
+
+      const snapshot = session.getSnapshot()
+      expect(snapshot.connection.accountId).toBe('new-account-id')
+      expect(snapshot.environment).toBe('live')
+    })
 })

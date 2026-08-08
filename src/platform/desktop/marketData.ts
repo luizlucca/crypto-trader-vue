@@ -66,20 +66,28 @@ function desktopMarketData() {
 
 export async function loadSymbols(
   provider: string,
+  environment: MarketSelection['environment'],
   market: MarketSelection['market'],
   quoteAsset = 'USDT',
 ): Promise<MarketSymbol[]> {
-  return desktopMarketData().getSymbols(provider, market, quoteAsset)
+  return desktopMarketData().getSymbols(
+    provider,
+    environment,
+    market,
+    quoteAsset,
+  )
 }
 
 export async function loadMarketCatalog(
   provider: string,
+  environment: MarketSelection['environment'],
   market: MarketSelection['market'],
   quoteAsset = '',
   forceRefresh = false,
 ): Promise<MarketCatalog> {
   return desktopMarketData().getCatalog(
     provider,
+    environment,
     market,
     quoteAsset,
     forceRefresh,

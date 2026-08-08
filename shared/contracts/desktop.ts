@@ -2,6 +2,7 @@ import type {
   Candle,
   Market,
   MarketCatalog,
+  MarketEnvironment,
   MarketPair,
   MarketSelection,
   MarketSymbol,
@@ -9,6 +10,7 @@ import type {
   StreamStatus,
 } from '@shared/types/market'
 import type { DesktopSecurityAPI } from '@shared/contracts/security'
+import { isMarketEnvironment } from '@shared/domain/providerEnvironment'
 
 export const DESKTOP_CHANNELS = {
   marketRequest: 'cryptopro:market:request',
@@ -26,6 +28,7 @@ export const DESKTOP_CHANNELS = {
 export interface CatalogRequest {
   kind: 'catalog'
   provider: string
+  environment: MarketEnvironment
   market: Market
   quoteAsset: string
   forceRefresh: boolean
@@ -34,6 +37,7 @@ export interface CatalogRequest {
 export interface SymbolsRequest {
   kind: 'symbols'
   provider: string
+  environment: MarketEnvironment
   market: Market
   quoteAsset: string
 }
@@ -140,15 +144,22 @@ export interface SymbolSelectionResult {
   item: MarketPair
 }
 
+/**
+ * The two catalog calls take `environment` next to `provider` because together
+ * they name the venue, and neither carries a selection to read it from.
+ * Everything below them does, so nothing else in this interface repeats it.
+ */
 export interface DesktopMarketDataAPI {
   getCatalog(
     provider: string,
+    environment: MarketEnvironment,
     market: Market,
     quoteAsset?: string,
     forceRefresh?: boolean,
   ): Promise<MarketCatalog>
   getSymbols(
     provider: string,
+    environment: MarketEnvironment,
     market: Market,
     quoteAsset?: string,
   ): Promise<MarketSymbol[]>
@@ -209,6 +220,7 @@ export function copyMarketSelection(
 ): MarketSelection {
   return {
     provider: selection.provider,
+    environment: selection.environment,
     market: selection.market,
     symbol: selection.symbol,
     interval: selection.interval,
@@ -256,6 +268,7 @@ export function isMarketSelection(
   }
   const selection = value as Partial<MarketSelection>
   return typeof selection.provider === 'string'
+    && isMarketEnvironment(selection.environment)
     && isMarket(selection.market)
     && typeof selection.symbol === 'string'
     && typeof selection.interval === 'string'
@@ -355,11 +368,13 @@ export function isMarketDataRequest(
   switch (request.kind) {
     case 'catalog':
       return typeof request.provider === 'string'
+        && isMarketEnvironment(request.environment)
         && isMarket(request.market)
         && typeof request.quoteAsset === 'string'
         && typeof request.forceRefresh === 'boolean'
     case 'symbols':
       return typeof request.provider === 'string'
+        && isMarketEnvironment(request.environment)
         && isMarket(request.market)
         && typeof request.quoteAsset === 'string'
     case 'candles':
