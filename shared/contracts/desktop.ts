@@ -8,6 +8,7 @@ import type {
   OrderBookSnapshot,
   StreamStatus,
 } from '@shared/types/market'
+import type { DesktopSecurityAPI } from '@shared/contracts/security'
 
 export const DESKTOP_CHANNELS = {
   marketRequest: 'cryptopro:market:request',
@@ -18,6 +19,8 @@ export const DESKTOP_CHANNELS = {
   searchContext: 'cryptopro:window:search-context',
   symbolSelected: 'cryptopro:window:symbol-selected',
   favoritesChanged: 'cryptopro:window:favorites-changed',
+  securityRequest: 'cryptopro:security:request',
+  securityEvent: 'cryptopro:security:event',
 } as const
 
 export interface CatalogRequest {
@@ -197,6 +200,7 @@ export interface DesktopWindowsAPI {
 export interface CryptoProDesktopAPI {
   platform: string
   marketData: DesktopMarketDataAPI
+  security: DesktopSecurityAPI
   windows: DesktopWindowsAPI
 }
 
@@ -341,7 +345,9 @@ function isSessionId(value: unknown): value is string {
     && /^[a-zA-Z0-9_-]+$/.test(value)
 }
 
-export function isMarketDataRequest(value: unknown): value is MarketDataRequest {
+export function isMarketDataRequest(
+  value: unknown,
+): value is MarketDataRequest {
   if (!value || typeof value !== 'object') {
     return false
   }

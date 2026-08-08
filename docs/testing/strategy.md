@@ -27,10 +27,20 @@ Teste live explícito:
 
     BINANCE_LIVE_TEST=1 npm test -- --run electron/utility/market-data/providers/binance/provider.live.test.ts
 
+Convenção para o futuro teste live autenticado de conta (opt-in; nunca
+imprimir os valores):
+
+    BINANCE_ACCOUNT_LIVE_TEST=1 BINANCE_ACCOUNT_API_KEY=... BINANCE_ACCOUNT_API_SECRET=... \
+      npm test -- --run electron/main/providers/binance/binanceAccountProvider.live.test.ts
+
 ## Regras
 
 - Todo bug corrigido adiciona teste de regressão na camada mais baixa possível.
 - Todo contrato novo atravessando IPC adiciona teste de validação e clone seguro.
+- Credenciais usam fixtures HMAC determinísticas. Testes autenticados só podem
+  ler `BINANCE_ACCOUNT_API_KEY` e `BINANCE_ACCOUNT_API_SECRET` quando o opt-in
+  `BINANCE_ACCOUNT_LIVE_TEST=1` estiver presente; erros e relatórios não podem
+  interpolar esses valores.
 - Toda mudança em stream, Worker ou gráfico executa cenários de
   [performance](../performance/README.md).
 - Fixture de exchange deve ser determinística: timestamps, preços e volumes

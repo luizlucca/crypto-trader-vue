@@ -3,6 +3,7 @@ import {
   app,
   BrowserWindow,
   ipcMain,
+  powerMonitor,
   session,
   type IpcMainInvokeEvent,
 } from 'electron'
@@ -16,12 +17,27 @@ import {
   type SymbolSearchContext,
 } from '@shared/contracts/desktop'
 import { MarketDataCoordinator } from './market-data/coordinator'
+import { AccountProviderRegistry } from './providers/accountProvider'
+import {
+  BinanceAccountProvider,
+} from './providers/binance/binanceAccountProvider'
+import { registerSecurityIPC } from './security/registerSecurityIPC'
+import { bindSecurityLifecycle } from './security/securityLifecycle'
+import { SecurityPreferencesStore } from './security/securityPreferences'
+import { ProviderConnectionCoordinator } from './security/providerConnectionCoordinator'
+import { SecuritySession } from './security/securitySession'
+import { VaultCrypto } from './security/vaultCrypto'
+import { VaultRepository } from './security/vaultRepository'
 
 let mainWindow: BrowserWindow | null = null
 let searchWindow: BrowserWindow | null = null
 let searchContext: SymbolSearchContext | null = null
 let streamData: MarketDataCoordinator | undefined
 let catalogData: MarketDataCoordinator | undefined
+let securitySession: SecuritySession | undefined
+let disposeSecurityIPC: (() => void) | undefined
+let disposeSecurityLifecycle: (() => void) | undefined
+let isQuitting = false
 
 function rendererURL(view?: 'search'): string {
   const developmentURL = process.env.ELECTRON_RENDERER_URL
@@ -81,7 +97,11 @@ function createMainWindow(): BrowserWindow {
     streamData?.stopAllStreams()
   })
   window.on('closed', () => {
-    mainWindow = null
+    if (mainWindow === window) {
+      mainWindow = null
+      disposeSecurityLifecycle?.()
+      disposeSecurityLifecycle = undefined
+    }
     streamData?.stopAllStreams()
   })
 
@@ -91,6 +111,28 @@ function createMainWindow(): BrowserWindow {
   } else {
     void window.loadFile(join(__dirname, '../renderer/index.html'))
   }
+  return window
+}
+
+function bindMainSecurityLifecycle(window: BrowserWindow): void {
+  disposeSecurityLifecycle?.()
+  if (!securitySession) {
+    return
+  }
+  disposeSecurityLifecycle = bindSecurityLifecycle({
+    window,
+    powerMonitor,
+    session: securitySession,
+    isQuitting: () => isQuitting,
+    requestQuit: () => app.quit(),
+    platform: process.platform,
+  })
+}
+
+function openMainWindow(): BrowserWindow {
+  const window = createMainWindow()
+  mainWindow = window
+  bindMainSecurityLifecycle(window)
   return window
 }
 
@@ -274,7 +316,7 @@ if (!singleInstance) {
     }
   })
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     session.defaultSession.setPermissionRequestHandler(
       (_webContents, _permission, callback) => callback(false),
     )
@@ -286,21 +328,52 @@ if (!singleInstance) {
       () => {},
       'CryptoPro Symbol Catalog',
     )
+    const userDataPath = app.getPath('userData')
+    const providers = new AccountProviderRegistry([new BinanceAccountProvider()])
+    securitySession = new SecuritySession({
+      repository: new VaultRepository(join(userDataPath, 'credentials.v1.enc')),
+      crypto: new VaultCrypto(),
+      preferences: new SecurityPreferencesStore(
+        join(userDataPath, 'security-preferences.v1.json'),
+      ),
+      connections: new ProviderConnectionCoordinator(providers),
+      getSystemIdleTime: () => powerMonitor.getSystemIdleTime(),
+    })
+    await securitySession.initialize()
+    disposeSecurityIPC = registerSecurityIPC({
+      ipc: ipcMain,
+      getMainWebContentsId: () => mainWindow?.webContents.id,
+      session: securitySession,
+      send: (snapshot) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(DESKTOP_CHANNELS.securityEvent, snapshot)
+        }
+      },
+    })
     streamData.start()
     catalogData.start()
     registerIPC()
-    mainWindow = createMainWindow()
+    openMainWindow()
 
     app.on('activate', () => {
       if (!mainWindow) {
-        mainWindow = createMainWindow()
+        openMainWindow()
       }
     })
   })
 
   app.on('before-quit', () => {
+    isQuitting = true
+    securitySession?.shutdown()
     streamData?.shutdown()
     catalogData?.shutdown()
+  })
+
+  app.on('will-quit', () => {
+    disposeSecurityLifecycle?.()
+    disposeSecurityLifecycle = undefined
+    disposeSecurityIPC?.()
+    disposeSecurityIPC = undefined
   })
 
   app.on('window-all-closed', () => {

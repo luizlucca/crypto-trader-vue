@@ -47,8 +47,14 @@
       "@positions/*": [
         "src/features/positions/*"
       ],
+      "@providers/*": [
+        "src/features/providers/*"
+      ],
       "@renderer-shared/*": [
         "src/shared/*"
+      ],
+      "@security/*": [
+        "src/features/security/*"
       ],
       "@settings/*": [
         "src/features/settings/*"
