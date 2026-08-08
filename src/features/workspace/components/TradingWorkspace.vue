@@ -7,9 +7,7 @@ import {
   shallowRef,
   watch,
 } from 'vue'
-import type {
-  SecuritySnapshot,
-} from '@shared/contracts/security'
+import type { SecuritySnapshot } from '@shared/contracts/security'
 import AppHeader from '@app/components/AppHeader.vue'
 import AppToastHost from '@app/components/AppToastHost.vue'
 import GeneralSettingsPanel from '@settings/components/GeneralSettingsPanel.vue'
@@ -18,6 +16,7 @@ import NavigationRail from '@app/components/NavigationRail.vue'
 import PanelResizeHandle from '@app/components/PanelResizeHandle.vue'
 import MarketSidebar from '@market/components/MarketSidebar.vue'
 import MarketChart from '@chart/components/MarketChart.vue'
+import TestEnvironmentBadge from '@chart/components/TestEnvironmentBadge.vue'
 import OrderBook from '@orderbook/components/OrderBook.vue'
 import TradingTicket from '@trading/components/TradingTicket.vue'
 import PositionsPanel from '@positions/components/PositionsPanel.vue'
@@ -37,6 +36,11 @@ import type {
 } from '@security/services/securityAccessController'
 import ProviderConnectionDialog
   from '@providers/components/ProviderConnectionDialog.vue'
+import EnvironmentSwitchDialog
+  from '@providers/components/EnvironmentSwitchDialog.vue'
+import { switchEnvironment } from '@providers/services/environmentSwitch'
+import { useConnectionGate } from '@providers/services/connectionGate'
+import { siblingAccount } from '@shared/domain/providerEnvironment'
 import { useNotifications } from '@app/services/notifications'
 import {
   canRetryProviderConnection,
@@ -115,6 +119,84 @@ const workspaceStyle = computed(() => ({
 const activeTabPosition = computed(
   () => tabs.findIndex((tab) => tab.id === activeTab.value.id) + 1,
 )
+
+const gate = useConnectionGate()
+const environmentSwitchPending = ref(false)
+/**
+ * Raised by whichever door tried to connect an account from another venue.
+ * The workspace owns the dialog and the rebuild, so every door hands off here.
+ */
+const environmentSwitchTarget = gate.pendingSwitch
+
+// The gate compares against what the chart is drawing, not against the
+// connected account: those disagree for exactly as long as a switch is
+// in flight, and that window is what it exists to close.
+watch(
+  () => selection.value.environment,
+  (environment) => gate.followWorkspace(environment),
+  { immediate: true },
+)
+
+/**
+ * Whether the operator has an account for the venue they are not looking at.
+ * Only used to decide what the header button offers; the picker itself lists
+ * every account, because two test accounts differ by market, not environment.
+ */
+const hasSiblingAccount = computed(() => siblingAccount(
+  security.snapshot.value.accounts,
+  selection.value.environment,
+) !== undefined)
+
+/**
+ * The header button opens the account picker rather than toggling blindly.
+ * With a Spot testnet account and a Futures testnet account registered, "the
+ * other environment" names two different credentials, and guessing between
+ * them is how the wrong one gets connected.
+ */
+function requestEnvironmentSwitch(): void {
+  if (security.snapshot.value.state !== 'unlocked') {
+    openSecurityAccess()
+    return
+  }
+  if (security.snapshot.value.accounts.length === 0) {
+    openProviderSettings()
+    return
+  }
+  providerConnectionOpen.value = true
+}
+
+async function confirmEnvironmentSwitch(): Promise<void> {
+  const target = environmentSwitchTarget.value
+  if (!target || environmentSwitchPending.value) {
+    return
+  }
+  environmentSwitchPending.value = true
+  try {
+    const outcome = await switchEnvironment(target, {
+      connect: (accountId) => security.request({
+        kind: 'connect-account',
+        accountId,
+      }),
+      resetWorkspace: workspace.resetTo,
+    })
+    // The workspace was never touched, so the operator is left exactly where
+    // they were: the dialog stays open and names what failed.
+    if (outcome.status === 'connection-failed') {
+      notifyConnectionFeedback(outcome.snapshot, target.accountId)
+      return
+    }
+    gate.clearPendingSwitch()
+    providerConnectionOpen.value = false
+  } finally {
+    environmentSwitchPending.value = false
+  }
+}
+
+function cancelEnvironmentSwitch(): void {
+  if (!environmentSwitchPending.value) {
+    gate.clearPendingSwitch()
+  }
+}
 
 const statusLabel = computed(() => sessionStatusLabel(activeTab.value))
 const tradingTicketVisible = computed(
@@ -278,6 +360,20 @@ function notifyConnectionFailure(accountId: string): void {
 }
 
 async function connectProviderAccount(accountId: string): Promise<void> {
+  /*
+   * Connecting an account from another venue is a workspace switch, whichever
+   * door it came through — the header button, this picker, or the reconnect
+   * offered after a failure. Letting it through here would leave a testnet
+   * credential connected under a production chart: the private side pointed at
+   * one exchange while every price on screen came from the other.
+   *
+   * Routed to the confirmation instead of connecting. The reset destroys work,
+   * so it is never a side effect of picking an account from a list.
+   */
+  if (!gate.mayConnect(accountId, security.snapshot.value.accounts)) {
+    return
+  }
+
   const attempt = connectionAttempt.begin(accountId)
   if (!attempt) {
     return
@@ -366,10 +462,12 @@ function lockSecuritySession(): void {
       :selection="selection"
       :settings-open="settingsOpen"
       :security-state="security.snapshot.value.state"
+      :has-sibling-account="hasSiblingAccount"
       :status="activeTab.status"
       @access="openSecurityAccess"
       @lock="lockSecuritySession"
       @settings="settingsOpen = !settingsOpen"
+      @switch-environment="requestEnvironmentSwitch"
     />
     <!--
       Hidden panels collapse their grid track to zero instead of being removed
@@ -426,6 +524,7 @@ function lockSecuritySession(): void {
           @add="requestNewTab"
           @close="workspace.close"
         />
+        <TestEnvironmentBadge :environment="selection.environment" />
         <MarketChart
           :key="chartRenderKey"
           ref="marketChart"
@@ -495,6 +594,14 @@ function lockSecuritySession(): void {
       @close="cancelProviderConnection"
       @open-settings="openProviderSettings"
       @select="connectProviderAccount"
+    />
+    <EnvironmentSwitchDialog
+      v-if="environmentSwitchTarget"
+      :open-tabs="tabs.length"
+      :pending="environmentSwitchPending"
+      :target="environmentSwitchTarget"
+      @cancel="cancelEnvironmentSwitch"
+      @confirm="confirmEnvironmentSwitch"
     />
     <AppToastHost />
   </div>

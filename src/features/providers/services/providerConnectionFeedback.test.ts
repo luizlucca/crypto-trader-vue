@@ -17,12 +17,14 @@ function snapshotWith(
     accounts: [{
       accountId: 'account-one',
       provider: 'binance',
+      environment: 'live',
       label: 'Principal',
       markets: ['spot'],
       apiKeySuffix: '••••1234',
       connection: connection.state,
     }],
     connection,
+    environment: 'live',
     preferences: {
       lockOnMinimize: true,
       lockOnSuspend: true,

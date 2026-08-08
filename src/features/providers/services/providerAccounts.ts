@@ -3,11 +3,14 @@ import { isBinanceAccountDraft } from '@shared/contracts/security'
 
 export function emptyBinanceAccountDraft(): BinanceAccountDraft {
   return {
+    // Production by default: a test account is the deliberate choice, and a
+    // default that quietly points elsewhere is how a key ends up in the wrong
+    // venue.
+    environment: 'live',
     label: '',
     markets: ['spot'],
     apiKey: '',
     apiSecret: '',
-    validateAndConnect: true,
   }
 }
 

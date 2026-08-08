@@ -60,6 +60,7 @@ afterEach(() => {
 
 const futuresSelection: MarketSelection = {
   provider: 'binance',
+  environment: 'live',
   market: 'futures',
   symbol: 'BTCUSDT',
   interval: '1m',
@@ -137,6 +138,7 @@ describe('BinanceProvider catalog cache', () => {
     const provider = new BinanceProvider()
     const request = {
       market: 'futures' as const,
+      environment: 'live' as const,
       quoteAsset: '',
       forceRefresh: false,
     }
@@ -180,6 +182,7 @@ describe('BinanceProvider candle history', () => {
     const provider = new BinanceProvider()
     const baseSelection: Omit<MarketSelection, 'market'> = {
       provider: 'binance',
+      environment: 'live',
       symbol: 'BTCUSDT',
       interval: '1h',
       baseAsset: 'BTC',
@@ -209,6 +212,86 @@ describe('BinanceProvider candle history', () => {
     expect(futuresURL.searchParams.get('limit')).toBe('400')
     expect(futuresURL.searchParams.get('endTime')).toBe('1722398399999')
     expect(spotURL.searchParams.get('endTime')).toBe('1722398399999')
+  })
+
+  /*
+   * The selection carries the environment, so nothing between here and the
+   * socket has to remember to pass it along. This is the assertion that would
+   * catch a call site rebuilt without it.
+   */
+  it('routes a test selection to the testnet hosts', async () => {
+    const fetchMock = vi.fn(async (_url: string) => new Response(
+      JSON.stringify([]),
+      { status: 200 },
+    ))
+    vi.stubGlobal('fetch', fetchMock)
+    const provider = new BinanceProvider()
+    const baseSelection: Omit<MarketSelection, 'market'> = {
+      provider: 'binance',
+      environment: 'test',
+      symbol: 'BTCUSDT',
+      interval: '1h',
+      baseAsset: 'BTC',
+      quoteAsset: 'USDT',
+      priceTickSize: 0.01,
+      pricePrecision: 2,
+      quantityPrecision: 3,
+    }
+
+    await provider.getCandles(
+      { ...baseSelection, market: 'futures' },
+      { limit: 10 },
+    )
+    await provider.getCandles(
+      { ...baseSelection, market: 'spot' },
+      { limit: 10 },
+    )
+
+    const futuresURL = new URL(String(fetchMock.mock.calls[0][0]))
+    const spotURL = new URL(String(fetchMock.mock.calls[1][0]))
+    expect(futuresURL.origin).toBe('https://demo-fapi.binance.com')
+    expect(spotURL.origin).toBe('https://testnet.binance.vision')
+  })
+
+  it('does not serve a production catalog to a test request', async () => {
+    const fetchMock = vi.fn(async (url: string) => new Response(
+      JSON.stringify(String(url).includes('exchangeInfo')
+        ? {
+            symbols: [{
+              symbol: String(url).includes('testnet') ? 'TSTUSDT' : 'BTCUSDT',
+              status: 'TRADING',
+              baseAsset: String(url).includes('testnet') ? 'TST' : 'BTC',
+              quoteAsset: 'USDT',
+              filters: [
+                { filterType: 'PRICE_FILTER', tickSize: '0.10' },
+                { filterType: 'LOT_SIZE', stepSize: '0.001' },
+              ],
+            }],
+          }
+        : []),
+      { status: 200 },
+    ))
+    vi.stubGlobal('fetch', fetchMock)
+    const provider = new BinanceProvider()
+
+    const live = await provider.getCatalog({
+      market: 'spot',
+      environment: 'live',
+      quoteAsset: '',
+      forceRefresh: false,
+    })
+    const test = await provider.getCatalog({
+      market: 'spot',
+      environment: 'test',
+      quoteAsset: '',
+      forceRefresh: false,
+    })
+
+    // Keyed by market alone, the second call would have been a cache hit and
+    // the testnet tab would be listing production pairs.
+    expect(live.items.map((item) => item.symbol)).toEqual(['BTCUSDT'])
+    expect(test.items.map((item) => item.symbol)).toEqual(['TSTUSDT'])
+    expect(test.environment).toBe('test')
   })
 })
 

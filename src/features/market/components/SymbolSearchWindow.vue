@@ -44,6 +44,7 @@ function applyContext(context: SymbolSearchContext): void {
 async function loadCatalog(forceRefresh: boolean): Promise<void> {
   const generation = ++contextGeneration
   const provider = selection.provider
+  const environment = selection.environment
   const market = selection.market
   if (forceRefresh) {
     refreshing.value = true
@@ -55,6 +56,7 @@ async function loadCatalog(forceRefresh: boolean): Promise<void> {
   try {
     const nextCatalog = await loadMarketCatalog(
       provider,
+      environment,
       market,
       '',
       forceRefresh,
@@ -62,6 +64,7 @@ async function loadCatalog(forceRefresh: boolean): Promise<void> {
     if (
       generation === contextGeneration
       && provider === selection.provider
+      && environment === selection.environment
       && market === selection.market
     ) {
       catalog.value = nextCatalog

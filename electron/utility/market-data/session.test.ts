@@ -17,6 +17,7 @@ import { MarketSession, MarketSessionPool } from './session'
 
 const selection: MarketSelection = {
   provider: 'test',
+  environment: 'live',
   market: 'spot',
   symbol: 'BTCUSDT',
   interval: '1m',

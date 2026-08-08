@@ -7,6 +7,7 @@ import type { MarketSelection, MarketSymbol } from '@shared/types/market'
  */
 export const DEFAULT_MARKET_SELECTION: MarketSelection = {
   provider: 'binance',
+  environment: 'live',
   market: 'futures',
   symbol: 'BTCUSDT',
   interval: '1h',
@@ -25,12 +26,17 @@ export function createDefaultMarketSelection(): MarketSelection {
  * Identifies the data stream a selection subscribes to. Presentation-only
  * fields such as precision are excluded: changing them must not invalidate a
  * loaded candle history.
+ *
+ * The environment is part of the identity, not presentation: the same pair on
+ * the testnet is a different stream with different prices, and a cached page
+ * from one venue applied to the other reads as valid data.
  */
 export function marketSelectionFingerprint(
   selection: MarketSelection,
 ): string {
   return [
     selection.provider,
+    selection.environment,
     selection.market,
     selection.symbol,
     selection.interval,

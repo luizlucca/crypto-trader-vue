@@ -50,6 +50,7 @@ const contents: VaultContents = {
   accounts: [{
     accountId: 'account-one',
     provider: 'binance',
+    environment: 'live',
     label: 'Conta principal',
     markets: ['futures'],
     apiKey: 'binance-api-key',

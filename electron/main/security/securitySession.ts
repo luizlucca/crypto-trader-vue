@@ -10,6 +10,7 @@ import {
   type SecuritySnapshot,
   type SecurityState,
 } from '@shared/contracts/security'
+import { activeEnvironment } from '@shared/domain/providerEnvironment'
 import { validatePersonalPassword } from '@shared/domain/personalPassword'
 import {
   type EncryptedCredentialVaultV1,
@@ -70,6 +71,7 @@ function copyContents(contents: VaultContents): VaultContents {
     accounts: contents.accounts.map((account) => ({
       accountId: account.accountId,
       provider: account.provider,
+      environment: account.environment,
       label: account.label,
       markets: [...account.markets],
       apiKey: account.apiKey,
@@ -92,6 +94,7 @@ function toSummary(
   return {
     accountId: account.accountId,
     provider: account.provider,
+    environment: account.environment,
     label: account.label,
     markets: [...account.markets],
     apiKeySuffix: apiKeySuffix(account.apiKey),
@@ -142,12 +145,14 @@ export class SecuritySession {
 
   getSnapshot(): SecuritySnapshot {
     const accounts = this.unlockedAccountSummaries()
+    const connection = this.connections.snapshot()
 
     return {
       state: this.state,
       hasVault: this.hasVault,
       accounts,
-      connection: this.connections.snapshot(),
+      connection,
+      environment: activeEnvironment(accounts, connection),
       preferences: projectSecurityPreferences(this.preferences)!,
     }
   }
@@ -216,15 +221,25 @@ export class SecuritySession {
     return this.preferences.closeAction
   }
 
+  /**
+   * Registers a credential. It never becomes the session's connection.
+   *
+   * Connecting here made the venue a side effect of filling in a form: saving
+   * a production key while the workspace was on a testnet moved the private
+   * side to production and left every price on screen coming from the test
+   * exchange. Worse, it happened in this process, past the renderer's check
+   * for exactly that divergence.
+   *
+   * Which account is active is now always a separate, explicit choice — and
+   * connecting is what validates the credential, so nothing is lost by not
+   * proving it here.
+   */
   async saveBinanceAccount(
     draft: BinanceAccountDraft,
   ): Promise<SecuritySnapshot> {
     const result = await this.vaultMutationQueue.enqueue(
       () => this.saveBinanceAccountInternal(draft),
     )
-    if (draft.validateAndConnect && result.snapshot.state === 'unlocked') {
-      return this.connectAccount(result.accountId)
-    }
     return result.snapshot
   }
 
@@ -328,12 +343,25 @@ export class SecuritySession {
     this.assertAccountDraft(draft)
     const vault = this.requireVault()
     const accountId = draft.accountId ?? this.createAccountId()
+    const existing = vault.accounts.find(
+      (account) => account.accountId === accountId,
+    )
+    // Refused rather than silently honoured: the stored key is only valid in
+    // the venue it was issued for, so accepting this would describe a
+    // credential that does not exist and fail later as "credencial inválida".
+    if (existing && existing.environment !== draft.environment) {
+      throw new Error(
+        'O ambiente de uma conta não pode ser alterado. '
+        + 'Adicione uma conta separada para o outro ambiente.',
+      )
+    }
     if (this.connections.snapshot().accountId === accountId) {
       this.connections.disconnect()
     }
     const record: ProviderAccountRecord = {
       accountId,
       provider: 'binance',
+      environment: draft.environment,
       label: draft.label.trim(),
       markets: [...draft.markets],
       apiKey: draft.apiKey,

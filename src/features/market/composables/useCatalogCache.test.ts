@@ -2,12 +2,26 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MarketCatalog, MarketSelection } from '@shared/types/market'
 import { catalogKey, useCatalogCache } from './useCatalogCache'
 
-const futures = { provider: 'binance', market: 'futures' } as MarketSelection
-const spot = { provider: 'binance', market: 'spot' } as MarketSelection
+const futures = {
+  provider: 'binance',
+  environment: 'live',
+  market: 'futures',
+} as MarketSelection
+const spot = {
+  provider: 'binance',
+  environment: 'live',
+  market: 'spot',
+} as MarketSelection
+const futuresTestnet = {
+  provider: 'binance',
+  environment: 'test',
+  market: 'futures',
+} as MarketSelection
 
 function catalog(label: string): MarketCatalog {
   return {
     provider: 'binance',
+    environment: 'live',
     market: 'futures',
     quoteAsset: '',
     items: [],
@@ -70,7 +84,8 @@ describe('catalog cache', () => {
     await cache.ensure(futures, true)
 
     expect(getCatalog).toHaveBeenCalledTimes(2)
-    expect(getCatalog).toHaveBeenLastCalledWith('binance', 'futures', '', true)
+    expect(getCatalog)
+      .toHaveBeenLastCalledWith('binance', 'live', 'futures', '', true)
   })
 
   it('reports loading until the first catalog resolves', async () => {
@@ -135,6 +150,34 @@ describe('catalog cache', () => {
     expect(cache.hasFailed(futures)).toBe(false)
     expect(cache.get(futures)?.warning).toBe('primeira')
   })
+
+  /*
+   * The two venues list different pairs. Serving the production catalog to a
+   * testnet tab would put symbols on screen that cannot be traded there — and
+   * it would look entirely normal.
+   */
+  it('does not let one environment fill the other environment entry',
+    async () => {
+      const getCatalog = stubCatalogTransport()
+      getCatalog.mockResolvedValue(catalog('producao'))
+      const cache = useCatalogCache()
+
+      await cache.ensure(futures)
+
+      expect(catalogKey(futures)).not.toBe(catalogKey(futuresTestnet))
+      expect(cache.get(futuresTestnet)).toBeNull()
+
+      await cache.ensure(futuresTestnet)
+
+      expect(getCatalog).toHaveBeenCalledTimes(2)
+      expect(getCatalog).toHaveBeenLastCalledWith(
+        'binance',
+        'test',
+        'futures',
+        '',
+        false,
+      )
+    })
 
   it('does not let one market fill another market entry', async () => {
     const getCatalog = stubCatalogTransport()

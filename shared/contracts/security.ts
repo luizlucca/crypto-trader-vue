@@ -1,5 +1,10 @@
-import type { Market } from '@shared/types/market'
+import type { Market, MarketEnvironment } from '@shared/types/market'
 import { validatePersonalPassword } from '@shared/domain/personalPassword'
+import { isMarketEnvironment } from '@shared/domain/providerEnvironment'
+import {
+  providerCapabilities,
+  type ProviderId,
+} from '@shared/domain/providerCapabilities'
 
 export type SecurityState
   = | 'setup-required'
@@ -38,7 +43,8 @@ export const DEFAULT_SECURITY_PREFERENCES: SecurityPreferences = {
 
 export interface ProviderAccountSummary {
   accountId: string
-  provider: 'binance'
+  provider: ProviderId
+  environment: MarketEnvironment
   label: string
   markets: readonly Market[]
   apiKeySuffix: string
@@ -54,11 +60,11 @@ export interface ProviderConnectionSnapshot {
 
 export interface BinanceAccountDraft {
   accountId?: string
+  environment: MarketEnvironment
   label: string
   markets: readonly Market[]
   apiKey: string
   apiSecret: string
-  validateAndConnect: boolean
 }
 
 export interface SecuritySnapshot {
@@ -66,6 +72,12 @@ export interface SecuritySnapshot {
   hasVault: boolean
   accounts: readonly ProviderAccountSummary[]
   connection: ProviderConnectionSnapshot
+  /**
+   * Which venue the whole app is pointed at. Derived from the connected
+   * account and falling back to `live`, so there is exactly one answer — a
+   * second, independent switch could disagree with the credential in use.
+   */
+  environment: MarketEnvironment
   preferences: SecurityPreferences
 }
 
@@ -188,18 +200,18 @@ export function isBinanceAccountDraft(
   value: unknown,
 ): value is BinanceAccountDraft {
   if (!hasExactKeys(value, [
+    'environment',
     'label',
     'markets',
     'apiKey',
     'apiSecret',
-    'validateAndConnect',
   ]) && !hasExactKeys(value, [
     'accountId',
+    'environment',
     'label',
     'markets',
     'apiKey',
     'apiSecret',
-    'validateAndConnect',
   ])) {
     return false
   }
@@ -208,13 +220,17 @@ export function isBinanceAccountDraft(
   return (
     draft.accountId === undefined || isAccountId(draft.accountId)
   )
+  && isMarketEnvironment(draft.environment)
   && typeof draft.label === 'string'
   && draft.label.length <= 64
   && draft.label.trim().length >= 1
   && isMarkets(draft.markets)
+  && (
+    providerCapabilities('binance').coversBothMarkets(draft.environment)
+    || draft.markets.length === 1
+  )
   && isCredential(draft.apiKey)
   && isCredential(draft.apiSecret)
-  && typeof draft.validateAndConnect === 'boolean'
 }
 
 export function isSecurityRequest(value: unknown): value is SecurityRequest {

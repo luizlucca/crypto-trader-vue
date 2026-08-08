@@ -12,11 +12,11 @@ import {
   notifyProviderConnectionFeedback,
   notifyProviderConnectionFailure,
   providerAccountFailureMessage,
-  providerConnectionFailureMessage,
   providerConnectionStateLabel,
 } from '@providers/services/providerConnectionFeedback'
 import { useNotifications } from '@app/services/notifications'
 import { useSecuritySession } from '@security/services/securitySession'
+import { useConnectionGate } from '@providers/services/connectionGate'
 import BinanceAccountForm from './BinanceAccountForm.vue'
 import ProviderCatalog from './ProviderCatalog.vue'
 import ProviderIcon from './ProviderIcon.vue'
@@ -31,6 +31,7 @@ const emit = defineEmits<{
 }>()
 
 const session = useSecuritySession()
+const gate = useConnectionGate()
 const notifications = useNotifications()
 const editingAccount = ref<ProviderAccountSummary>()
 const view = ref<'accounts' | 'catalog' | 'form'>('accounts')
@@ -94,7 +95,7 @@ async function saveAccount(draft: BinanceAccountDraft): Promise<void> {
   activeSaveAttempt = attempt
   saving.value = true
   try {
-    const snapshot = await session.request({
+    await session.request({
       kind: 'save-binance-account',
       draft,
     })
@@ -103,21 +104,22 @@ async function saveAccount(draft: BinanceAccountDraft): Promise<void> {
     }
     view.value = 'accounts'
     editingAccount.value = undefined
-    if (draft.validateAndConnect && snapshot.connection.accountId) {
-      notifyConnectionFeedback(snapshot, snapshot.connection.accountId)
-    }
+    // Saving registers a credential and nothing else. Which account is active
+    // is chosen from the connection picker, where changing venue can raise the
+    // workspace reset it needs.
+    notifications.notify({
+      tone: 'success',
+      message: `Conta ${draft.label} salva. Conecte-a para validar `
+        + 'a credencial e operar nela.',
+    })
   } catch {
     if (activeSaveAttempt !== attempt || !unlocked.value) {
       return
     }
-    if (draft.validateAndConnect && draft.accountId) {
-      notifyConnectionFailure(draft.accountId)
-    } else if (draft.validateAndConnect) {
-      notifications.notify({
-        tone: 'error',
-        message: providerConnectionFailureMessage('unknown'),
-      })
-    }
+    notifications.notify({
+      tone: 'error',
+      message: 'Não foi possível salvar a conta.',
+    })
   } finally {
     if (activeSaveAttempt === attempt) {
       activeSaveAttempt = undefined
@@ -128,6 +130,12 @@ async function saveAccount(draft: BinanceAccountDraft): Promise<void> {
 
 async function connectAccount(accountId: string): Promise<void> {
   if (!unlocked.value || activeConnectionAttempt) {
+    return
+  }
+  // Another venue means a workspace rebuild, which only the workspace can
+  // confirm and perform. The gate has raised it; connecting here anyway is
+  // what left a production credential live under a testnet chart.
+  if (!gate.mayConnect(accountId, props.snapshot.accounts)) {
     return
   }
   const attempt = {

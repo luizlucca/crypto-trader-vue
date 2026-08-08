@@ -11,6 +11,7 @@ const contents: VaultContents = {
   accounts: [{
     accountId: 'account-one',
     provider: 'binance',
+    environment: 'live',
     label: 'Conta principal',
     markets: ['spot'],
     apiKey: 'binance-api-key',
@@ -126,7 +127,7 @@ describe('VaultCrypto', () => {
         enabled: true,
       }],
     }
-    const encrypted = await crypto.create(password, legacyContents as VaultContents)
+    const encrypted = await crypto.create(password, legacyContents as unknown as VaultContents)
 
     const unlocked = await crypto.unlock(password, encrypted.envelope)
 
@@ -152,7 +153,7 @@ describe('VaultCrypto', () => {
           enabled: true,
         }],
       }
-      const encrypted = await crypto.create(password, legacyContents as VaultContents)
+      const encrypted = await crypto.create(password, legacyContents as unknown as VaultContents)
 
       const unlocked = await crypto.unlock(password, encrypted.envelope)
 

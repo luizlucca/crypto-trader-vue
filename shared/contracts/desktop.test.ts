@@ -4,6 +4,7 @@ import type { MarketSelection } from '@shared/types/market'
 
 const selection: MarketSelection = {
   provider: 'binance',
+  environment: 'live',
   market: 'futures',
   symbol: 'BTCUSDT',
   interval: '1h',

@@ -1,7 +1,7 @@
 import type {
   AccountFailureCode,
 } from '@shared/contracts/security'
-import type { Market } from '@shared/types/market'
+import type { Market, MarketEnvironment } from '@shared/types/market'
 
 export interface BinanceCredentials {
   apiKey: string
@@ -16,6 +16,8 @@ export interface AccountMarketValidation {
 
 export interface AccountProviderValidationContext {
   signal: AbortSignal
+  /** Which venue to prove the credential against. A key is valid in one. */
+  environment: MarketEnvironment
 }
 
 export interface AccountProvider {

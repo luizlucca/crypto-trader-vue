@@ -8,8 +8,8 @@ const credentials = {
 }
 const timestamp = 1_723_984_000_000
 
-function validationContext(): { signal: AbortSignal } {
-  return { signal: new AbortController().signal }
+function validationContext(): { signal: AbortSignal, environment: 'live' } {
+  return { signal: new AbortController().signal, environment: 'live' }
 }
 
 function response(status: number, body: unknown = {}): Response {
@@ -95,7 +95,7 @@ describe('BinanceAccountProvider', () => {
       await provider.validateConnection(
         credentials,
         ['spot', 'futures'],
-        { signal: controller.signal },
+        { signal: controller.signal, environment: 'live' },
       )
 
       expect(fetch.mock.calls).toHaveLength(2)

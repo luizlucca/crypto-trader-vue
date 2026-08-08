@@ -3,6 +3,7 @@ import type {
   Candle,
   Market,
   MarketCatalog,
+  MarketEnvironment,
   MarketPair,
   MarketSelection,
   MarketSymbol,
@@ -198,22 +199,40 @@ export function orderBookDepthFor(
   )
 }
 
+/**
+ * Cache identity for a catalog. The environment has to be in the key: the two
+ * venues list different pairs, and keying by market alone would serve the
+ * production catalog to a testnet tab — plausible data from the wrong
+ * exchange, which reads as correct.
+ */
+function catalogCacheKey(
+  market: Market,
+  environment: MarketEnvironment,
+): string {
+  return `${environment}:${market}`
+}
+
 export class BinanceProvider implements MarketDataProvider {
   readonly name = 'binance'
-  private readonly catalogs = new Map<Market, CatalogCacheEntry>()
-  private readonly catalogFlights = new Map<Market, Promise<CatalogCacheEntry>>()
+  private readonly catalogs = new Map<string, CatalogCacheEntry>()
+  private readonly catalogFlights
+    = new Map<string, Promise<CatalogCacheEntry>>()
 
   async getCatalog(options: CatalogOptions): Promise<MarketCatalog> {
     const quoteAsset = options.quoteAsset.trim().toUpperCase()
+    const { market, environment } = options
     const now = Date.now()
-    const cachedEntry = this.catalogs.get(options.market)
+    const cachedEntry = this.catalogs.get(
+      catalogCacheKey(market, environment),
+    )
     if (
       !options.forceRefresh
       && cachedEntry
       && cachedEntry.expiresAt > now
     ) {
       return this.catalogResult(
-        options.market,
+        market,
+        environment,
         quoteAsset,
         cachedEntry,
         true,
@@ -222,9 +241,10 @@ export class BinanceProvider implements MarketDataProvider {
     }
 
     try {
-      const entry = await this.refreshCatalog(options.market)
+      const entry = await this.refreshCatalog(market, environment)
       return this.catalogResult(
-        options.market,
+        market,
+        environment,
         quoteAsset,
         entry,
         false,
@@ -235,7 +255,8 @@ export class BinanceProvider implements MarketDataProvider {
         throw error
       }
       return this.catalogResult(
-        options.market,
+        market,
+        environment,
         quoteAsset,
         cachedEntry,
         true,
@@ -247,10 +268,12 @@ export class BinanceProvider implements MarketDataProvider {
 
   async getSymbols(
     market: Market,
+    environment: MarketEnvironment,
     quoteAsset: string,
   ): Promise<MarketSymbol[]> {
     const catalog = await this.getCatalog({
       market,
+      environment,
       quoteAsset: quoteAsset || 'USDT',
       forceRefresh: false,
     })
@@ -274,7 +297,7 @@ export class BinanceProvider implements MarketDataProvider {
     const symbol = normalizeSymbol(selection.symbol)
     validateInterval(selection.interval)
     const normalizedLimit = validateCandleLimit(options.limit)
-    const endpoint = endpointsFor(selection.market)
+    const endpoint = endpointsFor(selection.market, selection.environment)
     const query = new URLSearchParams({
       symbol,
       interval: selection.interval,
@@ -326,7 +349,7 @@ export class BinanceProvider implements MarketDataProvider {
   ): Observable<Candle> {
     const symbol = normalizeSymbol(selection.symbol)
     validateInterval(selection.interval)
-    const endpoint = endpointsFor(selection.market)
+    const endpoint = endpointsFor(selection.market, selection.environment)
     const streamURL = `${endpoint.marketWebSocket}/${
       symbol.toLowerCase()
     }@kline_${selection.interval}`
@@ -370,7 +393,7 @@ export class BinanceProvider implements MarketDataProvider {
     // Guarded: a catalog entry without a tick size would make the depth
     // calculation divide by zero and read the whole book on every emission.
     const tickSize = selection.priceTickSize
-    const endpoint = endpointsFor(market)
+    const endpoint = endpointsFor(market, selection.environment)
     const streamURL = `${endpoint.publicWebSocket}/${
       symbol.toLowerCase()
     }@depth@100ms`
@@ -565,13 +588,17 @@ export class BinanceProvider implements MarketDataProvider {
     })
   }
 
-  private async refreshCatalog(market: Market): Promise<CatalogCacheEntry> {
-    const activeFlight = this.catalogFlights.get(market)
+  private async refreshCatalog(
+    market: Market,
+    environment: MarketEnvironment,
+  ): Promise<CatalogCacheEntry> {
+    const key = catalogCacheKey(market, environment)
+    const activeFlight = this.catalogFlights.get(key)
     if (activeFlight) {
       return activeFlight
     }
 
-    const flight = this.fetchCatalog(market)
+    const flight = this.fetchCatalog(market, environment)
       .then((items) => {
         const loadedAt = Date.now()
         const entry = {
@@ -579,18 +606,21 @@ export class BinanceProvider implements MarketDataProvider {
           expiresAt: loadedAt + catalogTTL,
           items,
         }
-        this.catalogs.set(market, entry)
+        this.catalogs.set(key, entry)
         return entry
       })
       .finally(() => {
-        this.catalogFlights.delete(market)
+        this.catalogFlights.delete(key)
       })
-    this.catalogFlights.set(market, flight)
+    this.catalogFlights.set(key, flight)
     return flight
   }
 
-  private async fetchCatalog(market: Market): Promise<MarketPair[]> {
-    const endpoint = endpointsFor(market)
+  private async fetchCatalog(
+    market: Market,
+    environment: MarketEnvironment,
+  ): Promise<MarketPair[]> {
+    const endpoint = endpointsFor(market, environment)
     const [exchangeInfo, tickers] = await Promise.all([
       fetchJSON<ExchangeInfoPayload>(
         `${endpoint.rest}/exchangeInfo`,
@@ -612,6 +642,7 @@ export class BinanceProvider implements MarketDataProvider {
 
   private catalogResult(
     market: Market,
+    environment: MarketEnvironment,
     quoteAsset: string,
     entry: CatalogCacheEntry,
     cached: boolean,
@@ -620,6 +651,7 @@ export class BinanceProvider implements MarketDataProvider {
   ): MarketCatalog {
     return {
       provider: this.name,
+      environment,
       market,
       quoteAsset,
       items: quoteAsset

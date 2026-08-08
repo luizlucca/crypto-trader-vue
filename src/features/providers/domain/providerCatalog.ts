@@ -1,5 +1,7 @@
+import type { ProviderId } from '@shared/domain/providerCapabilities'
+
 export interface ProviderDefinition {
-  id: 'binance'
+  id: ProviderId
   name: string
   description: string
   available: boolean

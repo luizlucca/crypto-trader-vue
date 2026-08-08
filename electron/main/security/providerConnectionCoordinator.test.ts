@@ -11,6 +11,7 @@ function account(id: string, markets: ProviderAccountRecord['markets'] = ['spot'
   return {
     accountId: id,
     provider: 'binance',
+    environment: 'live',
     label: `Conta ${id}`,
     markets,
     apiKey: `api-key-${id}`,

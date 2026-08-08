@@ -13,6 +13,7 @@ function account(
   return {
     accountId,
     provider: 'binance',
+    environment: 'live',
     label: 'Principal',
     markets,
     apiKeySuffix: '••••1234',
@@ -30,6 +31,7 @@ function snapshot(
     hasVault: true,
     accounts,
     connection,
+    environment: 'live',
     preferences: {
       lockOnMinimize: true,
       lockOnSuspend: true,

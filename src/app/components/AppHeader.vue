@@ -2,7 +2,9 @@
 import {
   Bell,
   ChevronDown,
+  FlaskConical,
   Gem,
+  Globe,
   Lock,
   LockKeyhole,
   Minus,
@@ -16,19 +18,55 @@ import { computed } from 'vue'
 import { appTheme, toggleTheme } from '@settings/services/theme'
 import type { MarketSelection, StreamStatus } from '@shared/types/market'
 import type { SecurityState } from '@shared/contracts/security'
+import {
+  environmentLabel,
+  oppositeEnvironment,
+} from '@shared/domain/providerEnvironment'
 
 const props = defineProps<{
   status: StreamStatus['state']
   selection: MarketSelection
   settingsOpen: boolean
   securityState: SecurityState
+  /** False when no account exists for the other venue yet. */
+  hasSiblingAccount: boolean
 }>()
 
 const emit = defineEmits<{
   settings: []
   access: []
   lock: []
+  switchEnvironment: []
 }>()
+
+const testing = computed(() => props.selection.environment === 'test')
+const environmentName = computed(
+  () => environmentLabel(props.selection.environment),
+)
+
+/**
+ * Named for where the click leads, not for where the app is.
+ *
+ * With a sibling registered the click opens the account picker rather than
+ * jumping: two testnet accounts differ by market, not by environment, so
+ * "the other environment" can name more than one credential and the operator
+ * has to be the one choosing. With none, the button invites registering one
+ * instead of vanishing, which would leave no visible path to the other venue.
+ */
+const environmentActionLabel = computed(() => {
+  // While locked the accounts are withheld, so `hasSiblingAccount` reads false
+  // for want of an answer rather than because there is none. Offering to
+  // register an account would be wrong advice to anyone who already has one.
+  if (props.securityState !== 'unlocked') {
+    return 'Entrar para trocar de conta ou ambiente'
+  }
+  const target = environmentLabel(
+    oppositeEnvironment(props.selection.environment),
+  )
+  return props.hasSiblingAccount
+    ? 'Trocar de conta ou ambiente'
+    : `Adicionar conta de ${target}`
+})
 
 const connectionLabel = computed(() => {
   switch (props.status) {
@@ -62,6 +100,19 @@ function toggleAccountAccess(): void {
     <button class="exchange-selector" type="button">
       <Gem aria-hidden="true" />
       Binance · {{ selection.market === 'futures' ? 'Futuros' : 'Spot' }}
+      <ChevronDown aria-hidden="true" class="chevron" />
+    </button>
+
+    <button
+      class="environment-selector"
+      :class="{ testing }"
+      :title="environmentActionLabel"
+      type="button"
+      @click="emit('switchEnvironment')"
+    >
+      <FlaskConical v-if="testing" aria-hidden="true" />
+      <Globe v-else aria-hidden="true" />
+      {{ environmentName }}
       <ChevronDown aria-hidden="true" class="chevron" />
     </button>
 

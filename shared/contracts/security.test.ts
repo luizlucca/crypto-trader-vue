@@ -10,11 +10,11 @@ describe('security contract', () => {
     expect(isSecurityRequest({
       kind: 'save-binance-account',
       draft: {
+        environment: 'live',
         label: 'Conta principal',
         markets: ['spot', 'futures'],
         apiKey: 'key-1234567890',
         apiSecret: 'secret-1234567890',
-        validateAndConnect: true,
       },
     })).toBe(true)
   })
@@ -23,11 +23,11 @@ describe('security contract', () => {
     expect(isSecurityRequest({
       kind: 'save-binance-account',
       draft: {
+        environment: 'live',
         label: 'Conta',
         markets: ['spot', 'spot'],
         apiKey: 'key-1234567890',
         apiSecret: '',
-        validateAndConnect: true,
       },
     })).toBe(false)
     expect(isSecurityRequest({
@@ -45,11 +45,11 @@ describe('security contract', () => {
     expect(isSecurityRequest({
       kind: 'save-binance-account',
       draft: {
+        environment: 'live',
         label: 'Principal',
         markets: ['spot'],
         apiKey: 'key-1234567890',
         apiSecret: 'secret-1234567890',
-        validateAndConnect: true,
       },
     })).toBe(true)
   })
@@ -87,11 +87,11 @@ describe('security contract', () => {
       {
         kind: 'save-binance-account',
         draft: {
+          environment: 'live',
           label: 'Principal',
           markets: ['spot'],
           apiKey: 'key-1234567890',
           apiSecret: 'secret-1234567890',
-          validateAndConnect: false,
         },
       },
       { kind: 'remove-account', accountId: 'account-one' },
@@ -109,11 +109,11 @@ describe('security contract', () => {
     expect(isSecurityRequest({
       kind: 'save-binance-account',
       draft: {
+        environment: 'live',
         label: 'Principal',
         markets: ['spot'],
         apiKey: 'key-1234567890',
         apiSecret: 'secret-1234567890',
-        validateAndConnect: true,
         unexpected: true,
       },
     })).toBe(false)
@@ -134,7 +134,6 @@ describe('security contract', () => {
         markets: ['spot'],
         apiKey: 'key-1234567890',
         apiSecret: 'secret-1234567890',
-        validateAndConnect: true,
       },
     })).toBe(false)
   })
@@ -147,11 +146,11 @@ describe('security contract', () => {
     Object.defineProperty(preferences, 'hidden', { value: true })
 
     const draft = {
+      environment: 'live',
       label: 'Principal',
       markets: ['spot'],
       apiKey: 'key-1234567890',
       apiSecret: 'secret-1234567890',
-      validateAndConnect: true,
     }
     Object.defineProperty(draft, 'hidden', { value: true })
 
@@ -174,11 +173,11 @@ describe('security contract', () => {
     Object.defineProperty(preferences, Symbol('hidden'), { value: true })
 
     const draft = {
+      environment: 'live',
       label: 'Principal',
       markets: ['spot'],
       apiKey: 'key-1234567890',
       apiSecret: 'secret-1234567890',
-      validateAndConnect: true,
     }
     Object.defineProperty(draft, Symbol('hidden'), { value: true })
 

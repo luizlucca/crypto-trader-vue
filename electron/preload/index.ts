@@ -10,6 +10,7 @@ import {
 import type {
   Candle,
   Market,
+  MarketEnvironment,
   MarketCatalog,
   MarketPair,
   MarketSelection,
@@ -70,6 +71,7 @@ const api: CryptoProDesktopAPI = {
   marketData: {
     getCatalog(
       provider: string,
+      environment: MarketEnvironment,
       market: Market,
       quoteAsset = '',
       forceRefresh = false,
@@ -77,6 +79,7 @@ const api: CryptoProDesktopAPI = {
       return marketRequest({
         kind: 'catalog',
         provider,
+        environment,
         market,
         quoteAsset,
         forceRefresh,
@@ -84,12 +87,14 @@ const api: CryptoProDesktopAPI = {
     },
     getSymbols(
       provider: string,
+      environment: MarketEnvironment,
       market: Market,
       quoteAsset = 'USDT',
     ): Promise<MarketSymbol[]> {
       return marketRequest({
         kind: 'symbols',
         provider,
+        environment,
         market,
         quoteAsset,
       })

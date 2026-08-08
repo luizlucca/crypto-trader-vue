@@ -13,22 +13,56 @@ import { parseDrawing } from '@drawings/domain/chartDrawings'
  * time and price, and it holds on the 4h chart exactly as it was drawn on the
  * 1h. It is not, however, a statement about another pair — so the symbol is
  * part of the key.
+ *
+ * Nor about the same pair on another venue: the testnet BTCUSDT trades at its
+ * own prices, so a line drawn in production lands nowhere near the candles
+ * there. Drawings outlive the tab that made them and survive an environment
+ * switch by design, which is exactly why the environment has to be in the key.
  */
 
 const STORAGE_KEY = 'cryptopro.chart-drawings.v1'
 const MAX_ASSETS = 60
 
 export function drawingKey(selection: MarketSelection): string {
-  return `${selection.provider}:${selection.market}:${selection.symbol}`
+  return [
+    selection.provider,
+    selection.environment,
+    selection.market,
+    selection.symbol,
+  ].join(':')
 }
 
 type Stored = Record<string, unknown[]>
+
+/**
+ * Keys written before environments existed read `provider:market:symbol`, and
+ * everything stored under them was drawn against production. Migrating on read
+ * costs one pass over at most sixty keys; the alternative — leaving the old
+ * shape addressable — would mean every reader knowing both formats forever.
+ */
+export function migrateDrawingKey(key: string): string {
+  const parts = key.split(':')
+  return parts.length === 3
+    ? [parts[0], 'live', parts[1], parts[2]].join(':')
+    : key
+}
 
 function readAll(): Stored {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     const parsed: unknown = raw ? JSON.parse(raw) : {}
-    return parsed && typeof parsed === 'object' ? parsed as Stored : {}
+    if (!parsed || typeof parsed !== 'object') {
+      return {}
+    }
+    const migrated: Stored = {}
+    for (const [key, value] of Object.entries(parsed as Stored)) {
+      // A migrated key must not clobber one already written in the new shape.
+      const target = migrateDrawingKey(key)
+      if (!Object.hasOwn(migrated, target)) {
+        migrated[target] = value
+      }
+    }
+    return migrated
   } catch {
     return {}
   }
