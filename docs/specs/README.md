@@ -36,7 +36,11 @@ e inclua o link no índice antes de iniciar a implementação.
 | F-015 | [Superfície de modais destacada do fundo](./F-015-superficie-de-modais.md) | Em desenvolvimento |
 | F-016 | [Desenhos no gráfico](./F-016-desenhos-no-grafico.md) | Em evolução |
 | F-017 | [Endurecimento pós-revisão](./F-017-endurecimento-pos-revisao.md) | Em desenvolvimento |
+<<<<<<< HEAD
 | F-018 | [Cofre de credenciais e conexões privadas de providers](./F-018-cofre-de-credenciais-e-conexoes-privadas.md) | Implementada |
+=======
+| F-018 | [Cofre de credenciais e conexões privadas de providers](./F-018-cofre-de-credenciais-e-conexoes-privadas.md) | Planejada |
+>>>>>>> 8dc79cb (superporwers)
 
 Para a visão transversal de processos, IPC e isolamento de performance, veja a
 [arquitetura](../architecture.md).
